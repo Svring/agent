@@ -1,0 +1,109 @@
+# Configuration for local services
+[services]
+
+  [services.ollama]
+  name = "ollama"
+  port = 11434
+  base_url = "localhost"
+  route_url = "/ollama"
+  icon = "BrainCircuit"
+  folder_path = ""
+  init_command = ""
+  status = "inactive"
+  
+  [[services.ollama.endpoints]]
+  path = "/api/generate"
+  method = "POST"
+  desc = "Generate text using the specified model and prompt"
+  
+  [services.ollama.endpoints.data_types]
+  input = { model = "string", prompt = "string" }
+  output = { response = "string" }
+
+  [services.operator]
+  name = "operator"
+  port = 33213
+  base_url = "localhost"
+  route_url = "/operator"
+  icon = "MousePointerSquare"
+  folder_path = "/Users/linkling/Services/Operator"
+  init_command = "python app.py"
+  status = "inactive"
+
+  [[services.operator.endpoints]]
+  path = "/probe"
+  method = "GET"
+  desc = "Health check endpoint for the Operator service"
+  
+  [services.operator.endpoints.data_types]
+  output = { message = "string" }
+  
+  [[services.operator.endpoints]]
+  path = "/click"
+  method = "POST"
+  desc = "Perform a mouse click at the specified coordinates"
+  
+  [services.operator.endpoints.data_types]
+  input = { x = "number", y = "number" }
+  output = { success = "boolean" }
+  
+  [[services.operator.endpoints]]
+  path = "/move"
+  method = "POST"
+  desc = "Move the mouse cursor to the specified coordinates"
+  
+  [services.operator.endpoints.data_types]
+  input = { x = "number", y = "number" }
+  output = { success = "boolean" }
+  
+  [[services.operator.endpoints]]
+  path = "/screen_size"
+  method = "GET"
+  desc = "Get the screen dimensions"
+  
+  [services.operator.endpoints.data_types]
+  output = { width = "number", height = "number" }
+  
+  [[services.operator.endpoints]]
+  path = "/screenshot_base64"
+  method = "POST"
+  desc = "Take a screenshot and return it as a base64 encoded string"
+  
+  [services.operator.endpoints.data_types]
+  input = { region = { x = "number", y = "number", width = "number", height = "number" } }
+  output = { base64 = "string" }
+  
+  [[services.operator.endpoints]]
+  path = "/"
+  method = "GET"
+  desc = "Health check endpoint for the Operator service"
+  
+  [services.operator.endpoints.data_types]
+  output = { message = "string" }
+
+  [services.omniparser]
+  name = "omniparser"
+  port = 33212
+  base_url = "localhost"
+  route_url = "/omniparser"
+  icon = "Eye"
+  folder_path = "/Users/linkling/Services/OmniParser"
+  init_command = "python -m ./omnitool/omniparserserver/omniparserserver"
+  status = "inactive"
+  
+  [[services.omniparser.endpoints]]
+  path = "/parse/"
+  method = "POST"
+  desc = "Parse an image and return the analysis results"
+  
+  [services.omniparser.endpoints.data_types]
+  input = { base64_image = "string" }
+  output = { parsed_image_base64 = "string", parsed_content_list = "array" }
+  
+  [[services.omniparser.endpoints]]
+  path = "/probe/"
+  method = "GET"
+  desc = "Health check endpoint for the Omniparser service"
+  
+  [services.omniparser.endpoints.data_types]
+  output = { message = "string" }
