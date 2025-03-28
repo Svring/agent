@@ -15,8 +15,8 @@ import {
   timestamp,
   varchar,
   numeric,
-  integer,
   jsonb,
+  integer,
 } from "@payloadcms/db-postgres/drizzle/pg-core";
 import { sql, relations } from "@payloadcms/db-postgres/drizzle";
 
@@ -97,6 +97,69 @@ export const media = pgTable(
   }),
 );
 
+export const texts = pgTable(
+  "texts",
+  {
+    id: serial("id").primaryKey(),
+    content: varchar("content").notNull(),
+    updatedAt: timestamp("updated_at", {
+      mode: "string",
+      withTimezone: true,
+      precision: 3,
+    })
+      .defaultNow()
+      .notNull(),
+    createdAt: timestamp("created_at", {
+      mode: "string",
+      withTimezone: true,
+      precision: 3,
+    })
+      .defaultNow()
+      .notNull(),
+  },
+  (columns) => ({
+    texts_updated_at_idx: index("texts_updated_at_idx").on(columns.updatedAt),
+    texts_created_at_idx: index("texts_created_at_idx").on(columns.createdAt),
+  }),
+);
+
+export const embeddings = pgTable(
+  "embeddings",
+  {
+    id: serial("id").primaryKey(),
+    content: varchar("content").notNull(),
+    embedding: jsonb("embedding").notNull(),
+    textId: integer("text_id_id")
+      .notNull()
+      .references(() => texts.id, {
+        onDelete: "set null",
+      }),
+    updatedAt: timestamp("updated_at", {
+      mode: "string",
+      withTimezone: true,
+      precision: 3,
+    })
+      .defaultNow()
+      .notNull(),
+    createdAt: timestamp("created_at", {
+      mode: "string",
+      withTimezone: true,
+      precision: 3,
+    })
+      .defaultNow()
+      .notNull(),
+  },
+  (columns) => ({
+    embeddings_text_id_idx: index("embeddings_text_id_idx").on(columns.textId),
+    embeddings_updated_at_idx: index("embeddings_updated_at_idx").on(
+      columns.updatedAt,
+    ),
+    embeddings_created_at_idx: index("embeddings_created_at_idx").on(
+      columns.createdAt,
+    ),
+  }),
+);
+
 export const payload_locked_documents = pgTable(
   "payload_locked_documents",
   {
@@ -139,6 +202,8 @@ export const payload_locked_documents_rels = pgTable(
     path: varchar("path").notNull(),
     usersID: integer("users_id"),
     mediaID: integer("media_id"),
+    textsID: integer("texts_id"),
+    embeddingsID: integer("embeddings_id"),
   },
   (columns) => ({
     order: index("payload_locked_documents_rels_order_idx").on(columns.order),
@@ -152,6 +217,12 @@ export const payload_locked_documents_rels = pgTable(
     payload_locked_documents_rels_media_id_idx: index(
       "payload_locked_documents_rels_media_id_idx",
     ).on(columns.mediaID),
+    payload_locked_documents_rels_texts_id_idx: index(
+      "payload_locked_documents_rels_texts_id_idx",
+    ).on(columns.textsID),
+    payload_locked_documents_rels_embeddings_id_idx: index(
+      "payload_locked_documents_rels_embeddings_id_idx",
+    ).on(columns.embeddingsID),
     parentFk: foreignKey({
       columns: [columns["parent"]],
       foreignColumns: [payload_locked_documents.id],
@@ -166,6 +237,16 @@ export const payload_locked_documents_rels = pgTable(
       columns: [columns["mediaID"]],
       foreignColumns: [media.id],
       name: "payload_locked_documents_rels_media_fk",
+    }).onDelete("cascade"),
+    textsIdFk: foreignKey({
+      columns: [columns["textsID"]],
+      foreignColumns: [texts.id],
+      name: "payload_locked_documents_rels_texts_fk",
+    }).onDelete("cascade"),
+    embeddingsIdFk: foreignKey({
+      columns: [columns["embeddingsID"]],
+      foreignColumns: [embeddings.id],
+      name: "payload_locked_documents_rels_embeddings_fk",
     }).onDelete("cascade"),
   }),
 );
@@ -266,6 +347,14 @@ export const payload_migrations = pgTable(
 
 export const relations_users = relations(users, () => ({}));
 export const relations_media = relations(media, () => ({}));
+export const relations_texts = relations(texts, () => ({}));
+export const relations_embeddings = relations(embeddings, ({ one }) => ({
+  textId: one(texts, {
+    fields: [embeddings.textId],
+    references: [texts.id],
+    relationName: "textId",
+  }),
+}));
 export const relations_payload_locked_documents_rels = relations(
   payload_locked_documents_rels,
   ({ one }) => ({
@@ -283,6 +372,16 @@ export const relations_payload_locked_documents_rels = relations(
       fields: [payload_locked_documents_rels.mediaID],
       references: [media.id],
       relationName: "media",
+    }),
+    textsID: one(texts, {
+      fields: [payload_locked_documents_rels.textsID],
+      references: [texts.id],
+      relationName: "texts",
+    }),
+    embeddingsID: one(embeddings, {
+      fields: [payload_locked_documents_rels.embeddingsID],
+      references: [embeddings.id],
+      relationName: "embeddings",
     }),
   }),
 );
@@ -325,6 +424,8 @@ export const relations_payload_migrations = relations(
 type DatabaseSchema = {
   users: typeof users;
   media: typeof media;
+  texts: typeof texts;
+  embeddings: typeof embeddings;
   payload_locked_documents: typeof payload_locked_documents;
   payload_locked_documents_rels: typeof payload_locked_documents_rels;
   payload_preferences: typeof payload_preferences;
@@ -332,6 +433,8 @@ type DatabaseSchema = {
   payload_migrations: typeof payload_migrations;
   relations_users: typeof relations_users;
   relations_media: typeof relations_media;
+  relations_texts: typeof relations_texts;
+  relations_embeddings: typeof relations_embeddings;
   relations_payload_locked_documents_rels: typeof relations_payload_locked_documents_rels;
   relations_payload_locked_documents: typeof relations_payload_locked_documents;
   relations_payload_preferences_rels: typeof relations_payload_preferences_rels;

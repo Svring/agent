@@ -10,6 +10,8 @@
     "payload:generate": "payload generate:db-schema"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^1.3.3",
+    "@ai-sdk/react": "^1.2.2",
     "@iarna/toml": "^2.2.5",
     "@payloadcms/db-postgres": "^3.31.0",
     "@payloadcms/next": "^3.31.0",
@@ -24,6 +26,7 @@
     "@radix-ui/react-slot": "^1.1.2",
     "@radix-ui/react-tabs": "^1.1.3",
     "@radix-ui/react-tooltip": "^1.1.8",
+    "ai": "^4.2.6",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "graphql": "^16.10.0",
@@ -36,6 +39,7 @@
     "react-router-dom": "^7.4.0",
     "tailwind-merge": "^3.0.2",
     "tw-animate-css": "^1.2.4",
+    "zod": "^3.24.2",
     "zustand": "^5.0.3"
   },
   "devDependencies": {
