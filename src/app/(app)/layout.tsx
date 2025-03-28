@@ -4,6 +4,7 @@ import "./globals.css";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/app-sidebar"
 import { ThemeProvider } from "@/components/theme-provider";
+import { Toaster } from "@/components/ui/sonner"
 
 export const metadata: Metadata = {
   title: "Agent",
@@ -31,6 +32,7 @@ export default function RootLayout({
                 {children}
               </div>
             </main>
+            <Toaster />
           </SidebarProvider>
         </body>
       </html>

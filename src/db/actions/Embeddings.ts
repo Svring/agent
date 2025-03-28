@@ -2,7 +2,6 @@ import { getPayload } from 'payload'
 import config from '@payload-config'
 import { openai } from '@ai-sdk/openai'
 import { embed, embedMany } from 'ai'
-import { sql, gt, desc, cosineDistance } from 'drizzle-orm'
 
 const payload = await getPayload({ config })
 
@@ -67,34 +66,68 @@ export const storeEmbeddings = async (textId: number, content: string) => {
   }
 }
 
-// Find relevant content based on similarity
+// Helper function to compute cosine similarity between two vectors
+function cosineSimilarity(vecA: number[], vecB: number[]): number {
+  if (vecA.length !== vecB.length) {
+    throw new Error('Vectors must have the same length');
+  }
+
+  const dotProduct = vecA.reduce((sum, a, i) => sum + a * vecB[i], 0);
+  const normA = Math.sqrt(vecA.reduce((sum, a) => sum + a * a, 0));
+  const normB = Math.sqrt(vecB.reduce((sum, b) => sum + b * b, 0));
+
+  if (normA === 0 || normB === 0) {
+    return 0; // Avoid division by zero
+  }
+
+  return dotProduct / (normA * normB);
+}
+
 export const findRelevantContent = async (userQuery: string) => {
   try {
     // Generate embedding for the query
-    const queryEmbedding = await generateEmbedding(userQuery)
-    
-    // Use direct database access with cosineDistance
-    const similarity = sql<number>`1 - (${cosineDistance(
-      payload.db.tables.embeddings.embedding, 
-      queryEmbedding
-    )})`
+    const queryEmbedding = await generateEmbedding(userQuery);
 
-    // Query using drizzle with similarity sorting
-    const results = await payload.db.drizzle
+    // Fetch all embeddings from the database
+    const allEmbeddings = await payload.db.drizzle
       .select({
         content: payload.db.tables.embeddings.content,
-        textId: payload.db.tables.embeddings.textId,
-        similarity
+        embedding: payload.db.tables.embeddings.embedding,
       })
-      .from(payload.db.tables.embeddings)
-      .where(gt(similarity, 0.5))
-      .orderBy(desc(similarity))
-      .limit(4)
-    
-    return results
-    
+      .from(payload.db.tables.embeddings);
+
+    // Compute similarity for each embedding
+    const results = allEmbeddings.map((item) => {
+      // Convert jsonb embedding (stored as JSON string or array) to number[]
+      const dbEmbedding = Array.isArray(item.embedding)
+        ? item.embedding
+        : JSON.parse(item.embedding as string);
+
+      // Ensure it's a number[]
+      if (!Array.isArray(dbEmbedding) || !dbEmbedding.every((v) => typeof v === 'number')) {
+        throw new Error('Invalid embedding format in database');
+      }
+
+      // Compute cosine similarity (1 - cosine distance)
+      const similarity = cosineSimilarity(queryEmbedding, dbEmbedding);
+
+      return {
+        content: item.content,
+        similarity,
+      };
+    });
+
+    // Filter and sort results
+    const similarGuides = results
+      .filter((result) => result.similarity > 0.5) // Threshold
+      .sort((a, b) => b.similarity - a.similarity) // Descending order
+      .slice(0, 4); // Limit to top 4
+
+    console.log('for query: ', userQuery, 'relevant info are: ', similarGuides);
+
+    return similarGuides;
   } catch (error) {
-    console.error('Error finding relevant content:', error)
-    return []
+    console.error('Error finding relevant content:', error);
+    return [];
   }
-}
+};

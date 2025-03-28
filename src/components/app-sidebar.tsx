@@ -1,6 +1,6 @@
 'use client'
 
-import { ChevronDown, Settings, Moon, Sun, Eye, SquareMousePointer, Gauge, Bird, MessageCircle } from "lucide-react"
+import { ChevronDown, Settings, Moon, Sun, Eye, SquareMousePointer, Gauge, Bird, MessageCircle, Book } from "lucide-react"
 import Link from "next/link"
 
 import {
@@ -64,6 +64,14 @@ const toolsItems = [
     title: "Operator",
     url: "/operator",
     icon: SquareMousePointer,
+  },
+]
+
+const knowledgeBaseItems = [
+  {
+    title: "Embeddings",
+    url: "/embeddings",
+    icon: Book,
   },
 ]
 
@@ -149,6 +157,7 @@ export function AppSidebar() {
             </CollapsibleContent>
           </SidebarGroup>
         </Collapsible>
+
         <Collapsible defaultOpen className="group/collapsible">
           <SidebarGroup>
             <SidebarGroupLabel asChild>
@@ -161,6 +170,33 @@ export function AppSidebar() {
               <SidebarGroupContent>
                 <SidebarMenu>
                   {toolsItems.map((item) => (
+                    <SidebarMenuItem key={item.title}>
+                      <SidebarMenuButton asChild>
+                        <Link href={item.url}>
+                          <item.icon />
+                          <span>{item.title}</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  ))}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </CollapsibleContent>
+          </SidebarGroup>
+        </Collapsible>
+
+        <Collapsible defaultOpen className="group/collapsible">
+          <SidebarGroup>
+            <SidebarGroupLabel asChild>
+              <CollapsibleTrigger>
+                Knowledge Base
+                <ChevronDown className="ml-auto transition-transform group-data-[state=open]/collapsible:rotate-180" />
+              </CollapsibleTrigger>
+            </SidebarGroupLabel>
+            <CollapsibleContent>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {knowledgeBaseItems.map((item) => (
                     <SidebarMenuItem key={item.title}>
                       <SidebarMenuButton asChild>
                         <Link href={item.url}>

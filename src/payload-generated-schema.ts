@@ -15,8 +15,9 @@ import {
   timestamp,
   varchar,
   numeric,
-  jsonb,
+  vector,
   integer,
+  jsonb,
 } from "@payloadcms/db-postgres/drizzle/pg-core";
 import { sql, relations } from "@payloadcms/db-postgres/drizzle";
 
@@ -128,7 +129,7 @@ export const embeddings = pgTable(
   {
     id: serial("id").primaryKey(),
     content: varchar("content").notNull(),
-    embedding: jsonb("embedding").notNull(),
+    embedding: vector("embedding", { dimensions: 1536 }),
     textId: integer("text_id_id")
       .notNull()
       .references(() => texts.id, {
