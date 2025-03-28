@@ -23,7 +23,7 @@ export default function RootLayout({
         >
           <SidebarProvider>
             <AppSidebar />
-            <main className="flex flex-col w-full h-full rounded-lg">
+            <main className="py-1.5 flex flex-1 flex-col w-full rounded-lg">
               <div className="flex flex-row px-1 items-center w-fullrounded-lg">
                 <SidebarTrigger />
               </div>

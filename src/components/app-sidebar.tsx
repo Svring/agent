@@ -1,6 +1,6 @@
 'use client'
 
-import { ChevronDown, Settings, Moon, Sun, Eye, SquareMousePointer, Gauge, Bird } from "lucide-react"
+import { ChevronDown, Settings, Moon, Sun, Eye, SquareMousePointer, Gauge, Bird, MessageCircle } from "lucide-react"
 import Link from "next/link"
 
 import {
@@ -36,6 +36,11 @@ import { useServiceStore } from "@/store/service/serviceStore"
 import { useEffect, useState } from "react"
 
 const workspaceItems = [
+  {
+    title: "Chat",
+    url: "/chat",
+    icon: MessageCircle,
+  },
   {
     title: "Automation",
     url: "/automation",
