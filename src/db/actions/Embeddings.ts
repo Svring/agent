@@ -2,11 +2,16 @@ import { getPayload } from 'payload'
 import config from '@payload-config'
 import { openai } from '@ai-sdk/openai'
 import { embed, embedMany } from 'ai'
+import { useProviderStore } from '@/store/provider/providerStore';
 
 const payload = await getPayload({ config })
 
-// OpenAI embedding model
-const embeddingModel = openai.embedding('text-embedding-3-small')
+// Remove model selection from module scope
+// const selectedEmbeddingModel = useProviderStore.getState().selectedEmbeddingModel
+// if (!selectedEmbeddingModel) {
+//   throw new Error('No embedding model selected')
+// }
+// const embeddingModel = openai.embedding(selectedEmbeddingModel)
 
 // Generate text chunks for embedding
 const generateChunks = (input: string): string[] => {
@@ -20,6 +25,13 @@ const generateChunks = (input: string): string[] => {
 export const generateEmbeddings = async (
   value: string
 ): Promise<Array<{ embedding: number[]; content: string }>> => {
+  // Get the selected model dynamically inside the function
+  const selectedEmbeddingModel = useProviderStore.getState().selectedEmbeddingModel;
+  if (!selectedEmbeddingModel) {
+    throw new Error('Embedding Error: No embedding model selected in the store.');
+  }
+  const embeddingModel = openai.embedding(selectedEmbeddingModel);
+
   const chunks = generateChunks(value)
   const { embeddings } = await embedMany({
     model: embeddingModel,
@@ -30,6 +42,13 @@ export const generateEmbeddings = async (
 
 // Generate a single embedding for text
 export const generateEmbedding = async (value: string): Promise<number[]> => {
+  // Get the selected model dynamically inside the function
+  const selectedEmbeddingModel = useProviderStore.getState().selectedEmbeddingModel;
+  if (!selectedEmbeddingModel) {
+    throw new Error('Embedding Error: No embedding model selected in the store.');
+  }
+  const embeddingModel = openai.embedding(selectedEmbeddingModel);
+
   const input = value.replaceAll('\\n', ' ')
   const { embedding } = await embed({
     model: embeddingModel,

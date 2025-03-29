@@ -1,6 +1,0 @@
-[openai]
-api_key = "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"
-
-[anthropic]
-api_key = "sk-ant-api03-qz5N3WTABhq15mE7htsQS_htN6zwbDk0R0nFymEm-MktMTKx38w2LRlaBPgOCbLTocdoBpHBp5T3BlbkFJKOTxhfMqo2jjBYiVFPlmBXScSSf2gC9YhmOThoC2CchKA9p2UueYqa51sh__OjZ-zJ1Fu5tL4A"
-

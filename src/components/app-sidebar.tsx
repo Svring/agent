@@ -1,6 +1,10 @@
 'use client'
 
-import { ChevronDown, Settings, Moon, Sun, Eye, SquareMousePointer, Gauge, Bird, MessageCircle, Book } from "lucide-react"
+import {
+  ChevronDown, Settings, Moon, Sun, Eye,
+  SquareMousePointer, Gauge, Bird, MessageCircle, Book,
+  TriangleDashed, Sparkle
+} from "lucide-react"
 import Link from "next/link"
 
 import {
@@ -34,6 +38,7 @@ import { Button } from "@/components/ui/button"
 import { useTheme } from "@/components/theme-provider"
 import { useServiceStore } from "@/store/service/serviceStore"
 import { useEffect, useState } from "react"
+import { useProviderStore } from "@/store/provider/providerStore"
 
 const workspaceItems = [
   {
@@ -80,21 +85,30 @@ export function AppSidebar() {
   const [isLoading, setIsLoading] = useState(true);
 
   const loadServiceConfig = useServiceStore(state => state.loadServiceConfig);
-  const services = useServiceStore(state => state.services);
+  const loadProviderConfig = useProviderStore(state => state.loadProviderConfig);
+  const providers = useProviderStore(state => state.providers);
+  const selectedLLMModel = useProviderStore(state => state.selectedLLMModel);
+  const selectedEmbeddingModel = useProviderStore(state => state.selectedEmbeddingModel);
+  const setSelectedProvider = useProviderStore(state => state.setSelectedProvider);
+  const setSelectedLLMModel = useProviderStore(state => state.setSelectedLLMModel);
+  const setSelectedEmbeddingModel = useProviderStore(state => state.setSelectedEmbeddingModel);
 
   useEffect(() => {
     const initializeServices = async () => {
       try {
-        await loadServiceConfig();
+        await Promise.all([
+          loadServiceConfig(),
+          loadProviderConfig()
+        ]);
       } catch (error) {
-        console.error('Failed to load services:', error);
+        console.error('Failed to load services or providers:', error);
       } finally {
         setIsLoading(false);
       }
     };
 
     initializeServices();
-  }, [loadServiceConfig]);
+  }, [loadServiceConfig, loadProviderConfig]);
 
   if (isLoading) {
     return (
@@ -111,23 +125,90 @@ export function AppSidebar() {
   return (
     <Sidebar variant="floating">
 
-      <SidebarHeader>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <SidebarMenuButton>
-              Select LLM
-              <ChevronDown className="ml-auto" />
-            </SidebarMenuButton>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent className="w-fit">
-            <DropdownMenuItem>
-              <span>Claude-3-7</span>
-            </DropdownMenuItem>
-            <DropdownMenuItem>
-              <span>GPT-4o</span>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+      <SidebarHeader className="pt-4">
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs text-muted-foreground mb-1 ml-1 flex items-center gap-1">
+              <Sparkle className="h-3.5 w-3.5" />
+              LLM Model
+            </label>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <SidebarMenuButton className="w-full justify-between text-sm cursor-pointer">
+                  <span className="truncate">{selectedLLMModel || "Select Model"}</span>
+                  <ChevronDown className="h-4 w-4 opacity-70" />
+                </SidebarMenuButton>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-[220px] max-h-[300px] overflow-y-auto">
+                {Object.values(providers)
+                  .filter(provider => provider.models.some(model => model.category === 'llm'))
+                  .map(provider => (
+                    <div key={provider.providerName}>
+                      <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
+                        {provider.providerName.toUpperCase()}
+                      </div>
+                      {provider.models
+                        .filter(model => model.category === 'llm')
+                        .map(model => (
+                          <DropdownMenuItem
+                            key={`${provider.providerName}-${model.name}`}
+                            onClick={() => {
+                              setSelectedProvider(provider.providerName);
+                              setSelectedLLMModel(model.name);
+                            }}
+                            className="text-sm"
+                          >
+                            <span className="truncate">{model.name}</span>
+                          </DropdownMenuItem>
+                        ))
+                      }
+                    </div>
+                  ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+
+          <div>
+            <label className="text-xs text-muted-foreground block mb-1 ml-1 flex items-center gap-1">
+              <TriangleDashed className="h-3.5 w-3.5" />
+              Embedding Model
+            </label>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <SidebarMenuButton className="w-full justify-between text-sm cursor-pointer">
+                  <span className="truncate">{selectedEmbeddingModel || "Select Model"}</span>
+                  <ChevronDown className="h-4 w-4 opacity-70" />
+                </SidebarMenuButton>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-[220px] max-h-[300px] overflow-y-auto">
+                {Object.values(providers)
+                  .filter(provider => provider.models.some(model => model.category === 'embedding'))
+                  .map(provider => (
+                    <div key={provider.providerName}>
+                      <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
+                        {provider.providerName.toUpperCase()}
+                      </div>
+                      {provider.models
+                        .filter(model => model.category === 'embedding')
+                        .map(model => (
+                          <DropdownMenuItem
+                            key={`${provider.providerName}-${model.name}`}
+                            onClick={() => {
+                              setSelectedProvider(provider.providerName);
+                              setSelectedEmbeddingModel(model.name);
+                            }}
+                            className="text-sm"
+                          >
+                            <span className="truncate">{model.name}</span>
+                          </DropdownMenuItem>
+                        ))
+                      }
+                    </div>
+                  ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </div>
       </SidebarHeader>
 
       <SidebarContent>

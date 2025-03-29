@@ -3,8 +3,7 @@ import { z } from 'zod';
 import { createText } from '@/db/actions/Texts';
 
 export const addTextTool = tool({
-  description: `add a text to your knowledge base.
-    If the user provides a random piece of knowledge unprompted, use this tool without asking for confirmation.`,
+  description: `Stores a piece of textual information (provided as the 'content' string parameter) into the dedicated knowledge base. Use this tool to capture facts, notes, or general knowledge volunteered by the user, especially if provided unprompted and seems potentially useful for future reference. Do not use this for storing direct instructions or user preferences; retrieve preferences using getInformationTool.`,
   parameters: z.object({
     content: z
       .string()

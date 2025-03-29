@@ -1,0 +1,23 @@
+[openai]
+api_key = "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"
+
+llm_models = [
+  "gpt-4o-2024-11-20",
+  "o1-mini-2024-09-12",
+  "gpt-4o-mini-2024-07-18"
+]
+
+embedding_models = [
+  "text-embedding-3-small",
+  "text-embedding-3-large"
+]
+
+[anthropic]
+api_key = ""
+
+llm_models = [
+  "claude-3-haiku-20240307",
+  "claude-3-5-sonnet-20241022",
+  "claude-3-7-sonnet-20250219"
+]
+

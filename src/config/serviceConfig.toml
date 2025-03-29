@@ -41,11 +41,11 @@
   [[services.operator.endpoints]]
   path = "/click"
   method = "POST"
-  desc = "Perform a mouse click at the specified coordinates"
+  desc = "Perform a mouse click at the specified coordinates. Button can be left, right, or middle."
   
   [services.operator.endpoints.data_types]
-  input = { x = "number", y = "number" }
-  output = { success = "boolean" }
+  input = { x = "number", y = "number", button = "string?" }
+  output = { success = "boolean", message = "string" }
   
   [[services.operator.endpoints]]
   path = "/move"
@@ -54,7 +54,51 @@
   
   [services.operator.endpoints.data_types]
   input = { x = "number", y = "number" }
-  output = { success = "boolean" }
+  output = { success = "boolean", message = "string" }
+  
+  [[services.operator.endpoints]]
+  path = "/drag"
+  method = "POST"
+  desc = "Click and drag the mouse cursor to the specified coordinates"
+  
+  [services.operator.endpoints.data_types]
+  input = { x = "number", y = "number", button = "string?" }
+  output = { success = "boolean", message = "string" }
+  
+  [[services.operator.endpoints]]
+  path = "/press_key"
+  method = "POST"
+  desc = "Press a key or key combination (e.g., 'a', 'Return', 'alt+Tab')"
+  
+  [services.operator.endpoints.data_types]
+  input = { key = "string" }
+  output = { success = "boolean", message = "string" }
+  
+  [[services.operator.endpoints]]
+  path = "/type_text"
+  method = "POST"
+  desc = "Type a string of text"
+  
+  [services.operator.endpoints.data_types]
+  input = { text = "string" }
+  output = { success = "boolean", message = "string" }
+  
+  [[services.operator.endpoints]]
+  path = "/double_click"
+  method = "POST"
+  desc = "Perform a double click, optionally at specified coordinates"
+  
+  [services.operator.endpoints.data_types]
+  input = { x = "number?", y = "number?", button = "string?" }
+  output = { success = "boolean", message = "string" }
+  
+  [[services.operator.endpoints]]
+  path = "/cursor_position"
+  method = "GET"
+  desc = "Get the current (x, y) coordinates of the mouse cursor"
+  
+  [services.operator.endpoints.data_types]
+  output = { success = "boolean", x = "number", y = "number" }
   
   [[services.operator.endpoints]]
   path = "/screen_size"
@@ -70,8 +114,8 @@
   desc = "Take a screenshot and return it as a base64 encoded string"
   
   [services.operator.endpoints.data_types]
-  input = { region = { x = "number", y = "number", width = "number", height = "number" } }
-  output = { base64 = "string" }
+  input = { region = "array?", format = "string?", full_screen = "boolean?" } # region is [left, top, width, height]
+  output = { success = "boolean", format = "string", base64_image = "string", is_full_screen = "boolean" }
   
   [[services.operator.endpoints]]
   path = "/"
