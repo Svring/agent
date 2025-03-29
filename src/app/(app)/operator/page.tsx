@@ -25,32 +25,13 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 
-// Types for the Operator service responses
-interface ProbeResponse {
-  message: string;
-}
-
-interface ClickResponse {
-  success: boolean;
-  message: string;
-}
-
-interface MoveResponse {
-  success: boolean;
-  message: string;
-}
-
-interface ScreenSizeResponse {
-  width: number;
-  height: number;
-}
-
-interface ScreenshotBase64Response {
-  success: boolean;
-  format: string;
-  base64_image: string;
-  is_full_screen: boolean;
-}
+import {
+  ProbeResponse,
+  ClickResponse,
+  MoveResponse,
+  ScreenSizeResponse,
+  ScreenshotBase64Response
+} from './types';
 
 export default function OperatorPage() {
   // Mouse control states
@@ -72,6 +53,7 @@ export default function OperatorPage() {
   // Get the operator service and update function from the store
   const operatorService = useServiceStore(state => state.getService('operator'));
   const updateServiceStatus = useServiceStore(state => state.updateServiceStatus);
+  const addEndpointOutput = useServiceStore(state => state.addEndpointOutput);
 
   // Check service status periodically
   useEffect(() => {
@@ -126,6 +108,7 @@ export default function OperatorPage() {
 
       const response = await fetch(getEndpointUrl(operatorService, screenSizeEndpoint));
       const data = await response.json() as ScreenSizeResponse;
+      addEndpointOutput('operator', '/screen_size', data);
       setScreenSize(data);
       setRegion([0, 0, data.width / 2, data.height / 2]);
     } catch (err) {

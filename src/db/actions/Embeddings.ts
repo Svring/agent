@@ -6,7 +6,7 @@ import { embed, embedMany } from 'ai'
 const payload = await getPayload({ config })
 
 // OpenAI embedding model
-const embeddingModel = openai.embedding('text-embedding-ada-002')
+const embeddingModel = openai.embedding('text-embedding-3-small')
 
 // Generate text chunks for embedding
 const generateChunks = (input: string): string[] => {
