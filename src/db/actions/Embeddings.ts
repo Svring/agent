@@ -30,7 +30,7 @@ export const generateEmbeddings = async (
   if (!selectedEmbeddingModel) {
     throw new Error('Embedding Error: No embedding model selected in the store.');
   }
-  const embeddingModel = openai.embedding(selectedEmbeddingModel);
+  const embeddingModel = openai.embedding('text-embedding-3-small');
 
   const chunks = generateChunks(value)
   const { embeddings } = await embedMany({

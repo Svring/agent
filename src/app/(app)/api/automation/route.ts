@@ -2,11 +2,18 @@ import { anthropic } from '@ai-sdk/anthropic';
 import { computerUseTool } from '@/tools/computer-use';
 import { addTextTool } from '@/tools/add-text';
 import { getInformationTool } from '@/tools/get-information';
-import { streamText, streamObject } from 'ai';
-import { z } from 'zod';
+import { appendResponseMessages, appendClientMessage, streamText } from 'ai';
+import { loadChat, saveChat } from '@/tools/chat-store';
 
 export async function POST(req: Request) {
-  const { messages, model } = await req.json();
+  const { id, message, model } = await req.json();
+
+  const previousMessages = await loadChat(id);
+
+  const messages = appendClientMessage({
+    messages: previousMessages,
+    message,
+  });
 
   const systemPrompt = `
 You are an AI assistant designed to help users by interacting with a computer graphical user interface (GUI) based on their instructions. Your goal is to automate software testing or other GUI-based tasks.
@@ -26,15 +33,29 @@ Always take a screenshot before deciding on the next action unless you are certa
   `
 
   const result = streamText({
-    model: anthropic(model),
+    model: anthropic('claude-3-5-haiku-20241022'),
     system: systemPrompt,
-    prompt: messages,
+    messages,
     tools: {
-      computerUseTool,
+      computer: computerUseTool,
       addTextTool,
       getInformationTool
     },
+    maxSteps: 3,
+    async onFinish({ response }) {
+      await saveChat({
+        id,
+        messages: appendResponseMessages({
+          messages,
+          responseMessages: response.messages,
+        }),
+      });
+    },
   });
+
+  // consume the stream to ensure it runs to completion & triggers onFinish
+  // even when the client response is aborted:
+  result.consumeStream(); // no await
 
   return result.toDataStreamResponse();
 }

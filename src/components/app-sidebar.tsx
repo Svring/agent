@@ -54,7 +54,7 @@ const workspaceItems = [
 ]
 
 // Menu items.
-const toolsItems = [
+const servicesItems = [
   {
     title: "Dock",
     url: "/dock",
@@ -169,7 +169,7 @@ export function AppSidebar() {
           </div>
 
           <div>
-            <label className="text-xs text-muted-foreground block mb-1 ml-1 flex items-center gap-1">
+            <label className="text-xs text-muted-foreground mb-1 ml-1 flex items-center gap-1">
               <TriangleDashed className="h-3.5 w-3.5" />
               Embedding Model
             </label>
@@ -243,14 +243,14 @@ export function AppSidebar() {
           <SidebarGroup>
             <SidebarGroupLabel asChild>
               <CollapsibleTrigger>
-                Tools
+                Services
                 <ChevronDown className="ml-auto transition-transform group-data-[state=open]/collapsible:rotate-180" />
               </CollapsibleTrigger>
             </SidebarGroupLabel>
             <CollapsibleContent>
               <SidebarGroupContent>
                 <SidebarMenu>
-                  {toolsItems.map((item) => (
+                  {servicesItems.map((item) => (
                     <SidebarMenuItem key={item.title}>
                       <SidebarMenuButton asChild>
                         <Link href={item.url}>
