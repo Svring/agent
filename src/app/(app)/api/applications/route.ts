@@ -1,17 +1,28 @@
 import { NextResponse } from 'next/server';
-import { listApplications, createApplication } from '@/db/actions/Applications';
+import { listApplications, createApplication, getApplicationDetails } from '@/db/actions/Applications';
 import type { Application } from '@/payload-types'; // Adjust path as necessary
 
 /**
- * GET handler to list all applications.
+ * GET handler to list all applications or get specific application details.
  */
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const { searchParams } = new URL(request.url);
+    const appId = searchParams.get('appId');
+
+    if (appId) {
+      const details = await getApplicationDetails(appId);
+      if (!details) {
+        return NextResponse.json({ error: 'Application not found' }, { status: 404 });
+      }
+      return NextResponse.json(details);
+    }
+
     const applications = await listApplications();
     return NextResponse.json(applications);
   } catch (error) {
-    console.error('API Error listing applications:', error);
-    return NextResponse.json({ error: 'Failed to fetch applications' }, { status: 500 });
+    console.error('API Error:', error);
+    return NextResponse.json({ error: 'Failed to fetch data' }, { status: 500 });
   }
 }
 

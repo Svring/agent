@@ -72,4 +72,53 @@ export async function createApplication(data: { name: string; description: strin
     // depending on how you want to handle errors upstream.
     return null;
   }
+}
+
+/**
+ * Gets application details including its chat sessions and workflows.
+ * @param appId - The ID of the application.
+ * @returns The application document with its related sessions and workflows, or null if not found.
+ */
+export async function getApplicationDetails(appId: string): Promise<{
+  application: Application | null;
+  chatSessions: any[];
+  workflows: any[];
+} | null> {
+  const payload = await getPayload({ config });
+  try {
+    // Get the application
+    const application = await payload.findByID({
+      collection: 'applications',
+      id: appId,
+    });
+
+    if (!application) {
+      return null;
+    }
+
+    // Get related chat sessions
+    const chatSessions = await payload.find({
+      collection: 'chat_sessions',
+      where: {
+        application: { equals: appId },
+      },
+    });
+
+    // Get related workflows
+    const workflows = await payload.find({
+      collection: 'workflows',
+      where: {
+        application: { equals: appId },
+      },
+    });
+
+    return {
+      application,
+      chatSessions: chatSessions.docs,
+      workflows: workflows.docs,
+    };
+  } catch (error) {
+    console.error('Error getting application details:', error);
+    return null;
+  }
 } 

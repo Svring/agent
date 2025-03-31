@@ -195,11 +195,6 @@ export function AppSidebar() {
     }
   };
 
-  const handleNewApplication = (event: React.MouseEvent) => {
-    event.stopPropagation();
-    // No longer need this function to do anything as popover handles the state
-  };
-
   if (isLoading) {
     return (
       <Sidebar variant="floating">
@@ -413,7 +408,7 @@ export function AppSidebar() {
                       </CollapsibleTrigger>
 
                       <CollapsibleContent>
-                        <div className="pl-6 pr-2 pt-1 pb-1">
+                        <div className="px-1 py-1">
                           <SidebarMenu className="flex flex-col gap-0.5">
                             {isLoadingApps ? (
                               <SidebarMenuItem>
@@ -423,10 +418,10 @@ export function AppSidebar() {
                               </SidebarMenuItem>
                             ) : applications.length > 0 ? (
                               applications.map((app) => {
-                                const appUrlName = app.name.toLowerCase().replace(/\s+/g, '-');
+                                const appUrlName = app.id;
                                 return (
                                   <SidebarMenuItem key={app.id} className="p-0">
-                                    <SidebarMenuButton asChild className="text-sm justify-start w-full h-auto py-1 px-1 font-normal rounded-md">
+                                    <SidebarMenuButton asChild className="text-sm justify-start w-full h-auto py-1.5 px-2 font-normal rounded-md">
                                       <Link href={`/automation/${appUrlName}`}>
                                         <span className="truncate">{app.name}</span>
                                       </Link>
