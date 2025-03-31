@@ -6,13 +6,6 @@ import { useProviderStore } from '@/store/provider/providerStore';
 
 const payload = await getPayload({ config })
 
-// Remove model selection from module scope
-// const selectedEmbeddingModel = useProviderStore.getState().selectedEmbeddingModel
-// if (!selectedEmbeddingModel) {
-//   throw new Error('No embedding model selected')
-// }
-// const embeddingModel = openai.embedding(selectedEmbeddingModel)
-
 // Generate text chunks for embedding
 const generateChunks = (input: string): string[] => {
   return input
@@ -69,7 +62,7 @@ export const storeEmbeddings = async (textId: number, content: string) => {
         data: {
           content,
           embedding,
-          textId,
+          sourceText: textId,
         },
       })
     })

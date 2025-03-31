@@ -4,11 +4,11 @@ import { storeEmbeddings } from './Embeddings'
 
 const payload = await getPayload({ config })
 
-export const createText = async (content: string) => {
+export const createText = async (content: string, applicationId: number) => {
   try {
     const text = await payload.create({
       collection: 'texts',
-      data: { content },
+      data: { content, application: applicationId },
     })
 
     // Generate and store embeddings for the text

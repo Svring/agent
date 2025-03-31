@@ -4,7 +4,7 @@ import { addTextTool } from '@/tools/add-text';
 import { getInformationTool } from '@/tools/get-information';
 import { askForConfirmationTool } from '@/tools/ask-confirm';
 import { appendResponseMessages, appendClientMessage, streamText } from 'ai';
-import { loadChat, saveChat } from '@/tools/chat-store';
+import { loadChat, saveChat } from '@/db/actions/Messages';
 
 export async function POST(req: Request) {
   const { id, message, model } = await req.json();

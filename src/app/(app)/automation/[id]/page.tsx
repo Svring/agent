@@ -1,4 +1,4 @@
-import { loadChat } from '@/tools/chat-store';
+import { loadChat } from '@/db/actions/Messages';
 import Chat from '@/components/chat';
 
 export default async function Page(props: { params: Promise<{ id: string }> }) {
