@@ -42,4 +42,34 @@ export async function listApplications(): Promise<Application[]> {
   }
 }
 
-// Add create/update/delete functions here if needed for admin actions or specific workflows 
+// Add create/update/delete functions here if needed for admin actions or specific workflows
+
+/**
+ * Creates a new application.
+ * @param data - The data for the new application (name and description required).
+ * @returns The newly created application document or null if creation fails.
+ */
+export async function createApplication(data: { name: string; description: string; version?: string }): Promise<Application | null> {
+  const payload = await getPayload({ config }); // Correct payload initialization
+  try {
+    // Ensure required fields are present
+    if (!data.name || !data.description) {
+      throw new Error('Application name and description are required.');
+    }
+
+    const newApplication = await payload.create({
+      collection: 'applications',
+      data: {
+        name: data.name,
+        description: data.description,
+        version: data.version, // Include version if provided
+      },
+    });
+    return newApplication;
+  } catch (error) {
+    console.error('Error creating application:', error);
+    // You might want to throw the error or return a more specific error object
+    // depending on how you want to handle errors upstream.
+    return null;
+  }
+} 

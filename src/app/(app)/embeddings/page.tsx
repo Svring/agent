@@ -7,6 +7,10 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { columns } from './columns'
 import { DataTable } from './data-table'
 
+// Add cache control to ensure fresh data
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 export default async function EmbeddingsPage() {
   const headers = await getHeaders()
   const payloadConfig = await config
@@ -16,13 +20,13 @@ export default async function EmbeddingsPage() {
   // Fetch embeddings data
   const embeddingsResponse = await payload.find({
     collection: 'embeddings',
-    depth: 1, // Include related documents (textId)
+    depth: 1, // Include related documents (sourceText)
   })
 
   const embeddings = embeddingsResponse.docs || []
 
   return (
-    <div className="container py-10 mx-auto">
+    <div className="container mx-auto">
       <Card className="mb-6">
         <CardHeader>
           <CardTitle>Embeddings Collection</CardTitle>

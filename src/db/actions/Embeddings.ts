@@ -143,3 +143,18 @@ export const findRelevantContent = async (userQuery: string) => {
     return [];
   }
 };
+
+// Delete an embedding by ID
+export async function deleteEmbedding(embeddingId: number): Promise<boolean> {
+  const payload = await getPayload({ config });
+  try {
+    await payload.delete({
+      collection: 'embeddings',
+      id: embeddingId,
+    });
+    return true;
+  } catch (error) {
+    console.error('Error deleting embedding:', error);
+    return false;
+  }
+}

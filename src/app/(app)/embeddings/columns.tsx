@@ -2,15 +2,39 @@
 
 import { ColumnDef } from "@tanstack/react-table"
 import { VectorDialog } from "./vector-dialog"
+import { Trash2, Loader2 } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { useState } from "react"
 
 // Define the shape of our embeddings data
 export type Embedding = {
   id: number
   content: string
-  textId: any  // Can be number or object with content property
+  sourceText: any  // Changed from textId to sourceText to match payload schema
   embedding: any  // Vector data (array or object)
   createdAt: string
   updatedAt: string
+}
+
+// Delete embedding function
+async function deleteEmbedding(id: number): Promise<boolean> {
+  try {
+    const response = await fetch(`/api/embeddings?id=${id}`, {
+      method: 'DELETE',
+    });
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+      console.error('Delete error:', data.message, data.error);
+      return false;
+    }
+    
+    return data.success;
+  } catch (error) {
+    console.error('Network error deleting embedding:', error);
+    return false;
+  }
 }
 
 export const columns: ColumnDef<Embedding>[] = [
@@ -32,8 +56,8 @@ export const columns: ColumnDef<Embedding>[] = [
     header: "Text Reference",
     cell: ({ row }) => {
       const embedding = row.original
-      const textContent = typeof embedding.textId === 'object' && embedding.textId !== null
-        ? embedding.textId.content
+      const textContent = typeof embedding.sourceText === 'object' && embedding.sourceText !== null
+        ? embedding.sourceText.content
         : 'Unknown Text'
       
       return (
@@ -69,6 +93,43 @@ export const columns: ColumnDef<Embedding>[] = [
     cell: ({ row }) => {
       const date = new Date(row.getValue("createdAt"))
       return date.toLocaleString()
+    },
+  },
+  {
+    id: "actions",
+    header: "Actions",
+    cell: ({ row }) => {
+      const embedding = row.original
+      const [isDeleting, setIsDeleting] = useState(false)
+      
+      const handleDelete = async () => {
+        setIsDeleting(true)
+        try {
+          await deleteEmbedding(embedding.id)
+          // Refresh the page to update the list
+          window.location.reload()
+        } catch (error) {
+          console.error('Error deleting embedding:', error)
+        } finally {
+          setIsDeleting(false)
+        }
+      }
+      
+      return (
+        <Button 
+          variant="ghost" 
+          size="icon"
+          onClick={handleDelete}
+          disabled={isDeleting}
+          title="Delete embedding"
+        >
+          {isDeleting ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Trash2 className="h-4 w-4 text-red-500" />
+          )}
+        </Button>
+      )
     },
   },
 ]

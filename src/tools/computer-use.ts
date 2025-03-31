@@ -103,8 +103,8 @@ interface ScreenshotResult {
 // New function dedicated to calling the screenshot endpoint
 // Now returns an object with format and raw base64 data
 async function callScreenshotEndpoint(): Promise<ScreenshotResult> {
-  // console.log("Attempting to call screenshot endpoint..."); // Less verbose now
-  try { // Wrap core logic
+  // console.log("Attempting to call screenshot endpoint...");
+  try {
     const operatorConfig = await getOperatorConfig();
     if (!operatorConfig) {
       throw new Error('Operator service configuration could not be loaded.');
@@ -113,11 +113,19 @@ async function callScreenshotEndpoint(): Promise<ScreenshotResult> {
     const endpointPath = '/screenshot_base64';
     const method = 'POST';
     const requestUrl = `http://${operatorConfig.base_url}:${operatorConfig.port}${endpointPath}`;
-    // console.log(`Calling ${method} ${requestUrl}`); // Less verbose now
+    // console.log(`Calling ${method} ${requestUrl}`);
 
+    // IMPORTANT: The backend service at this endpoint MUST ensure the returned image
+    // is exactly 1024x768 pixels, either by downscaling (for larger screens)
+    // or by padding with black borders (for smaller screens).
+    // Image processing libraries (e.g., Pillow for Python, sharp for Node.js)
+    // should be used in the backend implementation.
     const requestBody = {
-      format: 'png',
-      full_screen: true
+      format: 'png', // or 'jpeg' if preferred
+      full_screen: true // Assuming the backend handles resizing/padding the full screen
+      // Request specific size? Only if backend supports it AND handles it correctly:
+      // width: 1024,
+      // height: 768,
     };
 
     const response = await fetch(requestUrl, {
@@ -137,12 +145,12 @@ async function callScreenshotEndpoint(): Promise<ScreenshotResult> {
     if (data.success === false) {
       throw new Error(`Screenshot request reported failure (success: false)`);
     }
-    // Ensure expected fields are present
     if (!data || typeof data.base64_image !== 'string' || typeof data.format !== 'string') {
-      throw new Error('Invalid screenshot response format from API');
+      throw new Error('Invalid screenshot response format from API (expected base64_image and format)');
     }
-    // console.log("Screenshot endpoint called successfully."); // Less verbose now
-    // Return the object with format and raw base64
+
+    // We *assume* the backend returned a 1024x768 image as requested by the comments above.
+    // No resizing/padding is done here in the frontend tool code.
     return {
       format: data.format,
       base64_image: data.base64_image
@@ -163,35 +171,95 @@ interface ImageActionResult {
 // Update the return type union for executeComputerAction
 type ComputerActionResult = string | ImageActionResult;
 
+// Define the target dimensions expected by the Anthropic tool
+const TARGET_WIDTH = 1024;
+const TARGET_HEIGHT = 768;
+
 // Function to execute a computer action
-async function executeComputerAction(action: string, coordinate: number[] | undefined, text: string | undefined): Promise<ComputerActionResult> {
-  console.log(`Executing action '${action}'...`); // Simplified entry log
-  try { // Wrap the entire function logic
+async function executeComputerAction(
+  action: string, 
+  modelCoordinate: number[] | undefined, // Coordinate from the model (based on 1024x768)
+  text: string | undefined
+): Promise<ComputerActionResult> {
+  console.log(`Executing action '${action}'...`);
+  try {
+    // Handle screenshot action first
     if (action === 'screenshot') {
       try {
         const screenshotResult = await callScreenshotEndpoint();
+        // Return the (assumed) 1024x768 image directly
         return {
           type: 'image',
           format: screenshotResult.format,
           data: screenshotResult.base64_image,
         };
       } catch (screenshotError: any) {
-        // Log specifically for screenshot action failure
-        console.error(`Screenshot action failed within executeComputerAction: ${screenshotError.message}`);
+        console.error(`Screenshot action failed: ${screenshotError.message}`);
         throw screenshotError;
       }
     }
 
+    // For other actions, get config and potentially transform coordinates
     const operatorConfig = await getOperatorConfig();
     if (!operatorConfig) {
-      throw new Error('Operator service configuration could not be loaded during action execution.');
+      throw new Error('Operator config not loaded for action execution.');
+    }
+
+    let transformedCoordinate: { x: number; y: number } | undefined = undefined;
+
+    // Check if coordinate transformation is needed
+    if (modelCoordinate && (
+        action === 'mouse_move' || 
+        action === 'left_click' || action === 'right_click' || action === 'middle_click' ||
+        action === 'left_click_drag' || action === 'double_click'
+      )) {
+      
+      if (modelCoordinate.length !== 2) {
+          throw new Error(`Invalid coordinate provided by model for action ${action}: Expected [x, y]. Got: ${modelCoordinate}`);
+      }
+
+      const originalScreenSize = await fetchScreenSize();
+      if (!originalScreenSize) {
+        throw new Error('Failed to fetch original screen size for coordinate transformation.');
+      }
+
+      const originalWidth = originalScreenSize.width;
+      const originalHeight = originalScreenSize.height;
+      const [modelX, modelY] = modelCoordinate;
+
+      let finalX: number;
+      let finalY: number;
+
+      // Determine if padding or scaling was likely applied by the backend
+      if (originalWidth <= TARGET_WIDTH && originalHeight <= TARGET_HEIGHT) {
+        // Padding was likely applied: Map from padded area back to original
+        const offsetX = Math.max(0, (TARGET_WIDTH - originalWidth) / 2);
+        const offsetY = Math.max(0, (TARGET_HEIGHT - originalHeight) / 2);
+        finalX = modelX - offsetX;
+        finalY = modelY - offsetY;
+        console.log(`Coordinate Transformation (Padding): Model (${modelX}, ${modelY}) -> Original (${finalX}, ${finalY}) with offset (${offsetX}, ${offsetY})`);
+
+      } else {
+        // Downscaling was likely applied: Map from scaled back to original
+        const scaleX = originalWidth / TARGET_WIDTH;
+        const scaleY = originalHeight / TARGET_HEIGHT;
+        finalX = modelX * scaleX;
+        finalY = modelY * scaleY;
+         console.log(`Coordinate Transformation (Scaling): Model (${modelX}, ${modelY}) -> Original (${finalX}, ${finalY}) with scale (${scaleX.toFixed(2)}, ${scaleY.toFixed(2)})`);
+      }
+
+       // Clamp coordinates to be within the original screen bounds and ensure they are integers
+      finalX = Math.max(0, Math.min(originalWidth - 1, Math.round(finalX)));
+      finalY = Math.max(0, Math.min(originalHeight - 1, Math.round(finalY)));
+
+      transformedCoordinate = { x: finalX, y: finalY };
+      console.log(`Final Transformed & Clamped Coordinate: (${transformedCoordinate.x}, ${transformedCoordinate.y})`);
     }
 
     let endpointPath: string;
     let method: string = 'POST';
-    let requestBody: object | null = null;
+    let requestBody: any | null = null; // Use 'any' for flexibility, handle specific types below
 
-    // Switch statement remains the same...
     switch (action) {
       case 'key':
         endpointPath = '/press_key';
@@ -205,50 +273,44 @@ async function executeComputerAction(action: string, coordinate: number[] | unde
         break;
       case 'mouse_move':
         endpointPath = '/move';
-        if (!coordinate || coordinate.length !== 2) throw new Error(`Valid 'coordinate' [x, y] is required for action: ${action}`);
-        requestBody = { x: coordinate[0], y: coordinate[1] };
+        if (!transformedCoordinate) throw new Error(`Transformed coordinate missing for action: ${action}`);
+        requestBody = transformedCoordinate;
         break;
       case 'left_click':
       case 'right_click':
       case 'middle_click':
         endpointPath = '/click';
-        // Coordinates are now optional for clicks
         requestBody = {
           button: action.split('_')[0] // Extract 'left', 'right', or 'middle'
         };
-        if (coordinate) { // Only add coordinates if provided
-          if (coordinate.length !== 2) {
-            throw new Error(`If provided, 'coordinate' [x, y] must have 2 elements for action: ${action}`);
-          }
-          requestBody = { ...requestBody, x: coordinate[0], y: coordinate[1] };
-        }
+        if (transformedCoordinate) { // Add transformed coords if available (click at specific point)
+           requestBody = { ...requestBody, ...transformedCoordinate };
+        } // Otherwise, click happens at current cursor position (handled by backend)
         break;
       case 'left_click_drag':
         endpointPath = '/drag';
-        if (!coordinate || coordinate.length !== 2) throw new Error(`Valid 'coordinate' [x, y] is required for action: ${action}`);
-        requestBody = { x: coordinate[0], y: coordinate[1], button: 'left' };
+        if (!transformedCoordinate) throw new Error(`Transformed coordinate missing for action: ${action}`);
+        requestBody = { ...transformedCoordinate, button: 'left' };
         break;
       case 'double_click':
         endpointPath = '/double_click';
-        if (coordinate && coordinate.length === 2) {
-          requestBody = { x: coordinate[0], y: coordinate[1], button: 'left' };
-        } else {
-          requestBody = { button: 'left' }; // Click at current position if no coords provided
-        }
+        requestBody = { button: 'left' }; // Always left button
+         if (transformedCoordinate) { // Add transformed coords if available
+           requestBody = { ...requestBody, ...transformedCoordinate };
+         } // Otherwise, double-click happens at current cursor position
         break;
-      case 'cursor_position':
+      case 'cursor_position': // No transformation needed for GET requests
         endpointPath = '/cursor_position';
-        method = 'GET'; // This is a GET request
+        method = 'GET';
         requestBody = null;
         break;
       default:
-        console.warn(`Unknown or unhandled action received in executeComputerAction: ${action}`);
+        console.warn(`Unknown action received: ${action}`);
         throw new Error(`Action '${action}' is unknown or not handled.`);
     }
 
-
     const requestUrl = `http://${operatorConfig.base_url}:${operatorConfig.port}${endpointPath}`;
-    // console.log(`Calling Operator Action: ${method} ${requestUrl}`); // Less verbose now
+    // console.log(`Calling Operator Action: ${method} ${requestUrl} with body:`, requestBody ? JSON.stringify(requestBody) : 'None');
 
     const response = await fetch(requestUrl, {
       method: method,
@@ -261,18 +323,21 @@ async function executeComputerAction(action: string, coordinate: number[] | unde
     const result = await response.json();
 
     if (!response.ok) {
-      throw new Error(`Action '${action}' failed HTTP request: ${response.status} ${response.statusText}. ${result?.detail || result?.message || ''}`.trim());
+       throw new Error(`Action '${action}' failed HTTP request: ${response.status} ${response.statusText}. ${result?.detail || result?.message || ''}`.trim());
     }
-    if (result.success === false) {
-      throw new Error(`Action '${action}' reported failure by API: ${result.detail || result.message || 'Unknown API error'}`.trim());
+    // Note: Some successful GET results (like cursor_position) might not have a 'success' field.
+    // Check for explicit failure *only if* the field exists.
+    if (result.hasOwnProperty('success') && result.success === false) {
+       throw new Error(`Action '${action}' reported failure by API: ${result.detail || result.message || 'Unknown API error'}`.trim());
     }
 
     console.log(`Action '${action}' executed successfully via API.`);
 
     if (action === 'cursor_position') {
       if (typeof result.x !== 'number' || typeof result.y !== 'number') {
-        throw new Error(`Action '${action}' succeeded but returned invalid position data.`);
+         throw new Error(`Action '${action}' succeeded but returned invalid position data.`);
       }
+      // Return the *original* cursor position, not transformed.
       return `Current cursor position: (${result.x}, ${result.y})`;
     }
 
@@ -281,33 +346,32 @@ async function executeComputerAction(action: string, coordinate: number[] | unde
 
   } catch (error: any) {
     console.error(`Error during executeComputerAction for action '${action}':`, error.message || error);
+    // Re-throw the error to ensure it's propagated correctly
     throw error;
   }
 }
 
 // Tool definition
-// NOTE: displayWidthPx and displayHeightPx are static placeholders below.
-// The actual screen size can be fetched using the exported fetchScreenSize function
-// if needed, but the tool definition itself requires static values here.
 export const computerUseTool = anthropic.tools.computer_20241022({
-  displayWidthPx: 1470, // Placeholder - Actual size fetched by fetchScreenSize()
-  displayHeightPx: 956, // Placeholder - Actual size fetched by fetchScreenSize()
+  // Set display dimensions to the target XGA resolution the model interacts with
+  displayWidthPx: TARGET_WIDTH,  // Should be 1024
+  displayHeightPx: TARGET_HEIGHT, // Should be 768
   execute: async ({ action, coordinate, text }) => {
+    // Pass the model's coordinate directly, transformation happens inside executeComputerAction
     return await executeComputerAction(action, coordinate, text);
   },
   experimental_toToolResultContent(result: ComputerActionResult) {
     if (typeof result === 'string') {
-      // Handle text result
       return [{ type: 'text', text: result }];
     } else if (result.type === 'image') {
-      // Handle image result, using the format and raw base64 data
+      // We assume the image data received from executeComputerAction is already 1024x768
       return [{
         type: 'image',
-        data: result.data, // Use the raw base64 data
-        mimeType: `image/${result.format}` // Construct mimeType from format
+        data: result.data,
+        mimeType: `image/${result.format}`
       }];
     } else {
-      // Fallback or error handling if needed
+      console.error('Tool returned unexpected result format:', result);
       return [{ type: 'text', text: 'Tool returned unexpected result format.' }];
     }
   },
