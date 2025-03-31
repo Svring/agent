@@ -71,6 +71,10 @@ export interface Config {
     media: Media;
     texts: Text;
     embeddings: Embedding;
+    workflows: Workflow;
+    chat_sessions: ChatSession;
+    applications: Application;
+    messages: Message;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
     'payload-migrations': PayloadMigration;
@@ -81,6 +85,10 @@ export interface Config {
     media: MediaSelect<false> | MediaSelect<true>;
     texts: TextsSelect<false> | TextsSelect<true>;
     embeddings: EmbeddingsSelect<false> | EmbeddingsSelect<true>;
+    workflows: WorkflowsSelect<false> | WorkflowsSelect<true>;
+    chat_sessions: ChatSessionsSelect<false> | ChatSessionsSelect<true>;
+    applications: ApplicationsSelect<false> | ApplicationsSelect<true>;
+    messages: MessagesSelect<false> | MessagesSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
     'payload-migrations': PayloadMigrationsSelect<false> | PayloadMigrationsSelect<true>;
@@ -154,12 +162,27 @@ export interface Media {
   focalY?: number | null;
 }
 /**
+ * Stores chunks of text content, often used for knowledge base.
+ *
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "texts".
  */
 export interface Text {
   id: number;
   content: string;
+  application: number | Application;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "applications".
+ */
+export interface Application {
+  id: number;
+  name: string;
+  description: string;
+  version?: string | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -179,7 +202,104 @@ export interface Embedding {
     | number
     | boolean
     | null;
-  textId: number | Text;
+  sourceText: number | Text;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * Stores sequences of actions for automation.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "workflows".
+ */
+export interface Workflow {
+  id: number;
+  name: string;
+  description?: string | null;
+  application: number | Application;
+  steps?:
+    | {
+        action:
+          | 'screenshot'
+          | 'left_click'
+          | 'right_click'
+          | 'middle_click'
+          | 'double_click'
+          | 'left_click_drag'
+          | 'mouse_move'
+          | 'type'
+          | 'key'
+          | 'cursor_position';
+        description?: string | null;
+        /**
+         * Required for click, move, drag actions. E.g., [100, 250]
+         */
+        coordinates?:
+          | {
+              [k: string]: unknown;
+            }
+          | unknown[]
+          | string
+          | number
+          | boolean
+          | null;
+        /**
+         * Required for type and key actions.
+         */
+        text?: string | null;
+        id?: string | null;
+      }[]
+    | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * Represents a single chat conversation or automation session.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "chat_sessions".
+ */
+export interface ChatSession {
+  id: number;
+  name?: string | null;
+  application: number | Application;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * Stores individual messages within a chat session, including tool interactions.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "messages".
+ */
+export interface Message {
+  id: number;
+  chatSession: number | ChatSession;
+  role: 'user' | 'assistant' | 'tool';
+  parts?:
+    | {
+        type: 'text' | 'tool-invocation';
+        text?: string | null;
+        /**
+         * Contains tool name, args, state, result, etc.
+         */
+        toolInvocation?:
+          | {
+              [k: string]: unknown;
+            }
+          | unknown[]
+          | string
+          | number
+          | boolean
+          | null;
+        id?: string | null;
+      }[]
+    | null;
+  /**
+   * Links a tool result message back to its invocation.
+   */
+  toolCallId?: string | null;
+  toolName?: string | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -205,6 +325,22 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'embeddings';
         value: number | Embedding;
+      } | null)
+    | ({
+        relationTo: 'workflows';
+        value: number | Workflow;
+      } | null)
+    | ({
+        relationTo: 'chat_sessions';
+        value: number | ChatSession;
+      } | null)
+    | ({
+        relationTo: 'applications';
+        value: number | Application;
+      } | null)
+    | ({
+        relationTo: 'messages';
+        value: number | Message;
       } | null);
   globalSlug?: string | null;
   user: {
@@ -287,6 +423,7 @@ export interface MediaSelect<T extends boolean = true> {
  */
 export interface TextsSelect<T extends boolean = true> {
   content?: T;
+  application?: T;
   updatedAt?: T;
   createdAt?: T;
 }
@@ -297,7 +434,68 @@ export interface TextsSelect<T extends boolean = true> {
 export interface EmbeddingsSelect<T extends boolean = true> {
   content?: T;
   embedding?: T;
-  textId?: T;
+  sourceText?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "workflows_select".
+ */
+export interface WorkflowsSelect<T extends boolean = true> {
+  name?: T;
+  description?: T;
+  application?: T;
+  steps?:
+    | T
+    | {
+        action?: T;
+        description?: T;
+        coordinates?: T;
+        text?: T;
+        id?: T;
+      };
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "chat_sessions_select".
+ */
+export interface ChatSessionsSelect<T extends boolean = true> {
+  name?: T;
+  application?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "applications_select".
+ */
+export interface ApplicationsSelect<T extends boolean = true> {
+  name?: T;
+  description?: T;
+  version?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "messages_select".
+ */
+export interface MessagesSelect<T extends boolean = true> {
+  chatSession?: T;
+  role?: T;
+  parts?:
+    | T
+    | {
+        type?: T;
+        text?: T;
+        toolInvocation?: T;
+        id?: T;
+      };
+  toolCallId?: T;
+  toolName?: T;
   updatedAt?: T;
   createdAt?: T;
 }

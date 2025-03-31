@@ -22,12 +22,12 @@ export const Embeddings: CollectionConfig = {
       label: 'Vector Embedding',
     },
     {
-      name: 'textId',
+      name: 'sourceText',
       type: 'relationship',
       relationTo: 'texts',
       hasMany: false,
       required: true,
-      label: 'Text Reference',
+      label: 'Source Text',
     }
   ],
   hooks: {
