@@ -3,7 +3,7 @@
 import { Message, useChat } from '@ai-sdk/react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Cat, Bot, Cog, Eye, EyeOff, Hammer } from 'lucide-react';
+import { Cat, Bot, Cog, Eye, EyeOff, Hammer, Mic, Search, ChevronDown, ArrowUp } from 'lucide-react';
 import {
   Collapsible,
   CollapsibleContent,
@@ -11,12 +11,13 @@ import {
 } from "@/components/ui/collapsible"
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
 
 export default function Chat({
   id,
   initialMessages,
 }: { id?: string | undefined; initialMessages?: Message[] } = {}) {
-  const { input, handleInputChange, handleSubmit, messages, addToolResult } = useChat({
+  const { input, handleInputChange, handleSubmit, messages, addToolResult, stop, status } = useChat({
     api: '/api/automation',
     id,
     initialMessages,
@@ -25,9 +26,9 @@ export default function Chat({
     onToolCall({ toolCall }) {
       console.log('Client-side onToolCall triggered:', toolCall);
     },
-    experimental_prepareRequestBody({ messages, id }) {
-      return { message: messages[messages.length - 1], id };
-    },
+    // experimental_prepareRequestBody({ messages, id }) {
+    //   return { message: messages[messages.length - 1], id };
+    // },
   });
 
   const [openStates, setOpenStates] = useState<Record<string, boolean>>({});
@@ -37,8 +38,8 @@ export default function Chat({
   };
 
   return (
-    <div className="flex flex-col w-full h-full p-8 px-20">
-      <ScrollArea className="flex-1 pr-4">
+    <div className="flex flex-col items-center w-full max-w-4xl mx-auto h-full p-8">
+      <ScrollArea className="flex-1 w-full pr-4">
         <div className="space-y-4">
           {messages.map(m => (
             <div key={m.id} className={`flex items-start gap-3 ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -73,7 +74,7 @@ export default function Chat({
                         case 'call':
                           if (toolName === 'askForConfirmation') {
                             return (
-                              <div key={partKey} className={`${toolStyle} not-italic text-foreground`}> 
+                              <div key={partKey} className={`${toolStyle} not-italic text-foreground`}>
                                 <p className="mb-2">{toolInvocation.args.message as string}</p>
                                 <div className="flex gap-2">
                                   <Button
@@ -120,12 +121,12 @@ export default function Chat({
                           const resultData = toolInvocation.result;
 
                           if (toolName === 'askForConfirmation') {
-                              resultDisplay = <span className="whitespace-pre-wrap font-semibold">{resultData as string}</span>;
-                              return (
-                                <div key={partKey} className={`${toolStyle} not-italic text-foreground`}>
-                                    {resultDisplay}
-                                </div>
-                               );
+                            resultDisplay = <span className="whitespace-pre-wrap font-semibold">{resultData as string}</span>;
+                            return (
+                              <div key={partKey} className={`${toolStyle} not-italic text-foreground`}>
+                                {resultDisplay}
+                              </div>
+                            );
                           } else if (toolName === 'computer' &&
                             actionName === 'screenshot' &&
                             typeof resultData === 'object' &&
@@ -206,14 +207,52 @@ export default function Chat({
         </div>
       </ScrollArea>
 
-      <form onSubmit={handleSubmit} className="flex gap-2 justify-center pt-4">
-        <input
-          className="w-2/3 p-2 px-4 rounded-full border border-gray-300"
-          value={input}
-          placeholder="Type a message..."
-          onChange={handleInputChange}
-        />
-      </form>
+      <div className="mt-4 w-5/6 px-4 md:px-0">
+        <div className="relative flex w-full flex-col rounded-3xl border bg-secondary shadow-sm">
+          <form onSubmit={handleSubmit} className="flex w-full items-center p-2 pr-3">
+            <Textarea
+              className="flex-1 resize-none border-0 px-2 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 rounded-2xl"
+              placeholder="Ask anything..."
+              value={input}
+              onChange={handleInputChange}
+              rows={1}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  if (input.trim() && !(status === 'streaming' || status === 'submitted')) {
+                    handleSubmit(e as any);
+                  }
+                }
+              }}
+            />
+          </form>
+
+          <div className="flex items-center gap-1 p-2">
+            <Button variant="ghost" size="icon" className="flex-shrink-0">
+              <Mic className="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="sm" className="flex-shrink-0 gap-1 text-muted-foreground pr-1">
+              <Search className="h-4 w-4" />
+              DeepSearch
+              <ChevronDown className="h-4 w-4 opacity-50" />
+            </Button>
+            <Button
+              size="icon"
+              className="ml-auto flex-shrink-0 rounded-full"
+              disabled={status === 'streaming' || status === 'submitted' || !input.trim()}
+              aria-label="Send message"
+              onClick={(e) => {
+                if (input.trim() && !(status === 'streaming' || status === 'submitted')) {
+                  handleSubmit(e as any);
+                }
+                stop();
+              }}
+            >
+              <ArrowUp className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

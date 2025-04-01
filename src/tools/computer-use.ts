@@ -169,7 +169,7 @@ interface ImageActionResult {
 }
 
 // Update the return type union for executeComputerAction
-type ComputerActionResult = string | ImageActionResult;
+type ComputerActionResult = string | ImageActionResult | [ImageActionResult];
 
 // Define the target dimensions expected by the Anthropic tool
 const TARGET_WIDTH = 1024;
@@ -363,7 +363,22 @@ export const computerUseTool = anthropic.tools.computer_20241022({
   experimental_toToolResultContent(result: ComputerActionResult) {
     if (typeof result === 'string') {
       return [{ type: 'text', text: result }];
+    } else if (Array.isArray(result)) {
+      // Handle the [ImageActionResult] case
+      if (result.length === 1 && result[0].type === 'image') {
+        const imageResult = result[0];
+        return [{
+          type: 'image',
+          data: imageResult.data,
+          mimeType: `image/${imageResult.format}`
+        }];
+      } else {
+        // Handle unexpected array formats
+        console.error('Tool returned unexpected array format:', result);
+        return [{ type: 'text', text: 'Tool returned unexpected array format.' }];
+      }
     } else if (result.type === 'image') {
+      // Handle the single ImageActionResult case
       // We assume the image data received from executeComputerAction is already 1024x768
       return [{
         type: 'image',
@@ -371,6 +386,7 @@ export const computerUseTool = anthropic.tools.computer_20241022({
         mimeType: `image/${result.format}`
       }];
     } else {
+      // Handle other unexpected formats
       console.error('Tool returned unexpected result format:', result);
       return [{ type: 'text', text: 'Tool returned unexpected result format.' }];
     }

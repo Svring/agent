@@ -39,20 +39,32 @@ export const Messages: CollectionConfig = {
       ],
       required: true,
     },
+    // Add top-level content field based on example
+    {
+      name: 'content',
+      label: 'Content',
+      type: 'textarea', // Stores the final string representation of the message
+      admin: {
+        description: 'The final textual content of the message.'
+      }
+    },
     {
       name: 'parts',
       label: 'Message Parts',
       type: 'array',
       minRows: 1,
+      interfaceName: 'MessageParts', // Optional: For TypeScript generation
+      admin: {
+        description: 'Array of message parts, each with type and corresponding data.'
+      },
       fields: [
-        // Define sub-fields based on Vercel AI SDK message part structure
         {
           name: 'type',
           type: 'select',
           options: [
             { label: 'Text', value: 'text' },
             { label: 'Tool Invocation', value: 'tool-invocation' },
-            // Add 'tool-result' if you store results separately in parts
+            // Add other types as needed
           ],
           required: true,
         },
@@ -65,43 +77,65 @@ export const Messages: CollectionConfig = {
         },
         {
           name: 'toolInvocation',
-          type: 'json', // Store complex object from SDK
           label: 'Tool Invocation Data',
+          type: 'group',
+          interfaceName: 'ToolInvocationPart', // Optional: For TypeScript generation
           admin: {
-            description: 'Contains tool name, args, state, result, etc.',
             condition: (_, siblingData) => siblingData.type === 'tool-invocation',
-          }
+            description: 'Details of a tool invocation within the message parts.',
+          },
+          fields: [
+            {
+              name: 'state',
+              type: 'select',
+              options: [
+                { label: 'Result', value: 'result' },
+                { label: 'Pending', value: 'pending' },
+                { label: 'Error', value: 'error' },
+              ],
+              defaultValue: 'pending',
+            },
+            {
+              name: 'step',
+              type: 'number',
+            },
+            {
+              name: 'toolCallId',
+              type: 'text',
+              required: true,
+              index: true,
+            },
+            {
+              name: 'toolName',
+              type: 'text',
+              required: true,
+              index: true,
+            },
+            {
+              name: 'args',
+              type: 'json', // Arguments can be complex objects
+              label: 'Arguments',
+            },
+            {
+              name: 'result',
+              type: 'json', // Result can be complex (object, array, text)
+              label: 'Result',
+            },
+          ]
         },
-         // Optional: Add specific field for tool-result if not storing in toolInvocation JSON
-        // {
-        //   name: 'toolResult',
-        //   type: 'json', 
-        //   label: 'Tool Result Data',
-        //   admin: {
-        //      condition: (_, siblingData) => siblingData.type === 'tool-result',
-        //   }
-        // },
       ]
     },
-     {
-      name: 'toolCallId',
-      label: 'Tool Call ID (for Tool role)',
+    // Add revisionId based on example
+    {
+      name: 'revisionId',
+      label: 'Revision ID',
       type: 'text',
       index: true,
       admin: {
-          condition: (_, siblingData) => siblingData.role === 'tool',
-          description: 'Links a tool result message back to its invocation.'
+        readOnly: true, // Typically assigned by the system
+        position: 'sidebar',
       }
-    },
-    {
-      name: 'toolName',
-      label: 'Tool Name (for Tool role)',
-      type: 'text',
-      index: true,
-       admin: {
-          condition: (_, siblingData) => siblingData.role === 'tool',
-      }
-    },
+    }
     // Payload automatically adds id, createdAt, updatedAt
     // createdAt is useful for ordering messages
   ],

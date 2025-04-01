@@ -34,3 +34,32 @@ export async function createChat(applicationId: number): Promise<string> {
     throw new Error(`Failed to create chat session: ${error}`);
   }
 }
+
+/**
+ * Deletes a chat session by its ID.
+ * @param chatId The ID of the chat session to delete.
+ * @returns True if deletion was successful, or an object with an error message if it failed.
+ */
+export async function deleteChatSession(chatId: string): Promise<boolean | { error: string }> {
+  const payload = await getPayload({ config });
+  try {
+    const result = await payload.delete({
+      collection: 'chat_sessions',
+      id: chatId,
+    });
+
+    if (!result) {
+      // This might happen if the ID doesn't exist, but payload.delete might throw instead.
+      // Depending on Payload version, error handling might differ.
+      console.warn(`Chat session with ID ${chatId} not found for deletion.`);
+      return { error: 'Chat session not found.' }; 
+    }
+
+    console.log(`Deleted chat session with ID: ${chatId}`);
+    return true;
+  } catch (error) {
+    console.error(`Error deleting chat session ${chatId}:`, error);
+    // Return a generic error or potentially more specific info if available
+    return { error: `Failed to delete chat session: ${error instanceof Error ? error.message : 'Unknown error'}` };
+  }
+}

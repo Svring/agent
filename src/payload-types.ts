@@ -7,6 +7,20 @@
  */
 
 /**
+ * Array of message parts, each with type and corresponding data.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "MessageParts".
+ */
+export type MessageParts =
+  | {
+      type: 'text' | 'tool-invocation';
+      text?: string | null;
+      toolInvocation?: ToolInvocationPart;
+      id?: string | null;
+    }[]
+  | null;
+/**
  * Supported timezones in IANA format.
  *
  * This interface was referenced by `Config`'s JSON-Schema
@@ -261,7 +275,7 @@ export interface Workflow {
  */
 export interface ChatSession {
   id: number;
-  name?: string | null;
+  name: string;
   application: number | Application;
   updatedAt: string;
   createdAt: string;
@@ -276,32 +290,44 @@ export interface Message {
   id: number;
   chatSession: number | ChatSession;
   role: 'user' | 'assistant' | 'tool';
-  parts?:
-    | {
-        type: 'text' | 'tool-invocation';
-        text?: string | null;
-        /**
-         * Contains tool name, args, state, result, etc.
-         */
-        toolInvocation?:
-          | {
-              [k: string]: unknown;
-            }
-          | unknown[]
-          | string
-          | number
-          | boolean
-          | null;
-        id?: string | null;
-      }[]
-    | null;
   /**
-   * Links a tool result message back to its invocation.
+   * The final textual content of the message.
    */
-  toolCallId?: string | null;
-  toolName?: string | null;
+  content?: string | null;
+  parts?: MessageParts;
+  revisionId?: string | null;
   updatedAt: string;
   createdAt: string;
+}
+/**
+ * Details of a tool invocation within the message parts.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ToolInvocationPart".
+ */
+export interface ToolInvocationPart {
+  state?: ('result' | 'pending' | 'error') | null;
+  step?: number | null;
+  toolCallId: string;
+  toolName: string;
+  args?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  result?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -486,18 +512,33 @@ export interface ApplicationsSelect<T extends boolean = true> {
 export interface MessagesSelect<T extends boolean = true> {
   chatSession?: T;
   role?: T;
-  parts?:
-    | T
-    | {
-        type?: T;
-        text?: T;
-        toolInvocation?: T;
-        id?: T;
-      };
-  toolCallId?: T;
-  toolName?: T;
+  content?: T;
+  parts?: T | MessagePartsSelect<T>;
+  revisionId?: T;
   updatedAt?: T;
   createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "MessageParts_select".
+ */
+export interface MessagePartsSelect<T extends boolean = true> {
+  type?: T;
+  text?: T;
+  toolInvocation?: T | ToolInvocationPartSelect<T>;
+  id?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "ToolInvocationPart_select".
+ */
+export interface ToolInvocationPartSelect<T extends boolean = true> {
+  state?: T;
+  step?: T;
+  toolCallId?: T;
+  toolName?: T;
+  args?: T;
+  result?: T;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema

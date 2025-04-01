@@ -3,15 +3,14 @@
 import { getPayload } from 'payload';
 import config from '@payload-config';
 import type { Message as PayloadMessage, ChatSession } from '../../payload-types';
-import type { Message as VercelAIMessage } from 'ai'; // Import Vercel AI Message type
+import type { Message as VercelAIMessage, TextPart, ToolInvocation } from 'ai';
 
-// Define a more specific type for our messages that includes tool properties
-// This extends the base VercelAIMessage type with the additional fields we need
-interface EnhancedMessage extends VercelAIMessage {
-  toolCallId?: string;
-  toolName?: string;
-  parts?: any[];
-}
+// Remove the specific EnhancedMessage interface, VercelAIMessage should be sufficient
+// interface EnhancedMessage extends VercelAIMessage {
+//   toolCallId?: string;
+//   toolName?: string;
+//   parts?: any[];
+// }
 
 // Find a chat session by the name field (which stores the original generatedId)
 async function findChatSessionByName(chatId: string): Promise<ChatSession | null> {
@@ -61,21 +60,13 @@ export async function loadChat(id: string): Promise<VercelAIMessage[]> {
     // Convert Payload messages to Vercel AI messages
     const aiMessages: VercelAIMessage[] = result.docs.map((doc: PayloadMessage) => {
       // Create base message with common properties
-      const message: EnhancedMessage = {
+      const message: VercelAIMessage = {
         id: doc.id.toString(), // Ensure ID is a string
         role: doc.role as VercelAIMessage['role'], // Cast to compatible role
         createdAt: new Date(doc.createdAt),
-        content: '', // Initialize with empty content as required by VercelAIMessage
+        content: doc.content || '', // Use the top-level content field from DB
+        parts: (doc.parts || []) as any, // Cast parts to any to avoid type conflicts
       };
-
-      // Add parts array if it exists
-      if (doc.parts && Array.isArray(doc.parts)) {
-        message.parts = doc.parts;
-      }
-
-      // Add tool-specific fields if present
-      if (doc.toolCallId) message.toolCallId = doc.toolCallId;
-      if (doc.toolName) message.toolName = doc.toolName;
 
       return message;
     });
@@ -120,32 +111,24 @@ export async function saveChat({
 
     // Create new messages
     for (const message of messages) {
-      // Cast the message to our enhanced type to access toolCallId and toolName
-      const enhancedMessage = message as EnhancedMessage;
+      // Define roles compatible with our Payload schema
+      const payloadRoles: PayloadMessage['role'][] = ['user', 'assistant', 'tool'];
+      if (!payloadRoles.includes(message.role as any)) {
+        console.warn(`[saveChat] Skipping message with role not in Payload schema: ${message.role}`);
+        continue; // Skip roles not defined in Payload
+      }
       
       // Build message data for Payload
-      const messageData: any = {
+      const messageData: Partial<PayloadMessage> = {
         chatSession: chatSession.id,
-        role: message.role,
+        role: message.role as 'user' | 'assistant' | 'tool',
+        content: message.content,
+        parts: (message.parts || []) as any, // Cast parts to any to avoid type conflicts
       };
-
-      // Add parts if they exist
-      if ('parts' in enhancedMessage && enhancedMessage.parts) {
-        messageData.parts = enhancedMessage.parts;
-      }
-
-      // Add tool-specific fields if they exist
-      if ('toolCallId' in enhancedMessage && enhancedMessage.toolCallId) {
-        messageData.toolCallId = enhancedMessage.toolCallId;
-      }
-      
-      if ('toolName' in enhancedMessage && enhancedMessage.toolName) {
-        messageData.toolName = enhancedMessage.toolName;
-      }
 
       await payload.create({
         collection: 'messages',
-        data: messageData,
+        data: messageData as Omit<PayloadMessage, 'id' | 'updatedAt' | 'createdAt'>,
       });
     }
 

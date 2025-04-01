@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { listApplications, createApplication, getApplicationDetails } from '@/db/actions/Applications';
-import type { Application } from '@/payload-types'; // Adjust path as necessary
 
 /**
  * GET handler to list all applications or get specific application details.
@@ -32,7 +31,16 @@ export async function GET(request: Request) {
  */
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
+    // --- Debugging Start ---
+    console.log('Received POST request to /api/applications');
+    console.log('Request Headers:', request.headers); 
+    const rawBody = await request.text(); // Read as text first
+    console.log('Raw Request Body:', rawBody); 
+    // --- Debugging End ---
+
+    // Now try to parse *after* logging
+    const body = JSON.parse(rawBody); // Manually parse after logging
+
     const { name, description, version } = body;
 
     if (!name || !description) {
@@ -55,9 +63,8 @@ export async function POST(request: Request) {
     return NextResponse.json(newApplication, { status: 201 }); // 201 Created status
   } catch (error) {
     console.error('API Error creating application:', error);
-    // Handle potential JSON parsing errors
     if (error instanceof SyntaxError) {
-      return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
+      return NextResponse.json({ error: 'Invalid request body - not valid JSON' }, { status: 400 });
     }
     // Handle errors thrown from createApplication (like missing fields)
     if (error instanceof Error) {
