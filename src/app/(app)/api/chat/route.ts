@@ -11,11 +11,14 @@ export async function POST(req: Request) {
   const { messages } = await req.json();
 
   const result = streamText({
-    model: anthropic('claude-3-haiku-20240307'),
+    model: openai('gpt-4o-mini-2024-07-18'),
     system: `You are a helpful assistant. Check your knowledge base before answering any questions.
     Only respond to questions using information from tool calls.
     if no relevant information is found in the tool calls, respond, "Sorry, I don't know."`,
     messages,
+    onError({ error }) {
+      console.error('here is the streamText error from chat api: ' + error);
+    },
     tools: {
       addTextTool,
       getInformationTool,

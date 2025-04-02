@@ -23,7 +23,7 @@
   [services.operator]
   name = "operator"
   port = 33213
-  base_url = "localhost"
+  base_url = "10.211.55.4"
   route_url = "/operator"
   icon = "MousePointerSquare"
   folder_path = "/Users/linkling/Services/Operator"

@@ -49,6 +49,9 @@ Always take a screenshot before deciding on the next action unless you are certa
     tools: tools,
     maxSteps: 5,
     toolCallStreaming: true,
+    onError({ error }) {
+      console.error('here is the streamText error from automation api: ' + error);
+    },
     async onFinish({ response }) {
       await saveChat({
         id,

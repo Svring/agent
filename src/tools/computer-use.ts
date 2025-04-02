@@ -113,7 +113,7 @@ async function callScreenshotEndpoint(): Promise<ScreenshotResult> {
     const endpointPath = '/screenshot_base64';
     const method = 'POST';
     const requestUrl = `http://${operatorConfig.base_url}:${operatorConfig.port}${endpointPath}`;
-    // console.log(`Calling ${method} ${requestUrl}`);
+    console.log(`Calling from computer-use tool ${method} ${requestUrl}`);
 
     // IMPORTANT: The backend service at this endpoint MUST ensure the returned image
     // is exactly 1024x768 pixels, either by downscaling (for larger screens)

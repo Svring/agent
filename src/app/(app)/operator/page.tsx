@@ -209,6 +209,8 @@ export default function OperatorPage() {
         body: JSON.stringify(requestBody),
       });
 
+      console.log('calling from operator page: ' + getEndpointUrl(operatorService, screenshotEndpoint))
+
       const data = await response.json() as ScreenshotBase64Response;
       setScreenshotImage(`data:image/${data.format};base64,${data.base64_image}`);
     } catch (err) {

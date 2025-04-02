@@ -231,11 +231,6 @@ export default function Chat({
             <Button variant="ghost" size="icon" className="flex-shrink-0">
               <Mic className="h-4 w-4" />
             </Button>
-            <Button variant="ghost" size="sm" className="flex-shrink-0 gap-1 text-muted-foreground pr-1">
-              <Search className="h-4 w-4" />
-              DeepSearch
-              <ChevronDown className="h-4 w-4 opacity-50" />
-            </Button>
             <Button
               size="icon"
               className="ml-auto flex-shrink-0 rounded-full"
