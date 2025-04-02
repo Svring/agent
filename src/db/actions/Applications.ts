@@ -1,3 +1,5 @@
+'use server'
+
 import { getPayload } from 'payload';
 import config from '@payload-config'; // Assuming this alias points to your payload.config.ts
 import type { Application } from '../../payload-types'; // Adjust path as needed
@@ -39,6 +41,31 @@ export async function listApplications(): Promise<Application[]> {
   } catch (error) {
     console.error('Error listing applications:', error);
     return [];
+  }
+}
+
+/**
+ * Retrieves an application by its ID.
+ * @param id - The ID of the application to retrieve.
+ * @returns The application document or null if not found.
+ * @throws Throws an error if the Payload API request fails (excluding not found).
+ */
+export async function getApplicationById(id: string): Promise<Application | null> {
+  const payload = await getPayload({ config });
+  try {
+    const application = await payload.findByID({
+      collection: 'applications',
+      id: id,
+    });
+    return application; // Assuming payload.findByID returns the correct type or throws
+  } catch (error: any) {
+    // Payload throws specific error for Not Found which we want to treat as null
+    if (error?.status === 404) {
+      return null;
+    }
+    console.error(`Error fetching application with ID ${id}:`, error);
+    // Re-throw other unexpected errors
+    throw error;
   }
 }
 

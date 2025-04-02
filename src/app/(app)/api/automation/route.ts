@@ -2,8 +2,9 @@ import { anthropic } from '@ai-sdk/anthropic';
 import { computerUseTool } from '@/tools/computer-use';
 import { addTextTool } from '@/tools/add-text';
 import { getInformationTool } from '@/tools/get-information';
+import { workflowUseTool } from '@/tools/workflow-use/workflow-use';
 import { askForConfirmationTool } from '@/tools/ask-confirm';
-import { appendResponseMessages, appendClientMessage, streamText } from 'ai';
+import { appendResponseMessages, appendClientMessage, streamText, generateObject } from 'ai';
 // import { loadChat, saveChat } from '@/db/actions/Messages';
 import { loadChat, saveChat } from '@/tools/chat-store';
 
@@ -37,6 +38,7 @@ Always take a screenshot before deciding on the next action unless you are certa
   `
   const tools = {
     computer: computerUseTool,
+    workflow: workflowUseTool,
     addTextTool,
     getInformationTool,
     // askForConfirmation: askForConfirmationTool

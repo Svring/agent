@@ -1,3 +1,5 @@
+'use server'
+
 import { getPayload } from 'payload'
 import config from '@payload-config'
 import { openai } from '@ai-sdk/openai'

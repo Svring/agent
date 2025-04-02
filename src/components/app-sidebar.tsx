@@ -6,6 +6,7 @@ import {
   TriangleDashed, Sparkle, Plus, Loader2
 } from "lucide-react"
 import Link from "next/link"
+import { listApplications, createApplication } from '@/db/actions/Applications';
 // import { useRouter } from 'next/navigation'; // Not needed for now
 
 import {
@@ -115,12 +116,8 @@ export function AppSidebar() {
   const fetchApplications = async () => {
     setIsLoadingApps(true);
     try {
-      const response = await fetch('/api/applications');
-      if (!response.ok) {
-        throw new Error(`Failed to fetch applications: ${response.statusText}`);
-      }
-      const data: Application[] = await response.json();
-      setApplications(data);
+      const apps = await listApplications();
+      setApplications(apps);
     } catch (error) {
       console.error('Failed to fetch applications:', error);
       setApplications([]);
@@ -161,31 +158,24 @@ export function AppSidebar() {
     setIsSubmitting(true);
     
     try {
-      const response = await fetch('/api/applications', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          name: newAppName,
-          description: newAppDescription,
-          version: newAppVersion || undefined, // Only include if not empty
-        }),
+      const newApplication = await createApplication({
+        name: newAppName,
+        description: newAppDescription,
+        version: newAppVersion || undefined, // Only include if not empty
       });
       
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to create application');
+      if (newApplication) {
+        // Clear form and close popover on success
+        setNewAppName('');
+        setNewAppDescription('');
+        setNewAppVersion('');
+        setAddAppOpen(false);
+        
+        // Refresh the application list
+        await fetchApplications();
+      } else {
+        throw new Error('Failed to create application');
       }
-      
-      // Clear form and close popover on success
-      setNewAppName('');
-      setNewAppDescription('');
-      setNewAppVersion('');
-      setAddAppOpen(false);
-      
-      // Refresh the application list
-      await fetchApplications();
       
     } catch (error) {
       console.error('Error creating application:', error);

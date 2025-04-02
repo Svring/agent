@@ -230,6 +230,10 @@ export interface Workflow {
   id: number;
   name: string;
   description?: string | null;
+  /**
+   * A step-by-step natural language description of the entire workflow sequence, intended for LLM guidance.
+   */
+  sequenceDescription?: string | null;
   application: number | Application;
   steps?:
     | {
@@ -244,23 +248,40 @@ export interface Workflow {
           | 'type'
           | 'key'
           | 'cursor_position';
-        description?: string | null;
         /**
-         * Required for click, move, drag actions. E.g., [100, 250]
+         * Describe the goal and context of this step clearly (e.g., "Click the Save button to submit the form").
          */
-        coordinates?:
-          | {
-              [k: string]: unknown;
-            }
-          | unknown[]
-          | string
-          | number
-          | boolean
-          | null;
+        description: string;
+        /**
+         * Required for click, move, drag actions.
+         */
+        coordinates?: {
+          x: number;
+          y: number;
+        };
+        /**
+         * End position for drag actions.
+         */
+        endCoordinates?: {
+          x: number;
+          y: number;
+        };
         /**
          * Required for type and key actions.
          */
         text?: string | null;
+        /**
+         * Time to wait before executing this step (in milliseconds).
+         */
+        delay?: number | null;
+        /**
+         * Optional condition to check before executing (e.g., "Wait until the Save button is visible").
+         */
+        condition?: string | null;
+        /**
+         * Instructions if this step fails (e.g., "Retry after 500ms" or "Skip to next step").
+         */
+        onError?: string | null;
         id?: string | null;
       }[]
     | null;
@@ -471,14 +492,29 @@ export interface EmbeddingsSelect<T extends boolean = true> {
 export interface WorkflowsSelect<T extends boolean = true> {
   name?: T;
   description?: T;
+  sequenceDescription?: T;
   application?: T;
   steps?:
     | T
     | {
         action?: T;
         description?: T;
-        coordinates?: T;
+        coordinates?:
+          | T
+          | {
+              x?: T;
+              y?: T;
+            };
+        endCoordinates?:
+          | T
+          | {
+              x?: T;
+              y?: T;
+            };
         text?: T;
+        delay?: T;
+        condition?: T;
+        onError?: T;
         id?: T;
       };
   updatedAt?: T;

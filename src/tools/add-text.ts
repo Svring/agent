@@ -8,6 +8,7 @@ export const addTextTool = tool({
     content: z
       .string()
       .describe('the content or resource to add to the knowledge base'),
+    applicationId: z.number().describe('the ID of the application to add the text to'),
   }),
-  execute: async ({ content }) => createText(content),
+  execute: async ({ content, applicationId }) => createText(content, applicationId),
 });

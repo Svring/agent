@@ -43,10 +43,6 @@ export const enum_messages_parts_tool_invocation_state = pgEnum(
   "enum_messages_parts_tool_invocation_state",
   ["result", "pending", "error"],
 );
-export const enum_messages_tool_invocations_state = pgEnum(
-  "enum_messages_tool_invocations_state",
-  ["result", "pending", "error"],
-);
 export const enum_messages_role = pgEnum("enum_messages_role", [
   "user",
   "assistant",
@@ -210,9 +206,15 @@ export const workflows_steps = pgTable(
     _parentID: integer("_parent_id").notNull(),
     id: varchar("id").primaryKey(),
     action: enum_workflows_steps_action("action").notNull(),
-    description: varchar("description"),
-    coordinates: jsonb("coordinates"),
+    description: varchar("description").notNull(),
+    coordinates_x: numeric("coordinates_x"),
+    coordinates_y: numeric("coordinates_y"),
+    endCoordinates_x: numeric("end_coordinates_x"),
+    endCoordinates_y: numeric("end_coordinates_y"),
     text: varchar("text"),
+    delay: numeric("delay").default("0"),
+    condition: varchar("condition"),
+    onError: varchar("on_error"),
   },
   (columns) => ({
     _orderIdx: index("workflows_steps_order_idx").on(columns._order),
@@ -231,6 +233,7 @@ export const workflows = pgTable(
     id: serial("id").primaryKey(),
     name: varchar("name").notNull(),
     description: varchar("description"),
+    sequenceDescription: varchar("sequence_description"),
     application: integer("application_id")
       .notNull()
       .references(() => applications.id, {
@@ -372,38 +375,6 @@ export const messages_parts = pgTable(
   }),
 );
 
-export const messages_tool_invocations = pgTable(
-  "messages_tool_invocations",
-  {
-    _order: integer("_order").notNull(),
-    _parentID: integer("_parent_id").notNull(),
-    id: varchar("id").primaryKey(),
-    state: enum_messages_tool_invocations_state("state").default("pending"),
-    step: numeric("step"),
-    toolCallId: varchar("tool_call_id").notNull(),
-    toolName: varchar("tool_name").notNull(),
-    args: jsonb("args"),
-    result: jsonb("result"),
-  },
-  (columns) => ({
-    _orderIdx: index("messages_tool_invocations_order_idx").on(columns._order),
-    _parentIDIdx: index("messages_tool_invocations_parent_id_idx").on(
-      columns._parentID,
-    ),
-    messages_tool_invocations_tool_call_id_idx: index(
-      "messages_tool_invocations_tool_call_id_idx",
-    ).on(columns.toolCallId),
-    messages_tool_invocations_tool_name_idx: index(
-      "messages_tool_invocations_tool_name_idx",
-    ).on(columns.toolName),
-    _parentIDFk: foreignKey({
-      columns: [columns["_parentID"]],
-      foreignColumns: [messages.id],
-      name: "messages_tool_invocations_parent_id_fk",
-    }).onDelete("cascade"),
-  }),
-);
-
 export const messages = pgTable(
   "messages",
   {
@@ -415,8 +386,6 @@ export const messages = pgTable(
       }),
     role: enum_messages_role("role").notNull(),
     content: varchar("content"),
-    toolCallId: varchar("tool_call_id"),
-    toolName: varchar("tool_name"),
     revisionId: varchar("revision_id"),
     updatedAt: timestamp("updated_at", {
       mode: "string",
@@ -436,12 +405,6 @@ export const messages = pgTable(
   (columns) => ({
     messages_chat_session_idx: index("messages_chat_session_idx").on(
       columns.chatSession,
-    ),
-    messages_tool_call_id_idx: index("messages_tool_call_id_idx").on(
-      columns.toolCallId,
-    ),
-    messages_tool_name_idx: index("messages_tool_name_idx").on(
-      columns.toolName,
     ),
     messages_revision_id_idx: index("messages_revision_id_idx").on(
       columns.revisionId,
@@ -730,16 +693,6 @@ export const relations_messages_parts = relations(
     }),
   }),
 );
-export const relations_messages_tool_invocations = relations(
-  messages_tool_invocations,
-  ({ one }) => ({
-    _parentID: one(messages, {
-      fields: [messages_tool_invocations._parentID],
-      references: [messages.id],
-      relationName: "toolInvocations",
-    }),
-  }),
-);
 export const relations_messages = relations(messages, ({ one, many }) => ({
   chatSession: one(chat_sessions, {
     fields: [messages.chatSession],
@@ -748,9 +701,6 @@ export const relations_messages = relations(messages, ({ one, many }) => ({
   }),
   parts: many(messages_parts, {
     relationName: "parts",
-  }),
-  toolInvocations: many(messages_tool_invocations, {
-    relationName: "toolInvocations",
   }),
 }));
 export const relations_payload_locked_documents_rels = relations(
@@ -843,7 +793,6 @@ type DatabaseSchema = {
   enum_workflows_steps_action: typeof enum_workflows_steps_action;
   enum_messages_parts_type: typeof enum_messages_parts_type;
   enum_messages_parts_tool_invocation_state: typeof enum_messages_parts_tool_invocation_state;
-  enum_messages_tool_invocations_state: typeof enum_messages_tool_invocations_state;
   enum_messages_role: typeof enum_messages_role;
   users: typeof users;
   media: typeof media;
@@ -854,7 +803,6 @@ type DatabaseSchema = {
   chat_sessions: typeof chat_sessions;
   applications: typeof applications;
   messages_parts: typeof messages_parts;
-  messages_tool_invocations: typeof messages_tool_invocations;
   messages: typeof messages;
   payload_locked_documents: typeof payload_locked_documents;
   payload_locked_documents_rels: typeof payload_locked_documents_rels;
@@ -870,7 +818,6 @@ type DatabaseSchema = {
   relations_chat_sessions: typeof relations_chat_sessions;
   relations_applications: typeof relations_applications;
   relations_messages_parts: typeof relations_messages_parts;
-  relations_messages_tool_invocations: typeof relations_messages_tool_invocations;
   relations_messages: typeof relations_messages;
   relations_payload_locked_documents_rels: typeof relations_payload_locked_documents_rels;
   relations_payload_locked_documents: typeof relations_payload_locked_documents;
