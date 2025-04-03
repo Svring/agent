@@ -5,6 +5,7 @@ import config from '@payload-config'
 import { openai } from '@ai-sdk/openai'
 import { embed, embedMany } from 'ai'
 import { useProviderStore } from '@/store/provider/providerStore';
+import { eq } from '@payloadcms/db-postgres/drizzle'
 
 const payload = await getPayload({ config })
 
@@ -21,10 +22,10 @@ export const generateEmbeddings = async (
   value: string
 ): Promise<Array<{ embedding: number[]; content: string }>> => {
   // Get the selected model dynamically inside the function
-  const selectedEmbeddingModel = useProviderStore.getState().selectedEmbeddingModel;
-  if (!selectedEmbeddingModel) {
-    throw new Error('Embedding Error: No embedding model selected in the store.');
-  }
+  // const selectedEmbeddingModel = useProviderStore.getState().selectedEmbeddingModel;
+  // if (!selectedEmbeddingModel) {
+  //   throw new Error('Embedding Error: No embedding model selected in the store.');
+  // }
   const embeddingModel = openai.embedding('text-embedding-3-small');
 
   const chunks = generateChunks(value)
@@ -38,11 +39,11 @@ export const generateEmbeddings = async (
 // Generate a single embedding for text
 export const generateEmbedding = async (value: string): Promise<number[]> => {
   // Get the selected model dynamically inside the function
-  const selectedEmbeddingModel = useProviderStore.getState().selectedEmbeddingModel;
-  if (!selectedEmbeddingModel) {
-    throw new Error('Embedding Error: No embedding model selected in the store.');
-  }
-  const embeddingModel = openai.embedding(selectedEmbeddingModel);
+  // const selectedEmbeddingModel = useProviderStore.getState().selectedEmbeddingModel;
+  // if (!selectedEmbeddingModel) {
+  //   throw new Error('Embedding Error: No embedding model selected in the store.');
+  // }
+  const embeddingModel = openai.embedding('text-embedding-3-small');
 
   const input = value.replaceAll('\\n', ' ')
   const { embedding } = await embed({
@@ -97,7 +98,7 @@ function cosineSimilarity(vecA: number[], vecB: number[]): number {
   return dotProduct / (normA * normB);
 }
 
-export const findRelevantContent = async (userQuery: string) => {
+export const findRelevantContent = async (userQuery: string, applicationId: number) => {
   try {
     // Generate embedding for the query
     const queryEmbedding = await generateEmbedding(userQuery);
@@ -108,7 +109,8 @@ export const findRelevantContent = async (userQuery: string) => {
         content: payload.db.tables.embeddings.content,
         embedding: payload.db.tables.embeddings.embedding,
       })
-      .from(payload.db.tables.embeddings);
+      .from(payload.db.tables.embeddings)
+      .where(eq(payload.db.tables.embeddings.application.id, applicationId));
 
     // Compute similarity for each embedding
     const results = allEmbeddings.map((item) => {

@@ -25,3 +25,16 @@ export const createText = async (content: string, applicationId: number) => {
       : 'Error, please try again.'
   }
 }
+
+export const findInformationByApplicationId = async (applicationId: number) => {
+  const allTexts = await payload.find({
+    collection: 'texts',
+    where: {
+      application: {
+        equals: applicationId,
+      },
+    },
+  })
+  
+  return allTexts.docs.map((text) => text.content);
+}

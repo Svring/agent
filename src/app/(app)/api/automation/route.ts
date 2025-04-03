@@ -103,39 +103,3 @@ Always be precise in your actions and invoke tools with the current application 
 
   return result.toDataStreamResponse();
 }
-
-async function routeDirective(messages: any) {
-  const systemPrompt = `
-  
-  `
-
-  const { object: routeMessage } = await generateObject({
-    model: anthropic('claude-3-5-sonnet-20241022'),
-    system: systemPrompt,
-    prompt: messages,
-    schema: z.object({
-      routeType: z.enum(['chat', 'workflowAction']).describe(''),
-      missionDescription: z.string().describe('')
-    })
-  })
-
-  return routeMessage;
-}
-
-async function workflowDirective(messages: any) {
-  const systemPrompt = `
-  
-  `
-
-  const { object: routeMessage } = await generateObject({
-    model: anthropic('claude-3-5-sonnet-20241022'),
-    system: systemPrompt,
-    prompt: messages,
-    schema: z.object({
-      routeType: z.enum(['chat', 'workflowAction']).describe(''),
-      missionDescription: z.string().describe('')
-    })
-  })
-
-  return routeMessage;
-}

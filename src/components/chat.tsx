@@ -9,10 +9,15 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { useParams, useRouter } from 'next/navigation';
+
+// Helper function to count lines in a text string
+const countLines = (text: string): number => {
+  return text ? text.split('\n').length : 0;
+};
 
 export default function Chat({
   id,
@@ -32,12 +37,28 @@ export default function Chat({
   });
 
   const [openStates, setOpenStates] = useState<Record<string, boolean>>({});
+  const [expandedResults, setExpandedResults] = useState<Record<string, boolean>>({});
   const [files, setFiles] = useState<FileList | undefined>(undefined);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const messagesEndRef = useRef(null);
 
   const toggleOpen = (key: string) => {
     setOpenStates(prev => ({ ...prev, [key]: !prev[key] }));
   };
+
+  const toggleExpandResult = (key: string) => {
+    setExpandedResults(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const scrollToBottom = () => {
+    if (messagesEndRef.current) {
+      (messagesEndRef.current as HTMLElement).scrollIntoView({ behavior: 'smooth' });
+    }
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
 
   return (
     <div className="flex flex-col h-full max-w-4xl mx-auto">
@@ -51,7 +72,7 @@ export default function Chat({
         >
           <ArrowLeft className="h-4 w-4" />
         </Button>
-        <h2 className="text-xl font-semibold mx-auto">Chat : {params.chatId} - {params.appId}</h2>
+        <h2 className="text-xl mx-auto">Chat : {params.chatId} - {params.appId}</h2>
       </header>
 
       {/* Messages Section - Takes remaining space, scrollable */}
@@ -133,6 +154,22 @@ export default function Chat({
                               </p>
                             );
 
+                            // Check if text result is longer than 5 lines
+                            const resultText = typeof resultData === 'string' 
+                              ? resultData 
+                              : JSON.stringify(resultData, null, 2);
+                            const lineCount = countLines(resultText);
+                            const isLongResult = lineCount > 5;
+                            const resultKey = `${partKey}-result`;
+                            const isExpanded = expandedResults[resultKey] || false;
+                            
+                            // For long text results, create a preview version (first 5 lines)
+                            let previewResult = null;
+                            if (isLongResult && !isImageResult && typeof resultText === 'string') {
+                              const previewLines = resultText.split('\n').slice(0, 5).join('\n');
+                              previewResult = <span className="whitespace-pre-wrap break-words">{previewLines}...</span>;
+                            }
+
                             return (
                               <div key={partKey} className={`${toolStyle} text-foreground space-y-1`}>
                                 {label}
@@ -146,6 +183,37 @@ export default function Chat({
                                     </CollapsibleTrigger>
                                     <CollapsibleContent className="pt-2">{resultDisplay}</CollapsibleContent>
                                   </Collapsible>
+                                ) : isLongResult ? (
+                                  <div>
+                                    <Button 
+                                      variant="ghost" 
+                                      size="sm" 
+                                      className="flex items-center text-xs h-auto py-0.5 mb-1"
+                                      onClick={() => toggleExpandResult(resultKey)}
+                                    >
+                                      {isExpanded ? (
+                                        <>
+                                          <EyeOff className="h-3 w-3 mr-1" />
+                                          Show Less
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Eye className="h-3 w-3 mr-1" />
+                                          Show Full Result ({lineCount} lines)
+                                        </>
+                                      )}
+                                    </Button>
+                                    
+                                    {isExpanded ? (
+                                      <div>
+                                        {resultDisplay}
+                                      </div>
+                                    ) : (
+                                      <div>
+                                        {previewResult}
+                                      </div>
+                                    )}
+                                  </div>
                                 ) : resultDisplay}
                               </div>
                             );
@@ -167,6 +235,7 @@ export default function Chat({
               </div>
             ))}
           </div>
+          <div ref={messagesEndRef} />
         </ScrollArea>
       </div>
 
