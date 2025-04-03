@@ -8,19 +8,19 @@ import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
-} from "@/components/ui/collapsible"
+} from "@/components/ui/collapsible";
 import { useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Input } from '@/components/ui/input';
-import { useRouter } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 
 export default function Chat({
   id,
   initialMessages,
 }: { id?: string | undefined; initialMessages?: Message[] } = {}) {
   const router = useRouter();
-  const { input, handleInputChange, handleSubmit, messages, addToolResult, stop, status } = useChat({
+  const params = useParams();
+  const { input, handleInputChange, handleSubmit, messages, addToolResult, stop } = useChat({
     api: '/api/automation',
     id,
     initialMessages,
@@ -29,13 +29,9 @@ export default function Chat({
     onToolCall({ toolCall }) {
       console.log('Client-side onToolCall triggered:', toolCall);
     },
-    // experimental_prepareRequestBody({ messages, id }) {
-    //   return { message: messages[messages.length - 1], id };
-    // },
   });
 
   const [openStates, setOpenStates] = useState<Record<string, boolean>>({});
-
   const [files, setFiles] = useState<FileList | undefined>(undefined);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -44,9 +40,9 @@ export default function Chat({
   };
 
   return (
-    <div className="flex flex-col h-screen max-w-4xl mx-auto">
-      {/* Header section - fixed at top */}
-      <header className="flex items-center px-8 border-b">
+    <div className="flex flex-col h-full max-w-4xl mx-auto">
+      {/* Title Bar - Fixed height, always at top */}
+      <header className="flex items-center px-8 shrink-0">
         <Button 
           variant="ghost" 
           size="icon" 
@@ -58,10 +54,10 @@ export default function Chat({
         <h2 className="text-xl font-semibold mx-auto">Chat</h2>
       </header>
 
-      {/* Messages section - scrollable middle area */}
-      <main className="flex-1 overflow-hidden">
-        <ScrollArea className="h-full px-8 py-4">
-          <div className="space-y-4 pb-4">
+      {/* Messages Section - Takes remaining space, scrollable */}
+      <div className="flex-1 overflow-hidden">
+        <ScrollArea className="h-full px-8 pb-4">
+          <div className="space-y-4">
             {messages.map(m => (
               <div key={m.id} className={`flex items-start gap-3 ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 {m.role !== 'user' && (
@@ -69,10 +65,9 @@ export default function Chat({
                     <AvatarFallback><Bot /></AvatarFallback>
                   </Avatar>
                 )}
-                <div className={`space-y-1`}>
+                <div className="space-y-1 max-w-3xl">
                   {m.parts.map((part, partIndex) => {
                     const partKey = `${m.id}-${partIndex}`;
-
                     switch (part.type) {
                       case 'text':
                         return (
@@ -85,10 +80,9 @@ export default function Chat({
                         const toolInvocation = part.toolInvocation;
                         const callId = toolInvocation.toolCallId;
                         const toolName = toolInvocation.toolName;
-                        const actionName = (toolInvocation.args && typeof toolInvocation.args === 'object' && 'action' in toolInvocation.args)
+                        const actionName = (toolInvocation.args && 'action' in toolInvocation.args)
                           ? String(toolInvocation.args.action)
                           : 'unknown';
-
                         const toolStyle = "border rounded-lg px-3 py-2 bg-muted/50 text-muted-foreground text-sm italic";
 
                         switch (toolInvocation.state) {
@@ -96,30 +90,12 @@ export default function Chat({
                             if (toolName === 'askForConfirmation') {
                               return (
                                 <div key={partKey} className={`${toolStyle} not-italic text-foreground`}>
-                                  <p className="mb-2">{toolInvocation.args.message as string}</p>
+                                  <p className="mb-2 break-words">{toolInvocation.args.message}</p>
                                   <div className="flex gap-2">
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() =>
-                                        addToolResult({
-                                          toolCallId: callId,
-                                          result: 'Yes, confirmed.',
-                                        })
-                                      }
-                                    >
+                                    <Button size="sm" variant="outline" onClick={() => addToolResult({ toolCallId: callId, result: 'Yes, confirmed.' })}>
                                       Yes
                                     </Button>
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() =>
-                                        addToolResult({
-                                          toolCallId: callId,
-                                          result: 'No, denied',
-                                        })
-                                      }
-                                    >
+                                    <Button size="sm" variant="outline" onClick={() => addToolResult({ toolCallId: callId, result: 'No, denied' })}>
                                       No
                                     </Button>
                                   </div>
@@ -130,9 +106,7 @@ export default function Chat({
                               <div key={partKey} className={toolStyle}>
                                 <div className="flex items-center gap-2">
                                   <Cog className="h-4 w-4 animate-spin" />
-                                  <span>
-                                    Calling {toolName} ({actionName})...
-                                  </span>
+                                  <span className="break-words">Calling {toolName} ({actionName})...</span>
                                 </div>
                               </div>
                             );
@@ -142,79 +116,46 @@ export default function Chat({
                             const resultData = toolInvocation.result;
 
                             if (toolName === 'askForConfirmation') {
-                              resultDisplay = <span className="whitespace-pre-wrap font-semibold">{resultData as string}</span>;
-                              return (
-                                <div key={partKey} className={`${toolStyle} not-italic text-foreground`}>
-                                  {resultDisplay}
-                                </div>
-                              );
-                            } else if (toolName === 'computer' &&
-                              actionName === 'screenshot' &&
-                              typeof resultData === 'object' &&
-                              resultData !== null &&
-                              'type' in resultData && resultData.type === 'image' &&
-                              'format' in resultData && typeof resultData.format === 'string' &&
-                              'data' in resultData && typeof resultData.data === 'string') {
+                              resultDisplay = <span className="whitespace-pre-wrap font-semibold break-words">{resultData}</span>;
+                              return <div key={partKey} className={`${toolStyle} not-italic text-foreground`}>{resultDisplay}</div>;
+                            } else if (toolName === 'computer' && actionName === 'screenshot' && resultData?.type === 'image' && resultData?.data) {
                               isImageResult = true;
                               const dataUri = `data:image/${resultData.format};base64,${resultData.data}`;
-                              resultDisplay = <img src={dataUri} alt={`Screenshot result`} className="max-w-full h-auto rounded border my-1" />;
-                            } else if (typeof resultData === 'string') {
-                              resultDisplay = <span className="whitespace-pre-wrap">{resultData}</span>;
+                              resultDisplay = <img src={dataUri} alt="Screenshot" className="max-w-full h-auto rounded border my-1" />;
                             } else {
-                              resultDisplay = <span className="whitespace-pre-wrap">{JSON.stringify(resultData)}</span>;
+                              resultDisplay = <span className="whitespace-pre-wrap break-words">{typeof resultData === 'string' ? resultData : JSON.stringify(resultData)}</span>;
                             }
 
                             const label = (
                               <p className="font-medium flex items-center text-foreground">
                                 <Hammer className="h-4 w-4 mr-1 flex-shrink-0" />
-                                Calling tool - {toolName}(action: {actionName}):
+                                <span className="break-words">Calling tool - {toolName}(action: {actionName}):</span>
                               </p>
                             );
 
-                            if (isImageResult) {
-                              const isOpen = !!openStates[partKey];
-                              return (
-                                <div key={partKey} className={`${toolStyle} text-foreground space-y-1`}>
-                                  {label}
-                                  <Collapsible
-                                    open={isOpen}
-                                    onOpenChange={() => toggleOpen(partKey)}
-                                    className="w-full"
-                                  >
+                            return (
+                              <div key={partKey} className={`${toolStyle} text-foreground space-y-1`}>
+                                {label}
+                                {isImageResult ? (
+                                  <Collapsible open={openStates[partKey]} onOpenChange={() => toggleOpen(partKey)}>
                                     <CollapsibleTrigger asChild>
                                       <Button variant="ghost" size="sm" className="flex items-center text-xs h-auto py-0.5 px-1.5">
-                                        {isOpen ? <EyeOff className="h-3 w-3 mr-1" /> : <Eye className="h-3 w-3 mr-1" />}
-                                        {isOpen ? 'Hide Screenshot' : 'Show Screenshot'}
+                                        {openStates[partKey] ? <EyeOff className="h-3 w-3 mr-1" /> : <Eye className="h-3 w-3 mr-1" />}
+                                        {openStates[partKey] ? 'Hide Screenshot' : 'Show Screenshot'}
                                       </Button>
                                     </CollapsibleTrigger>
-                                    <CollapsibleContent className="pt-2">
-                                      {resultDisplay}
-                                    </CollapsibleContent>
+                                    <CollapsibleContent className="pt-2">{resultDisplay}</CollapsibleContent>
                                   </Collapsible>
-                                </div>
-                              );
-                            } else {
-                              return (
-                                <div key={partKey} className={`${toolStyle} text-foreground space-y-1`}>
-                                  {label}
-                                  {resultDisplay}
-                                </div>
-                              );
-                            }
-                          }
-
-                          default:
-                            return (
-                              <div key={partKey} className={`${toolStyle} text-xs italic`}>
-                                Tool ({toolName}) - State: {toolInvocation.state}
+                                ) : resultDisplay}
                               </div>
                             );
+                          }
+                          default:
+                            return <div key={partKey} className={`${toolStyle} text-xs italic break-words`}>Tool ({toolName}) - State: {toolInvocation.state}</div>;
                         }
                       }
-
                       default:
-                        return <div key={partKey}>Unsupported part type</div>;
-
+                        return <div key={partKey} className="break-words">Unsupported part type</div>;
                     }
                   })}
                 </div>
@@ -227,11 +168,11 @@ export default function Chat({
             ))}
           </div>
         </ScrollArea>
-      </main>
+      </div>
 
-      {/* Input section - fixed at bottom */}
-      <footer className="py-4 px-8 border-t bg-background">
-        <div className="relative flex w-full flex-col rounded-3xl border bg-secondary shadow-sm">
+      {/* Input Section - Fixed height, always at bottom */}
+      <footer className="px-8 py-4 border-t shrink-0">
+        <div className="flex w-full flex-col rounded-3xl border bg-secondary shadow-sm">
           <form onSubmit={handleSubmit} className="flex w-full items-center p-2 pr-3">
             <Textarea
               className="flex-1 resize-none border-0 px-2 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 rounded-2xl"
@@ -242,30 +183,17 @@ export default function Chat({
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
-                  if (input.trim() && !(status === 'streaming' || status === 'submitted')) {
-                    handleSubmit(e as any);
-                  }
+                  handleSubmit(e, { body: { appId: params.appId } });
                 }
               }}
             />
           </form>
-
           <div className="flex items-center gap-1 p-2">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="flex-shrink-0 relative"
-            >
+            <Button variant="ghost" size="icon" className="flex-shrink-0 relative">
               <input
                 type="file"
                 multiple
-                onChange={(e) => {
-                  const files = e.target.files;
-                  console.log('setting files', files);
-                  if (files) {
-                    setFiles(files);
-                  }
-                }}
+                onChange={(e) => setFiles(e.target.files || undefined)}
                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                 ref={fileInputRef}
               />
@@ -274,13 +202,13 @@ export default function Chat({
             <Button
               size="icon"
               className="ml-auto flex-shrink-0 rounded-full"
-              disabled={status === 'streaming' || status === 'submitted' || !input.trim()}
-              aria-label="Send message"
               onClick={(e) => {
-                if (input.trim() && !(status === 'streaming' || status === 'submitted')) {
-                  handleSubmit(e as any);
+                e.preventDefault();
+                if (input.trim()) {
+                  handleSubmit(e, { body: { appId: params.appId } });
+                } else {
+                  stop();
                 }
-                stop();
               }}
             >
               <ArrowUp className="h-4 w-4" />

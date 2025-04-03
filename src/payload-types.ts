@@ -252,36 +252,6 @@ export interface Workflow {
          * Describe the goal and context of this step clearly (e.g., "Click the Save button to submit the form").
          */
         description: string;
-        /**
-         * Required for click, move, drag actions.
-         */
-        coordinates?: {
-          x: number;
-          y: number;
-        };
-        /**
-         * End position for drag actions.
-         */
-        endCoordinates?: {
-          x: number;
-          y: number;
-        };
-        /**
-         * Required for type and key actions.
-         */
-        text?: string | null;
-        /**
-         * Time to wait before executing this step (in milliseconds).
-         */
-        delay?: number | null;
-        /**
-         * Optional condition to check before executing (e.g., "Wait until the Save button is visible").
-         */
-        condition?: string | null;
-        /**
-         * Instructions if this step fails (e.g., "Retry after 500ms" or "Skip to next step").
-         */
-        onError?: string | null;
         id?: string | null;
       }[]
     | null;
@@ -499,22 +469,6 @@ export interface WorkflowsSelect<T extends boolean = true> {
     | {
         action?: T;
         description?: T;
-        coordinates?:
-          | T
-          | {
-              x?: T;
-              y?: T;
-            };
-        endCoordinates?:
-          | T
-          | {
-              x?: T;
-              y?: T;
-            };
-        text?: T;
-        delay?: T;
-        condition?: T;
-        onError?: T;
         id?: T;
       };
   updatedAt?: T;

@@ -106,33 +106,66 @@ export async function getAllWorkflows(appId?: number): Promise<Workflow[]> { // 
  * @throws Throws an error if validation fails or Payload API request fails.
  */
 export async function updateWorkflow(id: string, data: WorkflowUpdateInput): Promise<Workflow | null> {
+  console.log(`[DEBUG] updateWorkflow called with ID: ${id} and data:`, JSON.stringify(data, null, 2));
+  
   const payload = await getPayload({ config });
   try {
+    // Debug log raw input data structure and types
+    console.log(`[DEBUG] Raw data structure: ${typeof data}`);
+    console.log(`[DEBUG] Data keys:`, Object.keys(data));
+    
+    // Check for nested objects and arrays
+    if (data.steps) {
+      console.log(`[DEBUG] Steps is an array with ${data.steps.length} items`);
+      console.log(`[DEBUG] First step sample:`, JSON.stringify(data.steps[0], null, 2));
+    }
+    
+    // Log nested properties, if any
+    Object.entries(data).forEach(([key, value]) => {
+      const valueType = typeof value;
+      if (valueType === 'object' && value !== null) {
+        console.log(`[DEBUG] Property '${key}' is an object:`, JSON.stringify(value, null, 2));
+      } else {
+        console.log(`[DEBUG] Property '${key}' is type '${valueType}' with value:`, value);
+      }
+    });
+    
     // Validate input data
+    console.log(`[DEBUG] Attempting to validate data against WorkflowUpdateInputSchema`);
     const validatedData = WorkflowUpdateInputSchema.parse(data);
+    console.log(`[DEBUG] Validation successful. Validated data:`, JSON.stringify(validatedData, null, 2));
 
     if (Object.keys(validatedData).length === 0) {
-        console.warn("Update called with no data for workflow:", id);
+        console.warn("[DEBUG] Update called with no data for workflow:", id);
         // Optionally return the existing document without making an API call
         return getWorkflowById(id);
     }
 
+    console.log(`[DEBUG] Calling payload.update with data:`, JSON.stringify(validatedData, null, 2));
     const workflow = await payload.update({
       collection: 'workflows',
       id: id,
       data: validatedData,
     });
+    
+    console.log(`[DEBUG] payload.update successful, validating response`);
     // Validate the output against the full schema
-    return WorkflowSchema.parse(workflow) as Workflow;
+    const validatedWorkflow = WorkflowSchema.parse(workflow) as Workflow;
+    console.log(`[DEBUG] Response validation successful, returning workflow`);
+    return validatedWorkflow;
   } catch (error: any) {
     if (error instanceof z.ZodError) {
+      console.error(`[DEBUG] Zod validation error:`, error.errors);
+      console.error(`[DEBUG] Validation error details:`, JSON.stringify(error.format(), null, 2));
       throw new Error(`Workflow update validation failed: ${error.errors.map(e => e.message).join(', ')}`);
     }
     // Payload throws specific error for Not Found
-     if (error?.status === 404) {
-        return null;
+    if (error?.status === 404) {
+      console.error(`[DEBUG] Workflow not found with ID ${id}`);
+      return null;
     }
-    console.error(`Error updating workflow with ID ${id}:`, error);
+    console.error(`[DEBUG] Error updating workflow with ID ${id}:`, error);
+    console.error(`[DEBUG] Error stack:`, error.stack);
     throw error;
   }
 }
