@@ -51,7 +51,7 @@ export default function Chat({
         >
           <ArrowLeft className="h-4 w-4" />
         </Button>
-        <h2 className="text-xl font-semibold mx-auto">Chat</h2>
+        <h2 className="text-xl font-semibold mx-auto">Chat : {params.chatId} - {params.appId}</h2>
       </header>
 
       {/* Messages Section - Takes remaining space, scrollable */}

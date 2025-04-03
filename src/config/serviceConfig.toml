@@ -23,7 +23,8 @@
   [services.operator]
   name = "operator"
   port = 33213
-  base_url = "10.211.55.4"
+  # base_url = "10.211.55.4"
+  base_url = "localhost"
   route_url = "/operator"
   icon = "MousePointerSquare"
   folder_path = "/Users/linkling/Services/Operator"
@@ -116,6 +117,24 @@
   [services.operator.endpoints.data_types]
   input = { region = "array?", format = "string?", full_screen = "boolean?" } # region is [left, top, width, height]
   output = { success = "boolean", format = "string", base64_image = "string", is_full_screen = "boolean" }
+  
+  [[services.operator.endpoints]]
+  path = "/execute_command"
+  method = "POST"
+  desc = "Execute a shell command and return the output"
+  
+  [services.operator.endpoints.data_types]
+  input = { command = "string", timeout = "number?" } # timeout in seconds is optional
+  output = { success = "boolean", stdout = "string", stderr = "string", return_code = "number" }
+  
+  [[services.operator.endpoints]]
+  path = "/edit_file"
+  method = "POST"
+  desc = "View, create, edit, or undo changes to files on the system"
+  
+  [services.operator.endpoints.data_types]
+  input = { command = "string", path = "string", file_text = "string?", insert_line = "number?", new_str = "string?", old_str = "string?", view_range = "array?" }
+  output = { success = "boolean", content = "string?", message = "string?", error = "string?", file_path = "string?" }
   
   [[services.operator.endpoints]]
   path = "/"
