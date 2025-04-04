@@ -48,7 +48,7 @@ For shell and file operations:
 
 For workflow management:
 1. **Create workflows**: Use the 'workflow' tool with 'create' action to save step sequences for reuse.
-2. **Execute workflows**: Retrieve workflows with 'get' action and execute their steps.
+2. **Execute workflows**: Retrieve workflows with 'get' action and execute their steps, you should always retrieve the knowledge base before executing a workflow.
 3. **Modify workflows**: Update workflows with new steps or adjustments as needed.
 
 For knowledge management:
@@ -72,7 +72,7 @@ Always be precise in your actions and invoke tools with the current application 
     system: systemPrompt,
     messages,
     tools: tools,
-    maxSteps: 5,
+    maxSteps: 20,
     toolCallStreaming: true,
     onError({ error }) {
       console.error('here is the streamText error from automation api:', JSON.stringify(error, null, 2));

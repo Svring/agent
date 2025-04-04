@@ -29,7 +29,7 @@ export default function Chat({
     api: '/api/automation',
     id,
     initialMessages,
-    maxSteps: 5,
+    maxSteps: 20,
     sendExtraMessageFields: true,
     onToolCall({ toolCall }) {
       console.log('Client-side onToolCall triggered:', toolCall);

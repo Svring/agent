@@ -307,7 +307,7 @@ export default function Page() {
                     key={session.id}
                     title={session.name}
                     date={session.createdAt}
-                    href={`/automation/${appId}/chat/${session.name}`}
+                    href={`/automation/${appId}/chat/${session.id}`}
                     onDelete={() => handleDeleteChat(session.id)}
                     isDeleting={deletingChatId === session.id}
                   />
