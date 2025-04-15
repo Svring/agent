@@ -5,6 +5,7 @@ import { getInformationTool } from '@/tools/get-information';
 import { workflowUseTool } from '@/tools/workflow-use/workflow-use';
 import { bashTool } from '@/tools/bash';
 import { textEditorTool } from '@/tools/text-editor';
+import { reportTool } from '@/tools/report';
 import { askForConfirmationTool } from '@/tools/ask-confirm';
 import { appendResponseMessages, appendClientMessage, streamText, generateObject } from 'ai';
 // import { loadChat, saveChat } from '@/db/actions/Messages';
@@ -33,6 +34,7 @@ You have access to the following tools:
 - **textEditorTool**: Provides abilities to view, create, edit, and modify files on the system. Supports operations like viewing file contents, creating new files, replacing text, inserting at specific line numbers, and undoing changes.
 - **addTextTool**: Stores text in a knowledge base to index context about complex apps. Use this to record unobvious insights about the current app (e.g., unique button functionalities, hidden features, or the app's operational purpose) when instructed by the user or when you discover such knowledge independently.
 - **getInformationTool**: Retrieves information from the knowledge base. Use this when additional context is needed to complete a task and the app's interface alone isn't sufficient.
+- **reportTool**: Allows you to report the current condition of a task, set its status (finished, undone, undefined), and store the report in a dedicated file in the '.report' directory. This tool should be used to document the outcome of workflows or specific tasks as per user intention.
 
 **Your primary workflows:**
 
@@ -50,10 +52,15 @@ For workflow management:
 1. **Create workflows**: Use the 'workflow' tool with 'create' action to save step sequences for reuse.
 2. **Execute workflows**: Retrieve workflows with 'get' action and execute their steps, you should always retrieve the knowledge base before executing a workflow.
 3. **Modify workflows**: Update workflows with new steps or adjustments as needed.
+4. **Report after execution**: After completing any workflow execution, always use the 'reportTool' to document the outcome, including the task condition and status.
 
 For knowledge management:
 - **Store context**: When you or the user identify non-obvious details about the app (e.g., a button's multiple uses or the app's broader purpose), use 'addTextTool' to log this in the knowledge base.
 - **Retrieve context**: If a task requires more information than the GUI provides, use 'getInformationTool' to fetch relevant insights from the knowledge base.
+
+For reporting:
+- **Mandatory after workflows**: Always call the 'reportTool' after executing any workflow to document the results and status.
+- **User-directed reporting**: In all other cases, only use the 'reportTool' if the user explicitly specifies the intention to document a task's condition or status.
 
 Always be precise in your actions and invoke tools with the current application ID (${appId}) in mind. Take screenshots before acting unless the screen state is certain from the previous step.
   `
@@ -64,6 +71,7 @@ Always be precise in your actions and invoke tools with the current application 
     str_replace_editor: textEditorTool,
     addTextTool,
     getInformationTool,
+    report: reportTool,
     // askForConfirmation: askForConfirmationTool
   };
 
