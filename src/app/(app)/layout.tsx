@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 
-import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
+import { SidebarProvider, SidebarTrigger, SidebarInset } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/app-sidebar"
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner"
@@ -22,16 +22,18 @@ export default function RootLayout({
         <body
           className={`antialiased`}
         >
-          <SidebarProvider>
+          <SidebarProvider className="border-4 border-muted rounded-lg">
             <AppSidebar />
-            <main className="py-1.5 flex flex-1 flex-col w-full h-screen rounded-lg">
-              <div className="flex flex-row px-1 items-center w-full rounded-lg">
-                <SidebarTrigger />
-              </div>
-              <div className="flex-1 w-full rounded-lg overflow-auto">
-                {children}
-              </div>
-            </main>
+            <SidebarInset className="border border-muted rounded-lg p-2 bg-card">
+              <main className="py-1.5 flex flex-1 flex-col w-full h-screen rounded-lg">
+                <div className="flex flex-row px-1 items-center w-full rounded-lg">
+                  <SidebarTrigger />
+                </div>
+                <div className="flex-1 w-full rounded-lg overflow-auto">
+                  {children}
+                </div>
+              </main>
+            </SidebarInset>
             <Toaster />
           </SidebarProvider>
         </body>

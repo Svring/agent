@@ -1,19 +1,18 @@
 import { anthropic } from '@ai-sdk/anthropic';
-import { computerUseTool } from '@/tools/computer-use';
-import { addTextTool } from '@/tools/add-text';
-import { getInformationTool } from '@/tools/get-information';
-import { workflowUseTool } from '@/tools/workflow-use/workflow-use';
-import { bashTool } from '@/tools/bash';
-import { textEditorTool } from '@/tools/text-editor';
-import { reportTool } from '@/tools/report';
-import { askForConfirmationTool } from '@/tools/ask-confirm';
+import { computerUseTool } from '@/tools/general/computer-use';
+import { addTextTool } from '@/tools/general/add-text';
+import { getInformationTool } from '@/tools/general/get-information';
+import { workflowUseTool } from '@/tools/general/workflow-use/workflow-use';
+import { bashTool } from '@/tools/general/bash';
+import { textEditorTool } from '@/tools/general/text-editor';
+import { reportTool } from '@/tools/general/report';
+import { askForConfirmationTool } from '@/tools/general/ask-confirm';
 import { appendResponseMessages, appendClientMessage, streamText, generateObject } from 'ai';
 // import { loadChat, saveChat } from '@/db/actions/Messages';
-import { loadChat, saveChat } from '@/tools/chat-store';
-import { z } from 'zod';
+import { loadChat, saveChat } from '@/tools/general/chat-store';
 
 export async function POST(req: Request) {
-  const { id, messages, model, appId } = await req.json();
+  const { id, messages, appId } = await req.json();
 
   console.log('appId on the route: ' + appId)
 

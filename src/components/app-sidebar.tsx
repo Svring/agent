@@ -57,8 +57,8 @@ import type { Application } from '@/payload-types'
 
 const workspaceChatItems = [
   {
-    title: "Chat",
-    url: "/chat",
+    title: "Opera",
+    url: "/opera",
     icon: MessageCircle,
   },
 ]
@@ -198,7 +198,7 @@ export function AppSidebar() {
   }
 
   return (
-    <Sidebar variant="floating">
+    <Sidebar collapsible="icon" variant="inset">
 
       <SidebarHeader className="pt-4 select-none">
         <div className="space-y-3">
