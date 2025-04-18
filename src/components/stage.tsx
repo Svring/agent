@@ -11,11 +11,6 @@ interface StageProps {
 // Predefined websites that allow iframe embedding
 const ALLOWED_SITES = [
   { name: 'Wikipedia', url: 'https://en.wikipedia.org/wiki/Main_Page' },
-  { name: 'MDN', url: 'https://developer.mozilla.org/en-US/' },
-  { name: 'NASA', url: 'https://www.nasa.gov/' },
-  { name: 'CNN', url: 'https://lite.cnn.com/' },
-  { name: 'Weather.gov', url: 'https://www.weather.gov/' },
-  { name: 'HackerNews', url: 'https://news.ycombinator.com/' },
 ];
 
 const Stage: React.FC<StageProps> = ({ className, initialUrl }) => {

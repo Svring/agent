@@ -120,7 +120,7 @@ server.tool(
       await browserManager.newContext(viewport);
       await browserManager.newPage();
       if (url) {
-        await browserManager.goto(url);
+        await browserManager.goto(url, { waitUntil: 'networkidle' });
       }
       // Perform the mouse action
       switch (action) {

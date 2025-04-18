@@ -26,12 +26,7 @@ export default function RootLayout({
             <AppSidebar />
             <SidebarInset className="border border-muted rounded-lg p-2 bg-card">
               <main className="py-1.5 flex flex-1 flex-col w-full h-screen rounded-lg">
-                <div className="flex flex-row px-1 items-center w-full rounded-lg">
-                  <SidebarTrigger />
-                </div>
-                <div className="flex-1 w-full rounded-lg overflow-auto">
-                  {children}
-                </div>
+                {children}
               </main>
             </SidebarInset>
             <Toaster />
