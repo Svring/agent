@@ -9,7 +9,7 @@ import {
   WorkflowCreateInputSchema,
   WorkflowUpdateInput,
   WorkflowUpdateInputSchema
-} from '../../tools/general/workflow-use/workflow-use-type';
+} from '../../tools/static/workflow-use/workflow-use-type';
 import { z } from 'zod';
 import type { Where } from 'payload'; // Corrected import path for Where
 

@@ -18,10 +18,10 @@ import {
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { deleteChat, createChat, listChats } from '@/tools/general/chat-store';
+import { deleteChat, createChat, listChats } from '@/tools/static/chat-store';
 import { getAllWorkflows, createWorkflow, deleteWorkflow } from '@/db/actions/Workflows';
 import { getApplicationById } from '@/db/actions/Applications';
-import type { Workflow as WorkflowType, DefaultStep } from '@/tools/general/workflow-use/workflow-use-type';
+import type { Workflow as WorkflowType, DefaultStep } from '@/tools/static/workflow-use/workflow-use-type';
 import type { Application } from '@/payload-types';
 
 // Types

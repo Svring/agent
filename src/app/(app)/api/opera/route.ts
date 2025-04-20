@@ -1,18 +1,9 @@
-import { createOpenAI } from '@ai-sdk/openai';
-import { experimental_createMCPClient, streamText } from 'ai';
-import { Experimental_StdioMCPTransport } from 'ai/mcp-stdio';
+import { castingManager } from '@/backstage/casting-manager';
 
 export async function POST(req: Request) {
   const { messages } = await req.json();
 
-  const sealos = createOpenAI({
-    // custom settings, e.g.
-    name: 'sealos',
-    baseURL: process.env.SEALOS_BASE_URL,
-    apiKey: process.env.SEALOS_API_KEY,
-  });
-
-  const model = sealos('qwen-vl-plus-latest');
+  const model = castingManager.getModelFactories().sealosQwen();
 
   const systemPrompt = `
   You are a helpful assistant that can answer questions and help with tasks.
@@ -20,14 +11,8 @@ export async function POST(req: Request) {
   Use the playwright tool for any web automation, navigation, or screenshot requests.
   `;
 
-  const playwrightTransport = new Experimental_StdioMCPTransport({
-    command: 'node',
-    args: ['src/tools/mcp/playwright.mjs'],
-  });
-  const playwrightClient = await experimental_createMCPClient({
-    transport: playwrightTransport,
-  });
-  const playwrightTools = await playwrightClient.tools();
+  // Dynamically load playwright tools
+  const { playwrightTools, playwrightClient } = await castingManager.getPlaywrightTools();
 
   const tools = {
     ...playwrightTools,
@@ -35,17 +20,15 @@ export async function POST(req: Request) {
 
   let result;
   try {
-    result = await streamText({
+    result = await castingManager.cast({
       model,
-      system: systemPrompt,
-      messages,
       tools,
+      systemPrompt,
+      messages,
       maxSteps: 5,
       toolCallStreaming: true,
-      onError({ error }) {
+      onError({ error }: { error: any }) {
         console.error('here is the streamText error from automation api:', JSON.stringify(error, null, 2));
-
-        // Handle error object regardless of its type
         const errorObj = error as Error | Record<string, any>;
         console.error('Error details:', {
           name: typeof errorObj === 'object' && errorObj !== null ? errorObj.name : 'Unknown error',

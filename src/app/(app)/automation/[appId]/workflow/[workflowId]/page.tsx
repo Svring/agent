@@ -28,7 +28,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { getWorkflowById, updateWorkflow, deleteWorkflow } from '@/db/actions/Workflows';
-import type { Workflow, WorkflowStep } from '@/tools/general/workflow-use/workflow-use-type';
+import type { Workflow, WorkflowStep } from '@/tools/static/workflow-use/workflow-use-type';
 
 // Define a simple Badge component since it doesn't exist in the project
 const Badge = ({ 

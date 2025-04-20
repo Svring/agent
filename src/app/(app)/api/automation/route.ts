@@ -1,27 +1,9 @@
-import { anthropic } from '@ai-sdk/anthropic';
-import { computerUseTool } from '@/tools/general/computer-use';
-import { addTextTool } from '@/tools/general/add-text';
-import { getInformationTool } from '@/tools/general/get-information';
-import { workflowUseTool } from '@/tools/general/workflow-use/workflow-use';
-import { bashTool } from '@/tools/general/bash';
-import { textEditorTool } from '@/tools/general/text-editor';
-import { reportTool } from '@/tools/general/report';
-import { askForConfirmationTool } from '@/tools/general/ask-confirm';
-import { appendResponseMessages, appendClientMessage, streamText, generateObject } from 'ai';
-// import { loadChat, saveChat } from '@/db/actions/Messages';
-import { loadChat, saveChat } from '@/tools/general/chat-store';
+import { castingManager } from '@/backstage/casting-manager';
+import { appendResponseMessages } from 'ai';
+import { loadChat, saveChat } from '@/tools/static/chat-store';
 
 export async function POST(req: Request) {
   const { id, messages, appId } = await req.json();
-
-  console.log('appId on the route: ' + appId)
-
-  // const messages = await loadChat(id);
-
-  // const messages = appendClientMessage({
-  //   messages: previousMessages,
-  //   message,
-  // });
 
   const systemPrompt = `
 You are an AI assistant designed to help users by interacting with a computer graphical user interface (GUI) based on their instructions. Your goal is to automate software testing or other GUI-based tasks for the current application (ID: ${appId}).
@@ -62,29 +44,17 @@ For reporting:
 - **User-directed reporting**: In all other cases, only use the 'reportTool' if the user explicitly specifies the intention to document a task's condition or status.
 
 Always be precise in your actions and invoke tools with the current application ID (${appId}) in mind. Take screenshots before acting unless the screen state is certain from the previous step.
-  `
-  const tools = {
-    computer: computerUseTool,
-    workflow: workflowUseTool,
-    bash: bashTool,
-    str_replace_editor: textEditorTool,
-    addTextTool,
-    getInformationTool,
-    report: reportTool,
-    // askForConfirmation: askForConfirmationTool
-  };
+  `;
 
-  const result = streamText({
-    model: anthropic('claude-3-5-sonnet-20241022'),
-    system: systemPrompt,
+  const result = await castingManager.cast({
+    model: castingManager.getModelFactories().anthropicClaude(),
+    tools: castingManager.getStaticTools(),
+    systemPrompt,
     messages,
-    tools: tools,
     maxSteps: 20,
     toolCallStreaming: true,
-    onError({ error }) {
+    onError({ error }: { error: any }) {
       console.error('here is the streamText error from automation api:', JSON.stringify(error, null, 2));
-      
-      // Handle error object regardless of its type
       const errorObj = error as Error | Record<string, any>;
       console.error('Error details:', {
         name: typeof errorObj === 'object' && errorObj !== null ? errorObj.name : 'Unknown error',
@@ -93,7 +63,7 @@ Always be precise in your actions and invoke tools with the current application 
         cause: typeof errorObj === 'object' && errorObj !== null ? errorObj.cause : undefined
       });
     },
-    async onFinish({ response }) {
+    async onFinish({ response }: { response: any }) {
       await saveChat({
         id,
         messages: appendResponseMessages({
