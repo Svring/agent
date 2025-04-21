@@ -2,11 +2,11 @@
 
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AlertCircle, Check, Loader2 } from 'lucide-react'; // Removed unused icons
-import Coordinates from '@/components/coordinates';
+import Coordinates from '@/components/mini-browser';
 import { Badge } from '@/components/ui/badge';
 
 interface PlaywrightTestProps {
@@ -148,77 +148,74 @@ const PlaywrightTestPage: React.FC<PlaywrightTestProps> = ({ className }) => {
 
   return (
     <div className={`space-y-4 ${className || ''}`}>
+      {/* Browser Initialization Card */}
       <Card>
         <CardHeader>
-          <CardTitle>Playwright Test Panel</CardTitle>
+          <div className="flex justify-between items-center">
+            <h3 className="text-base font-semibold">Browser Initialization</h3>
+            <Badge variant={browserStatus === 'ready' ? 'outline' : browserStatus === 'initializing' ? 'secondary' : browserStatus === 'error' ? 'destructive' : 'outline'}>
+              {browserStatus === 'ready' ? 'Ready' : browserStatus === 'initializing' ? 'Initializing...' : browserStatus === 'error' ? 'Error' : 'Not Initialized'}
+              {browserStatus === 'ready' && ` (${viewportWidth} × ${viewportHeight})`}
+            </Badge>
+          </div>
         </CardHeader>
         <CardContent>
-          {/* Browser Controls - No longer using Tabs */}
-          <div className="space-y-6">
-            <div className="space-y-4 border p-4 rounded-md">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-sm font-medium text-muted-foreground">Browser Initialization</h3>
-                <Badge variant={browserStatus === 'ready' ? 'outline' : browserStatus === 'initializing' ? 'secondary' : browserStatus === 'error' ? 'destructive' : 'outline'}>
-                  {browserStatus === 'ready' ? 'Ready' : browserStatus === 'initializing' ? 'Initializing...' : browserStatus === 'error' ? 'Error' : 'Not Initialized'}
-                  {browserStatus === 'ready' && ` (${viewportWidth} × ${viewportHeight})`}
-                </Badge>
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+              <div className="space-y-2 md:col-span-1">
+                <Label>Viewport Preset</Label>
+                <Select
+                  value={selectedPreset}
+                  onValueChange={(value) => handleViewportPresetChange(value as ViewportPresetKey)}
+                  disabled={browserStatus === 'initializing' || browserStatus === 'ready'}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a viewport size" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(VIEWPORT_PRESETS).map(([key, preset]) => (
+                      <SelectItem key={key} value={key}>{preset.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-                <div className="space-y-2 md:col-span-1">
-                  <Label>Viewport Preset</Label>
-                  <Select
-                    value={selectedPreset}
-                    onValueChange={(value) => handleViewportPresetChange(value as ViewportPresetKey)}
-                    disabled={browserStatus === 'initializing' || browserStatus === 'ready'}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select a viewport size" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Object.entries(VIEWPORT_PRESETS).map(([key, preset]) => (
-                        <SelectItem key={key} value={key}>{preset.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="flex gap-2 md:col-span-2 justify-start md:justify-end">
-                  <Button
-                    onClick={handleInitialize}
-                    disabled={browserStatus === 'initializing' || browserStatus === 'ready'}
-                    variant="default"
-                  >
-                    {browserStatus === 'initializing' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    Initialize
-                  </Button>
-                  <Button
-                    onClick={handleCleanup}
-                    disabled={browserStatus === 'not-initialized' || browserStatus === 'initializing'}
-                    variant="outline"
-                  >
-                    Cleanup
-                  </Button>
-                </div>
+              <div className="flex gap-2 md:col-span-2 justify-start md:justify-end">
+                <Button
+                  onClick={handleInitialize}
+                  disabled={browserStatus === 'initializing' || browserStatus === 'ready'}
+                  variant="default"
+                >
+                  {browserStatus === 'initializing' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Initialize
+                </Button>
+                <Button
+                  onClick={handleCleanup}
+                  disabled={browserStatus === 'not-initialized' || browserStatus === 'initializing'}
+                  variant="outline"
+                >
+                  Cleanup
+                </Button>
               </div>
-              {/* Detailed Initialization Status Display */}
-              {initProcessStatus !== 'idle' && (
-                <div className="mt-4 p-3 rounded-md border text-sm flex items-center gap-2" style={{
-                  borderColor: initProcessStatus === 'failed' ? 'hsl(var(--destructive))' : initProcessStatus === 'ready' ? 'hsl(var(--success))' : 'hsl(var(--border))',
-                  backgroundColor: initProcessStatus === 'failed' ? 'hsl(var(--destructive) / 0.1)' : initProcessStatus === 'ready' ? 'hsl(var(--success) / 0.1)' : 'hsl(var(--muted) / 0.3)',
-                  color: initProcessStatus === 'failed' ? 'hsl(var(--destructive))' : initProcessStatus === 'ready' ? 'hsl(var(--success))' : 'hsl(var(--foreground))',
-                }}>
-                  {initProcessStatus === 'initializing' && <><Loader2 className="h-4 w-4 animate-spin" /> Initializing browser...</>}
-                  {initProcessStatus === 'navigating' && <><Loader2 className="h-4 w-4 animate-spin" /> Navigating to Google.com...</>}
-                  {initProcessStatus === 'screenshotting' && <><Loader2 className="h-4 w-4 animate-spin" /> Taking screenshot (waiting 2s)...</>}
-                  {initProcessStatus === 'ready' && <><Check className="h-4 w-4 text-green-600" /> Initialization & Screenshot successful.</>}
-                  {initProcessStatus === 'failed' && <><AlertCircle className="h-4 w-4 text-red-600" /> Process failed. Check API response for details.</>}
-                </div>
-              )}
             </div>
+            {/* Detailed Initialization Status Display */}
+            {initProcessStatus !== 'idle' && (
+              <div className="mt-4 p-3 rounded-md border text-sm flex items-center gap-2" style={{
+                borderColor: initProcessStatus === 'failed' ? 'hsl(var(--destructive))' : initProcessStatus === 'ready' ? 'hsl(var(--success))' : 'hsl(var(--border))',
+                backgroundColor: initProcessStatus === 'failed' ? 'hsl(var(--destructive) / 0.1)' : initProcessStatus === 'ready' ? 'hsl(var(--success) / 0.1)' : 'hsl(var(--muted) / 0.3)',
+                color: initProcessStatus === 'failed' ? 'hsl(var(--destructive))' : initProcessStatus === 'ready' ? 'hsl(var(--success))' : 'hsl(var(--foreground))',
+              }}>
+                {initProcessStatus === 'initializing' && <><Loader2 className="h-4 w-4 animate-spin" /> Initializing browser...</>}
+                {initProcessStatus === 'navigating' && <><Loader2 className="h-4 w-4 animate-spin" /> Navigating to Google.com...</>}
+                {initProcessStatus === 'screenshotting' && <><Loader2 className="h-4 w-4 animate-spin" /> Taking screenshot (waiting 2s)...</>}
+                {initProcessStatus === 'ready' && <><Check className="h-4 w-4 text-green-600" /> Initialization & Screenshot successful.</>}
+                {initProcessStatus === 'failed' && <><AlertCircle className="h-4 w-4 text-red-600" /> Process failed. Check API response for details.</>}
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
 
-      {/* Screenshot Display */}
+      {/* Screenshot Display Card (Coordinates) */}
       {screenshotData && (
         <Coordinates
           screenshotData={screenshotData}

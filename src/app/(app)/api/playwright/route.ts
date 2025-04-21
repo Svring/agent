@@ -12,7 +12,7 @@ interface RequestBody {
   action: 'init' | 'cleanup' | 'goto' | 'screenshot' | 'click' |
   'pressKey' | 'typeText' | 'mouseMove' | 'doubleClick' |
   'mouseDown' | 'mouseUp' | 'cursor_position' |
-  'scroll' | 'drag' | 'getViewportSize' | 'setViewportSize' | 'goBack' | 'goForward'; // Added navigation actions
+  'scroll' | 'drag' | 'getViewportSize' | 'setViewportSize' | 'goBack' | 'goForward' | 'getCookies'; // Added navigation actions
   url?: string;
   x?: number;         // Viewport coordinate
   y?: number;         // Viewport coordinate
@@ -250,6 +250,24 @@ export async function POST(request: NextRequest) {
       case 'cursor_position':
         console.warn('Action cursor_position is not supported by Playwright.');
         return NextResponse.json({ success: false, message: 'Action cursor_position is not supported.' }, { status: 400 });
+
+      case 'getCookies': {
+        const url = requestBody?.url;
+        if (!url) {
+          return NextResponse.json({ success: false, message: 'URL is required for getCookies action.' }, { status: 400 });
+        }
+        const manager = PlaywrightManager.getInstance();
+        const contextId = 'opera';
+        // Log cookies to console
+        await manager.logCookies(contextId, url);
+        // Also return cookies in response
+        const context = manager['contexts'].get(contextId);
+        if (!context) {
+          return NextResponse.json({ success: false, message: `Context ${contextId} does not exist.` }, { status: 400 });
+        }
+        const cookies = await context.cookies(url);
+        return NextResponse.json({ success: true, cookies });
+      }
 
       default:
         console.log(`Invalid action received: ${action}`);

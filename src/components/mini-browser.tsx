@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ArrowLeftCircle, ArrowRight, RefreshCw, ArrowRightCircle, Grid, Eye, EyeOff } from 'lucide-react';
+import { RefreshCw, ArrowRightCircle, Eye, EyeOff, ChevronLeft, ChevronRight, Frame, Cookie } from 'lucide-react';
 
 interface CoordinatesProps {
   screenshotData: string | null;
@@ -205,7 +205,7 @@ const Coordinates: React.FC<CoordinatesProps> = ({ screenshotData, viewportWidth
             size="sm"
             title="Go Back"
           >
-            <ArrowLeftCircle className="h-4 w-4" />
+            <ChevronLeft className="h-4 w-4" />
           </Button>
           <Button
             onClick={async () => await fetch('/api/playwright', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'goForward' }) }).then(() => onRefresh())}
@@ -213,7 +213,30 @@ const Coordinates: React.FC<CoordinatesProps> = ({ screenshotData, viewportWidth
             size="sm"
             title="Go Forward"
           >
-            <ArrowRight className="h-4 w-4" />
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+          <Button
+            onClick={async () => {
+              const response = await fetch('/api/playwright', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  action: 'getCookies',
+                  url: 'https://hzh.sealos.run/?s=bd-sealos-marketing-appstore'
+                })
+              });
+              const data = await response.json();
+              if (data.success) {
+                console.log('Cookies:', data.cookies);
+              } else {
+                console.error('Failed to get cookies:', data.message);
+              }
+            }}
+            variant="outline"
+            size="sm"
+            title="Get Cookies"
+          >
+            <Cookie className="h-4 w-4" />
           </Button>
           <div className="flex-grow max-w-md mx-auto">
             <Input
@@ -253,7 +276,7 @@ const Coordinates: React.FC<CoordinatesProps> = ({ screenshotData, viewportWidth
         <div 
           ref={interactionDivRef}
           tabIndex={0}
-          className="relative border rounded-md inline-block focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+          className="relative border rounded-md inline-block focus:outline-2 focus:outline-offset-2 focus:outline-white/75"
           onMouseMove={handleMouseMove}
           onMouseLeave={handleMouseLeave}
           onClick={handleClick}
@@ -268,84 +291,86 @@ const Coordinates: React.FC<CoordinatesProps> = ({ screenshotData, viewportWidth
             className="w-full rounded-md"
             style={{ height: 'auto' }}
           />
-          {/* Overlay for resolution */}
-          <div className="absolute top-2 right-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">
-            {viewportWidth} × {viewportHeight}
-          </div>
-          {/* Overlay for cursor coordinates */}
-          {cursorPosition && (
-            <div className="absolute top-2 left-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">
-              X: {cursorPosition.x}px, Y: {cursorPosition.y}px
-            </div>
-          )}
-          {/* Overlay for refreshing indicator */}
-          {isRefreshing && (
-            <div className="absolute top-2 left-40 bg-blue-500 bg-opacity-70 text-white text-xs px-2 py-1 rounded animate-pulse">
-              Refreshing...
-            </div>
-          )}
-          {/* Conditionally render SVG for drawing axes */}
+          {/* Conditionally render overlays and SVG for drawing axes */}
           {showAxes && (
-            <svg
-              className="absolute inset-0"
-              style={{ width: '100%', height: '100%' }}
-              pointerEvents="none"
-              viewBox={`0 0 ${imageDimensions.width} ${imageDimensions.height}`}
-              preserveAspectRatio="none"
-            >
-              {/* X-axis lines */}
-              {widthPoints.map((x, index) => (
-                <line
-                  key={`x-${index}`}
-                  x1={x}
-                  y1={0}
-                  x2={x}
-                  y2={imageDimensions.height}
-                  stroke="rgba(255, 0, 0, 0.3)"
-                  strokeWidth="1"
-                  strokeDasharray="5,5"
-                />
-              ))}
-              {/* Y-axis lines */}
-              {heightPoints.map((y, index) => (
-                <line
-                  key={`y-${index}`}
-                  x1={0}
-                  y1={y}
-                  x2={imageDimensions.width}
-                  y2={y}
-                  stroke="rgba(0, 0, 255, 0.3)"
-                  strokeWidth="1"
-                  strokeDasharray="5,5"
-                />
-              ))}
-              {/* Labels for X-axis */}
-              {widthPoints.map((x, index) => (
-                <text
-                  key={`x-label-${index}`}
-                  x={x}
-                  y={imageDimensions.height - 5}
-                  fill="rgba(255, 0, 0, 0.8)"
-                  fontSize="10"
-                  textAnchor="middle"
-                >
-                  {Math.round(x).toFixed(0)}px
-                </text>
-              ))}
-              {/* Labels for Y-axis */}
-              {heightPoints.map((y, index) => (
-                <text
-                  key={`y-label-${index}`}
-                  x={5}
-                  y={y + 3}
-                  fill="rgba(0, 0, 255, 0.8)"
-                  fontSize="10"
-                  textAnchor="start"
-                >
-                  {Math.round(y).toFixed(0)}px
-                </text>
-              ))}
-            </svg>
+            <>
+              {/* Overlay for resolution */}
+              <div className="absolute top-2 right-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">
+                {viewportWidth} × {viewportHeight}
+              </div>
+              {/* Overlay for cursor coordinates */}
+              {cursorPosition && (
+                <div className="absolute top-2 left-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">
+                  X: {cursorPosition.x}px, Y: {cursorPosition.y}px
+                </div>
+              )}
+              {/* Overlay for refreshing indicator */}
+              {isRefreshing && (
+                <div className="absolute top-2 left-40 bg-blue-500 bg-opacity-70 text-white text-xs px-2 py-1 rounded animate-pulse">
+                  Refreshing...
+                </div>
+              )}
+              <svg
+                className="absolute inset-0"
+                style={{ width: '100%', height: '100%' }}
+                pointerEvents="none"
+                viewBox={`0 0 ${imageDimensions.width} ${imageDimensions.height}`}
+                preserveAspectRatio="none"
+              >
+                {/* X-axis lines */}
+                {widthPoints.map((x, index) => (
+                  <line
+                    key={`x-${index}`}
+                    x1={x}
+                    y1={0}
+                    x2={x}
+                    y2={imageDimensions.height}
+                    stroke="rgba(255, 0, 0, 0.3)"
+                    strokeWidth="1"
+                    strokeDasharray="5,5"
+                  />
+                ))}
+                {/* Y-axis lines */}
+                {heightPoints.map((y, index) => (
+                  <line
+                    key={`y-${index}`}
+                    x1={0}
+                    y1={y}
+                    x2={imageDimensions.width}
+                    y2={y}
+                    stroke="rgba(0, 0, 255, 0.3)"
+                    strokeWidth="1"
+                    strokeDasharray="5,5"
+                  />
+                ))}
+                {/* Labels for X-axis */}
+                {widthPoints.map((x, index) => (
+                  <text
+                    key={`x-label-${index}`}
+                    x={x}
+                    y={imageDimensions.height - 5}
+                    fill="rgba(255, 0, 0, 0.8)"
+                    fontSize="10"
+                    textAnchor="middle"
+                  >
+                    {Math.round(x).toFixed(0)}px
+                  </text>
+                ))}
+                {/* Labels for Y-axis */}
+                {heightPoints.map((y, index) => (
+                  <text
+                    key={`y-label-${index}`}
+                    x={5}
+                    y={y + 3}
+                    fill="rgba(0, 0, 255, 0.8)"
+                    fontSize="10"
+                    textAnchor="start"
+                  >
+                    {Math.round(y).toFixed(0)}px
+                  </text>
+                ))}
+              </svg>
+            </>
           )}
         </div>
       </CardContent>

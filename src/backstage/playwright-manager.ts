@@ -294,4 +294,17 @@ export class PlaywrightManager {
   public isBrowserInitialized(): boolean {
     return this.browser !== null;
   }
+
+  /**
+   * Log cookies for a given context and URL
+   */
+  public async logCookies(contextId: string = 'default', url: string): Promise<void> {
+    const context = this.contexts.get(contextId);
+    if (!context) {
+      console.warn(`Context with id ${contextId} does not exist.`);
+      return;
+    }
+    const cookies = await context.cookies(url);
+    console.log(`Cookies for context '${contextId}' at '${url}':`, cookies);
+  }
 }
