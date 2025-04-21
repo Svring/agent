@@ -1,6 +1,6 @@
 // Central registry for models and tools, now as a class manager
 
-import { anthropic } from '@ai-sdk/anthropic';
+import { anthropic, createAnthropic } from '@ai-sdk/anthropic';
 import { createOpenAI } from '@ai-sdk/openai';
 import { computerUseTool } from '@/tools/static/computer-use';
 import { addTextTool } from '@/tools/static/add-text';
@@ -17,6 +17,7 @@ import { streamText } from 'ai';
 // --- Model Factories ---
 const modelFactories = {
   anthropicClaude: (modelName = 'claude-3-5-sonnet-20241022') => anthropic(modelName),
+
   sealosQwen: (modelName = 'qwen-vl-plus-latest') => {
     const sealos = createOpenAI({
       name: 'sealos',
@@ -25,7 +26,14 @@ const modelFactories = {
     });
     return sealos(modelName);
   },
-  // Add more model factories here as needed
+
+  claudeProxy: (modelName = 'claude-3-5-sonnet-20241022') => {
+    const claudeProxy = createAnthropic({
+      baseURL: process.env.CLAUDE_PROXY_BASE_URL,
+      apiKey: process.env.CLAUDE_PROXY_API_KEY,
+    });
+    return claudeProxy(modelName);
+  },
 };
 
 // --- Tool Registry ---

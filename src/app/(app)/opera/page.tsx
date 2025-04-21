@@ -8,6 +8,8 @@ import Stage from '@/components/stage';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
 import { AlertTriangle } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
+import { ArrowUp, Paperclip } from 'lucide-react';
 
 import {
   ResizableHandle,
@@ -25,6 +27,8 @@ export default function Opera() {
   const [expandedResults, setExpandedResults] = useState<Record<string, boolean>>({});
   const [browserStatus, setBrowserStatus] = useState<'initializing' | 'running' | 'error' | 'not-started'>('not-started');
   const messagesEndRef = useRef(null);
+  const [files, setFiles] = useState<FileList | undefined>(undefined);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const toggleOpen = (key: string) => {
     setOpenStates(prev => ({ ...prev, [key]: !prev[key] }));
@@ -131,19 +135,9 @@ export default function Opera() {
       {/* Left sidebar - resizable, defaulting to 30% */}
       <ResizablePanel defaultSize={30} minSize={20} maxSize={50}>
         <div className="h-full flex flex-col p-2">
-          <div className="flex flex-row px-1 items-center w-full rounded-lg justify-between">
+          <div className="flex flex-row px-1 items-center w-full rounded-lg">
             <SidebarTrigger />
-            <Button
-              size="sm"
-              variant={browserStatus === 'running' ? "outline" : "destructive"}
-              onClick={handleBrowserStatusClick}
-              disabled={browserStatus === 'initializing'} // Disable button while initializing
-            >
-              Browser: {browserStatus === 'running' ? 'Active' :
-                browserStatus === 'initializing' ? 'Starting...' :
-                  browserStatus === 'error' ? 'Error' :
-                    'Inactive'}
-            </Button>
+            <p className="flex-1 text-lg font-serif text-center"> Opera </p>
           </div>
           <ScrollArea className="flex-1 h-[calc(100vh-120px)]">
             <div className="space-y-4 pr-2">
@@ -160,14 +154,50 @@ export default function Opera() {
               <div ref={messagesEndRef} />
             </div>
           </ScrollArea>
-          <form onSubmit={handleSubmit} className="flex gap-2 mt-2">
-            <input
-              className="w-full p-2 rounded-full border border-gray-300"
-              value={input}
-              placeholder="Type a message..."
-              onChange={handleInputChange}
-            />
-          </form>
+          {/* Modern chat input area */}
+          <footer className="pt-2">
+            <div className="flex w-full flex-col rounded-3xl border bg-secondary shadow-sm">
+              <form onSubmit={handleSubmit} className="flex w-full items-center p-2 pr-3">
+                <Textarea
+                  className="flex-1 resize-none border-0 px-2 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 rounded-2xl"
+                  placeholder="Type a message..."
+                  value={input}
+                  onChange={handleInputChange}
+                  rows={1}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSubmit(e);
+                    }
+                  }}
+                />
+              </form>
+              <div className="flex items-center gap-1 p-2">
+                <Button variant="ghost" size="icon" className="flex-shrink-0 relative">
+                  <input
+                    type="file"
+                    multiple
+                    onChange={(e) => setFiles(e.target.files || undefined)}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                    ref={fileInputRef}
+                  />
+                  <Paperclip className="h-4 w-4" />
+                </Button>
+                <Button
+                  size="icon"
+                  className="ml-auto flex-shrink-0 rounded-full"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    if (input.trim()) {
+                      handleSubmit(e);
+                    }
+                  }}
+                >
+                  <ArrowUp className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </footer>
         </div>
       </ResizablePanel>
 
@@ -177,7 +207,7 @@ export default function Opera() {
       <ResizablePanel defaultSize={70}>
         <div className="h-full p-2">
            {browserStatus === 'running' ? (
-             <Stage className="h-full w-full" />
+             <Stage className="h-full w-full" autoInitializeBrowser={false} />
            ) : browserStatus === 'initializing' ? (
              <div className="h-full w-full flex items-center justify-center bg-muted rounded-lg">
                 <div className="animate-spin h-8 w-8 border-4 border-primary rounded-full border-t-transparent"></div>

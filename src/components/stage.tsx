@@ -1,27 +1,38 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { RefreshCw, ExternalLink, AlertTriangle, Play, Image as ImageIcon, MousePointerClick, Eye } from 'lucide-react';
+import { RefreshCw, Theater, TvMinimal, Play, Image as ImageIcon, MousePointerClick, Eye, EyeOff } from 'lucide-react';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import InteractiveScreenshot from './interactive-screenshot';
+import InteractiveScreenshot from './curtain';
 
 interface StageProps {
   className?: string;
   initialUrl?: string;
+  initialViewport?: { width: number; height: number };
+  autoInitializeBrowser?: boolean; // Whether this component should initialize the browser
 }
 
-// Predefined websites that allow iframe embedding
-const ALLOWED_SITES = [
-  { name: 'Wikipedia', url: 'https://en.wikipedia.org/wiki/Main_Page' },
-];
+const DEFAULT_PERFORMANCE_URL = 'https://en.wikipedia.org/wiki/Main_Page';
+const DEFAULT_BACKSTAGE_URL = '';
+const DEFAULT_VIEWPORT = { width: 1024, height: 768 };
 
-const Stage: React.FC<StageProps> = ({ className, initialUrl }) => {
-  // State for Browser Tab
-  const [url, setUrl] = useState('');
+const Stage: React.FC<StageProps> = ({ 
+  className, 
+  initialUrl,
+  initialViewport = DEFAULT_VIEWPORT,
+  autoInitializeBrowser = true // Default to true for standalone usage
+}) => {
+  // View state: 'performance' or 'backstage'
+  const [view, setView] = useState<'performance' | 'backstage'>('performance');
+  // URL states
+  const [performanceUrl, setPerformanceUrl] = useState(initialUrl || DEFAULT_PERFORMANCE_URL);
+  const [backstageUrl, setBackstageUrl] = useState(DEFAULT_BACKSTAGE_URL);
+  // Iframe loading state
   const [isLoading, setIsLoading] = useState(false);
   const [iframeError, setIframeError] = useState(false);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
 
   // State for Test API Tab
   const [testUrl, setTestUrl] = useState('https://www.google.com');
@@ -31,41 +42,131 @@ const Stage: React.FC<StageProps> = ({ className, initialUrl }) => {
   const [isTesting, setIsTesting] = useState(false);
   const [screenshotData, setScreenshotData] = useState<string | null>(null);
 
+  // State for Backstage
+  const [backstageLoading, setBackstageLoading] = useState(false);
+  const [backstageError, setBackstageError] = useState<string | null>(null);
+  const [browserInitialized, setBrowserInitialized] = useState(false);
+
+  // Initialize browser on component mount only if autoInitializeBrowser is true
   useEffect(() => {
-    // If initialUrl is one of our allowed sites, use it for the iframe
-    if (initialUrl) {
-      const matchedSite = ALLOWED_SITES.find(site => site.url === initialUrl);
-      if (matchedSite) {
-        handleNavigate(matchedSite.url);
-      }
-    }
-  }, [initialUrl]);
-
-  // --- Browser Tab Logic ---
-  const handleNavigate = (siteUrl: string) => {
-    if (!siteUrl) return;
+    if (!autoInitializeBrowser) return; // Skip initialization if prop is false
     
-    setIsLoading(true);
-    setIframeError(false);
-    setUrl(siteUrl);
-  };
+    const initBrowser = async () => {
+      try {
+        setBackstageLoading(true);
+        const response = await fetch('/api/playwright', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            action: 'init',
+            width: initialViewport.width,
+            height: initialViewport.height
+          }),
+        });
+        
+        const result = await response.json();
+        if (response.ok && result.success) {
+          console.log('Browser initialized with viewport:', result.viewport);
+          setBrowserInitialized(true);
+          
+          // Navigate to initial URL if in backstage view
+          if (view === 'backstage' && initialUrl) {
+            await fetch('/api/playwright', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ 
+                action: 'goto',
+                url: initialUrl,
+                width: initialViewport.width,
+                height: initialViewport.height
+              }),
+            });
+          }
+        } else {
+          console.error('Browser initialization failed:', result.message);
+          setBackstageError(result.message || 'Failed to initialize browser');
+        }
+      } catch (err: any) {
+        console.error('Browser initialization error:', err);
+        setBackstageError(err.message || 'Failed to initialize browser');
+      } finally {
+        setBackstageLoading(false);
+      }
+    };
+    
+    initBrowser();
+    
+    // Cleanup on unmount - only if we initialized the browser
+    return () => {
+      if (!autoInitializeBrowser) return; // Skip cleanup if we didn't initialize
+      
+      // Close browser context
+      fetch('/api/playwright', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'cleanup' }),
+      }).catch(err => console.error('Error cleaning up browser:', err));
+    };
+  }, [initialViewport, view, initialUrl, autoInitializeBrowser]);
 
+  // Handlers for performance view
+  const handlePerformanceUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setPerformanceUrl(e.target.value);
+  };
+  const handlePerformanceUrlSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setIframeError(false);
+    setIsLoading(true);
+    // Force reload by resetting src
+    if (iframeRef.current) {
+      iframeRef.current.src = performanceUrl;
+    }
+  };
   const handleRefresh = () => {
-    if (!url) return;
-    setIsLoading(true);
     setIframeError(false);
-    const currentUrl = url;
-    setUrl('');
-    setTimeout(() => setUrl(currentUrl), 100);
+    setIsLoading(true);
+    if (iframeRef.current) {
+      iframeRef.current.src = performanceUrl;
+    }
   };
-
-  const handleIframeLoad = () => {
-    setIsLoading(false);
-  };
-
+  const handleIframeLoad = () => setIsLoading(false);
   const handleIframeError = () => {
     setIframeError(true);
     setIsLoading(false);
+  };
+
+  // Handlers for backstage view
+  const handleBackstageUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setBackstageUrl(e.target.value);
+  };
+  const handleBackstageUrlSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBackstageLoading(true);
+    setBackstageError(null);
+    let urlToGo = backstageUrl.trim();
+    if (urlToGo && !/^https?:\/\//i.test(urlToGo)) {
+      urlToGo = 'https://' + urlToGo;
+    }
+    try {
+      const response = await fetch('/api/playwright', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          action: 'goto', 
+          url: urlToGo,
+          width: initialViewport.width,
+          height: initialViewport.height
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.message || 'Failed to navigate to URL');
+      }
+    } catch (err: any) {
+      setBackstageError(err.message || 'Navigation failed.');
+    } finally {
+      setBackstageLoading(false);
+    }
   };
 
   // --- Test API Tab Logic ---
@@ -95,7 +196,12 @@ const Stage: React.FC<StageProps> = ({ className, initialUrl }) => {
   };
 
   const handleTestGoto = () => {
-    callPlaywrightApi({ action: 'goto', url: testUrl });
+    callPlaywrightApi({ 
+      action: 'goto', 
+      url: testUrl,
+      width: initialViewport.width,
+      height: initialViewport.height
+    });
   };
 
   const handleTestClick = () => {
@@ -112,164 +218,120 @@ const Stage: React.FC<StageProps> = ({ className, initialUrl }) => {
     callPlaywrightApi({ action: 'screenshot' });
   };
 
-  return (
-    <div className={`flex flex-col bg-muted rounded-lg ${className}`}>
-      <Tabs defaultValue="browser" className="flex flex-col h-full">
-        <TabsList className="m-2">
-          <TabsTrigger value="browser">Browser</TabsTrigger>
-          <TabsTrigger value="test-api">Test API</TabsTrigger>
-          <TabsTrigger value="interactive">Interactive View</TabsTrigger>
-        </TabsList>
+  // Handle view switching
+  const handleSwitchToBackstage = () => {
+    setView('backstage');
+    // Initialize browser if not already done and we're responsible for initialization
+    if (!browserInitialized && autoInitializeBrowser) {
+      fetch('/api/playwright', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          action: 'init',
+          width: initialViewport.width,
+          height: initialViewport.height
+        }),
+      }).then(res => res.json())
+        .then(data => {
+          if (data.success) {
+            setBrowserInitialized(true);
+          }
+        })
+        .catch(err => console.error('Error initializing browser:', err));
+    }
+  };
 
-        {/* Browser Tab Content */}
-        <TabsContent value="browser" className="flex-1 flex flex-col mt-0">
-          <div className="p-2 border-b">
-            <div className="flex items-center gap-2 flex-wrap">
-              {ALLOWED_SITES.map((site) => (
-                <Button
-                  key={site.name}
-                  variant={url === site.url ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => handleNavigate(site.url)}
-                  className="min-w-20"
-                >
-                  {site.name}
-                </Button>
-              ))}
-              
-              <div className="ml-auto flex items-center gap-2">
-                <Button 
-                  variant="outline" 
-                  size="icon" 
-                  onClick={handleRefresh}
-                  disabled={!url}
-                >
-                  <RefreshCw className="h-4 w-4" />
-                </Button>
-                
-                {url && (
-                  <Button 
-                    variant="outline" 
-                    size="icon" 
-                    onClick={() => window.open(url, '_blank')}
-                    title="Open in new tab"
-                  >
-                    <ExternalLink className="h-4 w-4" />
-                  </Button>
-                )}
-              </div>
-            </div>
-          </div>
-      
-          <div className="flex-1 relative">
+  return (
+    <div className={`flex flex-col bg-muted rounded-lg h-full ${className || ''}`}>
+      {/* Top input and controls */}
+      <div className="flex items-center justify-center gap-2 p-3 border-b bg-background">
+        {view === 'performance' ? (
+          <form onSubmit={handlePerformanceUrlSubmit} className="flex items-center gap-2 flex-1 max-w-2xl mx-auto">
+            <input
+              type="text"
+              className="flex-1 px-3 py-2 rounded-lg border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary"
+              value={performanceUrl}
+              onChange={handlePerformanceUrlChange}
+              placeholder="Enter a URL to display"
+            />
+            <Button type="button" variant="outline" size="icon" onClick={handleRefresh} title="Refresh" disabled={isLoading}>
+              <RefreshCw className="h-5 w-5" />
+            </Button>
+            <Button type="button" variant="outline" size="icon" onClick={handleSwitchToBackstage} title="Switch to Backstage">
+              <Theater className="h-5 w-5" />
+            </Button>
+          </form>
+        ) : (
+          <form onSubmit={handleBackstageUrlSubmit} className="flex items-center gap-2 flex-1 max-w-2xl mx-auto">
+            <input
+              type="text"
+              className="flex-1 px-3 py-2 rounded-lg border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary"
+              value={backstageUrl}
+              onChange={handleBackstageUrlChange}
+              placeholder="Backstage URL (for future use)"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  handleBackstageUrlSubmit(e);
+                }
+              }}
+              disabled={backstageLoading}
+            />
+            <Button type="submit" variant="outline" size="icon" disabled={backstageLoading} title="Go to URL">
+              <RefreshCw className={`h-5 w-5 ${backstageLoading ? 'animate-spin' : ''}`} />
+            </Button>
+            <Button type="button" variant="outline" size="icon" onClick={() => setView('performance')} title="Switch to Performance">
+              <TvMinimal className="h-5 w-5" />
+            </Button>
+          </form>
+        )}
+      </div>
+
+      {/* Main content area */}
+      <div className="flex-1 relative">
+        {view === 'performance' ? (
+          <>
             {isLoading && (
               <div className="absolute inset-0 flex items-center justify-center bg-muted/80 z-10">
                 <div className="animate-spin h-8 w-8 border-4 border-primary rounded-full border-t-transparent"></div>
               </div>
             )}
-            
-            {url ? (
-              <>
-                <iframe 
-                  src={url}
-                  className="w-full h-full border-0"
-                  onLoad={handleIframeLoad}
-                  onError={handleIframeError}
-                  sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
-                  referrerPolicy="no-referrer"
-                  style={{ display: iframeError ? 'none' : 'block' }}
-                />
-                
-                {iframeError && !isLoading && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-muted">
-                    <Alert className="max-w-md">
-                      <AlertTriangle className="h-4 w-4" />
-                      <AlertTitle>Unable to display this website</AlertTitle>
-                      <AlertDescription>
-                        <p className="mb-2">This site appears to block being displayed in embedded frames.</p>
-                        <Button 
-                          onClick={() => window.open(url, '_blank')}
-                          className="mt-2"
-                        >
-                          Open in New Tab <ExternalLink className="ml-2 h-4 w-4" />
-                        </Button>
-                      </AlertDescription>
-                    </Alert>
-                  </div>
-                )}
-              </>
-            ) : (
-              <div className="flex items-center justify-center h-full">
+            <iframe
+              ref={iframeRef}
+              src={performanceUrl}
+              className="w-full h-full border-0 rounded-b-lg"
+              onLoad={handleIframeLoad}
+              onError={handleIframeError}
+              sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
+              referrerPolicy="no-referrer"
+              style={{ display: iframeError ? 'none' : 'block' }}
+            />
+            {iframeError && !isLoading && (
+              <div className="absolute inset-0 flex items-center justify-center bg-muted">
                 <div className="text-center">
-                  <h2 className="text-xl font-semibold mb-2">Web Browser</h2>
-                  <p className="text-muted-foreground mb-4">Select a website from the options above</p>
+                  <div className="flex flex-col items-center">
+                    <span className="text-destructive mb-2">Could not display this website.</span>
+                    <Button onClick={handleRefresh} variant="outline">Try Again</Button>
+                  </div>
                 </div>
               </div>
             )}
+          </>
+        ) : (
+          <div className="w-full h-full">
+            <InteractiveScreenshot 
+              className="w-full h-full" 
+              refreshInterval={10000} 
+              initialViewport={initialViewport}
+              autoInitialize={autoInitializeBrowser}
+            />
           </div>
-        </TabsContent>
+        )}
+      </div>
 
-        {/* Test API Tab Content */}
-        <TabsContent value="test-api" className="flex-1 flex flex-col mt-0 p-4 space-y-4 overflow-auto">
-            <h3 className="text-lg font-semibold">Playwright API Test</h3>
-            
-            {/* Go To Action */}
-            <div className="flex items-end gap-2">
-                <div className="flex-grow">
-                    <Label htmlFor="test-url">URL</Label>
-                    <Input id="test-url" value={testUrl} onChange={(e) => setTestUrl(e.target.value)} placeholder="https://example.com" />
-                </div>
-                <Button onClick={handleTestGoto} disabled={isTesting || !testUrl}><Play className="mr-2 h-4 w-4" /> Go To</Button>
-            </div>
-
-            {/* Click Action */}
-            <div className="flex items-end gap-2">
-                <div className="w-24">
-                    <Label htmlFor="click-x">X Coord</Label>
-                    <Input id="click-x" type="number" value={clickX} onChange={(e) => setClickX(e.target.value)} placeholder="100" />
-                </div>
-                 <div className="w-24">
-                    <Label htmlFor="click-y">Y Coord</Label>
-                    <Input id="click-y" type="number" value={clickY} onChange={(e) => setClickY(e.target.value)} placeholder="100" />
-                </div>
-                <Button onClick={handleTestClick} disabled={isTesting}><MousePointerClick className="mr-2 h-4 w-4" /> Click</Button>
-            </div>
-
-            {/* Screenshot Action */}
-            <div>
-                <Button onClick={handleTestScreenshot} disabled={isTesting}><ImageIcon className="mr-2 h-4 w-4" /> Take Screenshot</Button>
-            </div>
-
-            {/* API Result Area */}
-            <div className="flex-1 border rounded-md p-3 bg-background min-h-[150px]">
-                <h4 className="font-semibold mb-2">API Result:</h4>
-                {isTesting && (
-                    <div className="flex items-center text-muted-foreground">
-                        <div className="animate-spin h-4 w-4 border-2 border-primary rounded-full border-t-transparent mr-2"></div>
-                        Loading...
-                    </div>
-                )}
-                {apiResult && (
-                    <pre className={`text-sm p-2 rounded ${apiResult.success ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                        {JSON.stringify(apiResult, null, 2)}
-                    </pre>
-                )}
-                {screenshotData && (
-                    <div className="mt-4 border-t pt-4">
-                        <h5 className="font-semibold mb-2">Screenshot Preview:</h5>
-                        <img src={screenshotData} alt="API Screenshot" className="max-w-full h-auto border rounded" />
-                    </div>
-                )}
-                {!isTesting && !apiResult && <p className="text-sm text-muted-foreground">Perform an action to see the result.</p>}
-            </div>
-        </TabsContent>
-
-        {/* Interactive View Tab Content */}
-        <TabsContent value="interactive" className="flex-1 mt-0 p-0">
-            <InteractiveScreenshot className="w-full h-full" refreshInterval={10000} />
-        </TabsContent>
-
-      </Tabs>
+      {/* Backstage Error Message */}
+      {backstageError && (
+        <div className="text-destructive text-sm text-center mt-1">{backstageError}</div>
+      )}
     </div>
   );
 };

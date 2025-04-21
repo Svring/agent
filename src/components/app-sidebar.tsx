@@ -3,7 +3,8 @@
 import {
   ChevronDown, Settings, Moon, Sun, Eye,
   SquareMousePointer, Gauge, Bird, MessageCircle, Book,
-  TriangleDashed, Sparkle, Plus, Loader2
+  TriangleDashed, Sparkle, Plus, Loader2,
+  Globe
 } from "lucide-react"
 import Link from "next/link"
 import { listApplications, createApplication } from '@/db/actions/Applications';
@@ -61,6 +62,11 @@ const workspaceChatItems = [
     url: "/opera",
     icon: MessageCircle,
   },
+  {
+    title: "Playwright",
+    url: "/playwright",
+    icon: Globe,
+  }
 ]
 
 const servicesItems = [
@@ -230,47 +236,6 @@ export function AppSidebar() {
                             onClick={() => {
                               setSelectedProvider(provider.providerName);
                               setSelectedLLMModel(model.name);
-                            }}
-                            className="text-sm"
-                          >
-                            <span className="truncate">{model.name}</span>
-                          </DropdownMenuItem>
-                        ))
-                      }
-                    </div>
-                  ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-
-          <div>
-            <label className="text-xs text-muted-foreground mb-1 ml-1 flex items-center gap-1">
-              <TriangleDashed className="h-3.5 w-3.5" />
-              Embedding Model
-            </label>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <SidebarMenuButton className="w-full justify-between text-sm cursor-pointer">
-                  <span className="truncate">{selectedEmbeddingModel || "Select Model"}</span>
-                  <ChevronDown className="h-4 w-4 opacity-70" />
-                </SidebarMenuButton>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-[220px] max-h-[300px] overflow-y-auto">
-                {Object.values(providers)
-                  .filter(provider => provider.models.some(model => model.category === 'embedding'))
-                  .map(provider => (
-                    <div key={provider.providerName}>
-                      <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
-                        {provider.providerName.toUpperCase()}
-                      </div>
-                      {provider.models
-                        .filter(model => model.category === 'embedding')
-                        .map(model => (
-                          <DropdownMenuItem
-                            key={`${provider.providerName}-${model.name}`}
-                            onClick={() => {
-                              setSelectedProvider(provider.providerName);
-                              setSelectedEmbeddingModel(model.name);
                             }}
                             className="text-sm"
                           >

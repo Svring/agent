@@ -24,7 +24,7 @@ export default function RootLayout({
         >
           <SidebarProvider className="border-4 border-muted rounded-lg">
             <AppSidebar />
-            <SidebarInset className="border border-muted rounded-lg p-2 bg-card">
+            <SidebarInset className="border border-muted rounded-lg bg-transparent">
               <main className="py-1.5 flex flex-1 flex-col w-full h-screen rounded-lg">
                 {children}
               </main>

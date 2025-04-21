@@ -9,6 +9,7 @@ export class PlaywrightManager {
   private browser: Browser | null = null;
   private contexts: Map<string, BrowserContext> = new Map();
   private pages: Map<string, Page> = new Map();
+  private viewportSizes: Map<string, { width: number, height: number }> = new Map();
 
   private constructor() { }
 
@@ -47,15 +48,18 @@ export class PlaywrightManager {
       await this.closeContext(id);
     }
 
+    const width = options.width || 1024;
+    const height = options.height || 768;
+
     const context = await browser.newContext({
-      viewport: {
-        width: options.width || 1024,
-        height: options.height || 768
-      }
+      viewport: { width, height }
     });
 
     this.contexts.set(id, context);
-    console.log(`Context created with id: ${id}`);
+    // Store the viewport size for this context
+    this.viewportSizes.set(id, { width, height });
+    
+    console.log(`Context created with id: ${id}, viewport: ${width}x${height}`);
     return context;
   }
 
@@ -69,6 +73,19 @@ export class PlaywrightManager {
     if (!this.contexts.has(id)) {
       return this.createContext(id, options);
     }
+    
+    // If the viewport size is different, recreate the context
+    const existingSize = this.viewportSizes.get(id);
+    const requestedWidth = options.width || 1024;
+    const requestedHeight = options.height || 768;
+    
+    if (existingSize && 
+        (existingSize.width !== requestedWidth || 
+         existingSize.height !== requestedHeight)) {
+      console.log(`Viewport size change requested for context ${id}. Recreating context.`);
+      return this.createContext(id, options);
+    }
+    
     return this.contexts.get(id)!;
   }
 
@@ -101,10 +118,23 @@ export class PlaywrightManager {
     pageId = 'default',
     options: { width?: number; height?: number } = {}
   ): Promise<Page> {
+    // If we have viewport size options, make sure the context has that size
+    if (options.width || options.height) {
+      await this.getContext(contextId, options);
+    }
+    
     if (!this.pages.has(pageId)) {
       return this.createPage(contextId, pageId, options);
     }
     return this.pages.get(pageId)!;
+  }
+
+  /**
+   * Get the current viewport size for a context
+   */
+  public getViewportSize(contextId = 'default'): { width: number, height: number } {
+    const size = this.viewportSizes.get(contextId);
+    return size || { width: 1024, height: 768 }; // Default size if not set
   }
 
   /**
@@ -135,6 +165,7 @@ export class PlaywrightManager {
       // Close the context
       await this.contexts.get(contextId)!.close();
       this.contexts.delete(contextId);
+      this.viewportSizes.delete(contextId);
       console.log(`Context closed: ${contextId}`);
     }
   }
@@ -151,6 +182,7 @@ export class PlaywrightManager {
 
       await this.browser.close();
       this.browser = null;
+      this.viewportSizes.clear();
       console.log('Browser closed');
     }
   }
@@ -175,7 +207,10 @@ export class PlaywrightManager {
     options: { waitUntil?: 'load' | 'domcontentloaded' | 'networkidle' | 'commit' } = {}
   ): Promise<void> {
     const page = await this.getPage('default', pageId);
-    await page.goto(url, { waitUntil: options.waitUntil || 'networkidle' });
+    // Add https:// prefix if not present
+    const formattedUrl = url.startsWith('http://') || url.startsWith('https://') ? url : `https://${url}`;
+    await page.goto(formattedUrl, { waitUntil: options.waitUntil || 'networkidle' });
+    console.log(`Navigated to ${formattedUrl}`);
   }
 
   /**
@@ -236,6 +271,24 @@ export class PlaywrightManager {
     const page = await this.getPage('default', pageId);
     await page.mouse.wheel(deltaX, deltaY);
     console.log(`Scrolled by (${deltaX}, ${deltaY}) on page ${pageId}`);
+  }
+
+  /**
+   * Navigate back to the previous page in history
+   */
+  public async goBack(pageId = 'default', options: { waitUntil?: 'load' | 'domcontentloaded' | 'networkidle' | 'commit' } = {}): Promise<void> {
+    const page = await this.getPage('default', pageId);
+    await page.goBack({ waitUntil: options.waitUntil || 'networkidle' });
+    console.log(`Navigated back on page ${pageId}`);
+  }
+
+  /**
+   * Navigate forward to the next page in history
+   */
+  public async goForward(pageId = 'default', options: { waitUntil?: 'load' | 'domcontentloaded' | 'networkidle' | 'commit' } = {}): Promise<void> {
+    const page = await this.getPage('default', pageId);
+    await page.goForward({ waitUntil: options.waitUntil || 'networkidle' });
+    console.log(`Navigated forward on page ${pageId}`);
   }
 
   public isBrowserInitialized(): boolean {

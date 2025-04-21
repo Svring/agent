@@ -12,7 +12,7 @@ interface RequestBody {
   action: 'init' | 'cleanup' | 'goto' | 'screenshot' | 'click' |
   'pressKey' | 'typeText' | 'mouseMove' | 'doubleClick' |
   'mouseDown' | 'mouseUp' | 'cursor_position' |
-  'scroll' | 'drag'; // Added scroll and drag
+  'scroll' | 'drag' | 'getViewportSize' | 'setViewportSize' | 'goBack' | 'goForward'; // Added navigation actions
   url?: string;
   x?: number;         // Viewport coordinate
   y?: number;         // Viewport coordinate
@@ -25,6 +25,8 @@ interface RequestBody {
   startY?: number;    // Viewport coordinate for drag start
   endX?: number;      // Viewport coordinate for drag end
   endY?: number;      // Viewport coordinate for drag end
+  width?: number;     // Viewport width
+  height?: number;    // Viewport height
   options?: any;      // Generic options for playwright methods
 }
 
@@ -66,14 +68,24 @@ export async function POST(request: NextRequest) {
 
     // --- Action Handling --- 
     switch (action) {
-      case 'init':
+      case 'init': {
+        const width = requestBody?.width || 1024;
+        const height = requestBody?.height || 768;
+        
         await manager.ensureBrowser();
-        console.log('Browser ensured.');
-        await manager.getContext('opera');
+        console.log(`Browser ensured with viewport ${width}x${height}.`);
+        await manager.getContext('opera', { width, height });
         console.log('Opera context ensured.');
-        await manager.getPage('opera', 'main');
+        await manager.getPage('opera', 'main', { width, height });
         console.log('Opera main page ensured.');
-        return NextResponse.json({ success: true, message: 'Browser initialized successfully for Opera.' });
+        
+        const viewportSize = manager.getViewportSize('opera');
+        return NextResponse.json({ 
+          success: true, 
+          message: `Browser initialized successfully for Opera with viewport ${viewportSize.width}x${viewportSize.height}.`,
+          viewport: viewportSize
+        });
+      }
 
       case 'cleanup':
         if (manager.isBrowserInitialized()) { // Only cleanup if browser exists
@@ -85,22 +97,70 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ success: true, message: 'Browser not initialized, no cleanup needed.' });
         }
 
-      case 'goto':
+      case 'goto': {
         if (!requestBody?.url) {
           return NextResponse.json({ success: false, message: 'URL is required for goto action.' }, { status: 400 });
         }
-        await manager.goto(requestBody.url, 'main', requestBody.options || {});
+        
+        // Check if viewport size is specified
+        const options = { ...requestBody.options || {} };
+        const width = requestBody?.width;
+        const height = requestBody?.height;
+        
+        if (width || height) {
+          await manager.getPage('opera', 'main', { width, height });
+          console.log(`Updated viewport size for navigation: ${width || 'default'}x${height || 'default'}`);
+        }
+        
+        await manager.goto(requestBody.url, 'main', options);
         console.log(`Navigated to ${requestBody.url}`);
         return NextResponse.json({ success: true, message: `Navigated to ${requestBody.url}` });
+      }
 
       case 'screenshot':
         const buffer = await manager.screenshot('main', requestBody?.options || {});
         console.log('Screenshot taken.');
+        const viewportSize = manager.getViewportSize('opera');
         return NextResponse.json({
           success: true,
           message: 'Screenshot captured successfully.',
-          data: buffer.toString('base64')
+          data: buffer.toString('base64'),
+          viewport: viewportSize
         });
+
+      case 'getViewportSize': {
+        const viewportSize = manager.getViewportSize('opera');
+        console.log(`Retrieved viewport size: ${viewportSize.width}x${viewportSize.height}`);
+        return NextResponse.json({
+          success: true,
+          message: 'Viewport size retrieved.',
+          viewport: viewportSize
+        });
+      }
+
+      case 'setViewportSize': {
+        const width = requestBody?.width;
+        const height = requestBody?.height;
+        
+        if (!width || !height) {
+          return NextResponse.json({ 
+            success: false, 
+            message: 'Both width and height are required for setViewportSize action.' 
+          }, { status: 400 });
+        }
+        
+        await manager.getContext('opera', { width, height });
+        await manager.getPage('opera', 'main', { width, height });
+        
+        const viewportSize = manager.getViewportSize('opera');
+        console.log(`Viewport size set to ${viewportSize.width}x${viewportSize.height}`);
+        
+        return NextResponse.json({
+          success: true,
+          message: `Viewport size set to ${width}x${height}.`,
+          viewport: viewportSize
+        });
+      }
 
       case 'pressKey':
         if (!requestBody?.key) {
@@ -159,6 +219,18 @@ export async function POST(request: NextRequest) {
         await manager.scroll(requestBody.deltaX, requestBody.deltaY, 'main');
         console.log(`Scrolled by (${requestBody.deltaX}, ${requestBody.deltaY})`);
         return NextResponse.json({ success: true, message: `Scrolled by (${requestBody.deltaX}, ${requestBody.deltaY})` });
+      }
+
+      case 'goBack': {
+        await manager.goBack('main', requestBody?.options || {});
+        console.log(`Navigated back`);
+        return NextResponse.json({ success: true, message: `Navigated back` });
+      }
+
+      case 'goForward': {
+        await manager.goForward('main', requestBody?.options || {});
+        console.log(`Navigated forward`);
+        return NextResponse.json({ success: true, message: `Navigated forward` });
       }
 
       case 'drag': {
