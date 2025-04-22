@@ -5,7 +5,6 @@ import { Input } from '@/components/ui/input';
 import { RefreshCw, ArrowRightCircle, Eye, EyeOff, ChevronLeft, ChevronRight, Frame, Cookie, Loader2, AlertCircle, Check, Trash2 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
 
 type BrowserStatus = 'not-initialized' | 'initializing' | 'ready' | 'error';
 type InitProcessStatus = 'idle' | 'initializing' | 'navigating' | 'screenshotting' | 'ready' | 'failed';

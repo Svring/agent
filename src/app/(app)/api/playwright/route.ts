@@ -12,7 +12,7 @@ interface RequestBody {
   action: 'init' | 'cleanup' | 'goto' | 'screenshot' | 'click' |
   'pressKey' | 'typeText' | 'mouseMove' | 'doubleClick' |
   'mouseDown' | 'mouseUp' | 'cursor_position' |
-  'scroll' | 'drag' | 'getViewportSize' | 'setViewportSize' | 'goBack' | 'goForward' | 'getCookies'; // Added navigation actions
+  'scroll' | 'drag' | 'getViewportSize' | 'setViewportSize' | 'goBack' | 'goForward' | 'getCookies' | 'getStatus'; // Added getStatus
   url?: string;
   x?: number;         // Viewport coordinate
   y?: number;         // Viewport coordinate
@@ -269,10 +269,17 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ success: true, cookies });
       }
 
+      case 'getStatus': {
+        const manager = PlaywrightManager.getInstance();
+        const status = manager.getStatus();
+        console.log('[Playwright API] getStatus called', status); // Log status server-side
+        return NextResponse.json({ success: true, status });
+      }
+
       default:
         console.log(`Invalid action received: ${action}`);
         return NextResponse.json({ success: false, message: `Invalid action specified.` }, { status: 400 });
-    }
+    } // End of switch statement
 
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -281,5 +288,5 @@ export async function POST(request: NextRequest) {
       { success: false, message: `Failed to process action ${action || 'unknown'}: ${errorMessage}` },
       { status: 500 }
     );
-  }
-} 
+  } // End of try-catch
+} // End of POST function

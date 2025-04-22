@@ -45,6 +45,7 @@ export class PlaywrightManager {
 
     // Close existing context with this ID if it exists
     if (this.contexts.has(id)) {
+      console.log(`[PlaywrightManager] Closing existing context during recreate: ${id}`);
       await this.closeContext(id);
     }
 
@@ -59,7 +60,7 @@ export class PlaywrightManager {
     // Store the viewport size for this context
     this.viewportSizes.set(id, { width, height });
     
-    console.log(`Context created with id: ${id}, viewport: ${width}x${height}`);
+    console.log(`[PlaywrightManager] Context created with id: ${id}, viewport: ${width}x${height}. Stored size updated.`);
     return context;
   }
 
@@ -70,22 +71,27 @@ export class PlaywrightManager {
     id = 'default',
     options: { width?: number; height?: number } = {}
   ): Promise<BrowserContext> {
-    if (!this.contexts.has(id)) {
-      return this.createContext(id, options);
-    }
-    
-    // If the viewport size is different, recreate the context
-    const existingSize = this.viewportSizes.get(id);
     const requestedWidth = options.width || 1024;
     const requestedHeight = options.height || 768;
+    console.log(`[PlaywrightManager] getContext called for id: ${id}, requested size: ${requestedWidth}x${requestedHeight}`);
+
+    if (!this.contexts.has(id)) {
+      console.log(`[PlaywrightManager] No existing context found for id: ${id}. Creating new context.`);
+      return this.createContext(id, {width: requestedWidth, height: requestedHeight});
+    }
     
+    const existingSize = this.viewportSizes.get(id);
+    console.log(`[PlaywrightManager] Existing context found for id: ${id}. Stored size: ${existingSize?.width}x${existingSize?.height}`);
+
+    // If the viewport size is different, recreate the context
     if (existingSize && 
         (existingSize.width !== requestedWidth || 
          existingSize.height !== requestedHeight)) {
-      console.log(`Viewport size change requested for context ${id}. Recreating context.`);
-      return this.createContext(id, options);
+      console.log(`[PlaywrightManager] Viewport size mismatch for id: ${id}. Recreating context.`);
+      return this.createContext(id, {width: requestedWidth, height: requestedHeight});
     }
     
+    console.log(`[PlaywrightManager] Returning existing context for id: ${id}.`);
     return this.contexts.get(id)!;
   }
 
@@ -165,8 +171,8 @@ export class PlaywrightManager {
       // Close the context
       await this.contexts.get(contextId)!.close();
       this.contexts.delete(contextId);
-      this.viewportSizes.delete(contextId);
-      console.log(`Context closed: ${contextId}`);
+      const deletedSize = this.viewportSizes.delete(contextId);
+      console.log(`[PlaywrightManager] Context closed: ${contextId}. Viewport size entry deleted: ${deletedSize}`);
     }
   }
 
@@ -306,5 +312,37 @@ export class PlaywrightManager {
     }
     const cookies = await context.cookies(url);
     console.log(`Cookies for context '${contextId}' at '${url}':`, cookies);
+  }
+
+  /**
+   * Get the current status of the manager (browser, contexts, pages)
+   */
+  public getStatus(): { 
+    browserInitialized: boolean; 
+    contexts: { id: string; viewport: { width: number; height: number } }[]; 
+    pages: { id: string; contextId: string | null }[]; 
+  } {
+    const contextList = Array.from(this.contexts.keys()).map(id => ({
+      id,
+      viewport: this.viewportSizes.get(id) || { width: 0, height: 0 } // Default if size somehow missing
+    }));
+
+    const pageList = Array.from(this.pages.entries()).map(([pageId, page]) => {
+      // Find the context ID this page belongs to
+      let contextId: string | null = null;
+      for (const [ctxId, ctx] of this.contexts.entries()) {
+        if (page.context() === ctx) {
+          contextId = ctxId;
+          break;
+        }
+      }
+      return { id: pageId, contextId };
+    });
+
+    return {
+      browserInitialized: this.browser !== null,
+      contexts: contextList,
+      pages: pageList
+    };
   }
 }

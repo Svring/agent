@@ -7,9 +7,10 @@ import MessageBubble from '@/components/message-bubble';
 import Stage from '@/components/stage';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
-import { AlertTriangle } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
-import { ArrowUp, Paperclip } from 'lucide-react';
+import { ArrowUp, Hammer } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import MultiSelect from '@/components/multi-select';
 
 import {
   ResizableHandle,
@@ -25,10 +26,11 @@ export default function Opera() {
 
   const [openStates, setOpenStates] = useState<Record<string, boolean>>({});
   const [expandedResults, setExpandedResults] = useState<Record<string, boolean>>({});
-  const [browserStatus, setBrowserStatus] = useState<'initializing' | 'running' | 'error' | 'not-started'>('not-started');
   const messagesEndRef = useRef(null);
-  const [files, setFiles] = useState<FileList | undefined>(undefined);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [selectedModel, setSelectedModel] = useState<string>('gpt-4.1-nano');
+  const [selectedTools, setSelectedTools] = useState<string[]>([]);
+  const [availableModels, setAvailableModels] = useState<{key: string, label: string}[]>([]);
+  const [availableTools, setAvailableTools] = useState<{key: string, label: string}[]>([]);
 
   const toggleOpen = (key: string) => {
     setOpenStates(prev => ({ ...prev, [key]: !prev[key] }));
@@ -44,87 +46,43 @@ export default function Opera() {
     }
   }, [messages]);
 
-  // Initialize Playwright via API when component mounts
   useEffect(() => {
-    const initBrowser = async () => {
-      setBrowserStatus('initializing');
+    const fetchCastingOptions = async () => {
       try {
-        // Explicitly send action: 'init'
-        const response = await fetch('/api/playwright', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ action: 'init' })
-        });
-        const data = await response.json();
-
-        if (response.ok && data.success) {
-          setBrowserStatus('running');
-          console.log('Browser initialization requested successfully via API.');
-        } else {
-          throw new Error(data.message || 'Failed to initialize browser via API');
-        }
-      } catch (error) {
-        console.error('Error calling browser init API:', error);
-        setBrowserStatus('error');
-      }
-    };
-
-    initBrowser();
-
-    // Cleanup: Send action: 'cleanup' when component unmounts
-    return () => {
-      console.log('Opera component unmounting - requesting context cleanup via API.');
-      const cleanup = async () => {
-        try {
-          const response = await fetch('/api/playwright', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ action: 'cleanup' })
-          });
+        const response = await fetch('/api/casting');
+        if (response.ok) {
           const data = await response.json();
-          if (response.ok && data.success) {
-            console.log('Context cleanup requested successfully via API.');
-          } else {
-            console.warn('API call for context cleanup failed or reported no action:', data.message);
+          setAvailableModels(data.models);
+          setAvailableTools(data.tools);
+          // Set default model to 'claude-3-5-sonnet-latest' if available, otherwise the first one
+          if (data.models.length > 0 && !selectedModel) {
+            const defaultModelKey = data.models.find((m: {key: string, label: string}) => m.key === 'claude-3-5-sonnet-latest')
+              ? 'claude-3-5-sonnet-latest'
+              : data.models[0].key; // Fallback to the first available model
+            setSelectedModel(defaultModelKey);
           }
-        } catch (e) {
-          console.error("Error during context cleanup API call", e);
-        }
-      };
-      cleanup();
-    };
-  }, []); // Empty dependency array ensures this runs once on mount
-
-  const handleBrowserStatusClick = async () => {
-    // Re-initialize if in error or not started state
-    if (browserStatus === 'error' || browserStatus === 'not-started') {
-      setBrowserStatus('initializing');
-      try {
-        // Explicitly send action: 'init'
-        const response = await fetch('/api/playwright', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ action: 'init' })
-        });
-        const data = await response.json();
-
-        if (response.ok && data.success) {
-          setBrowserStatus('running');
-          console.log('Browser re-initialization requested successfully via API.');
         } else {
-          throw new Error(data.message || 'Failed to re-initialize browser via API');
+          console.error('Failed to fetch casting options');
         }
       } catch (error) {
-        console.error('Error calling browser init API on click:', error);
-        setBrowserStatus('error');
+        console.error('Error fetching casting options:', error);
       }
-    }
+    };
+    fetchCastingOptions();
+  }, []); // Dependency array is empty to run only once on mount
+
+  const handleModelChange = (value: string) => {
+    setSelectedModel(value);
+  };
+
+  const customHandleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    handleSubmit(e, { 
+      body: { 
+        model: selectedModel, 
+        tools: selectedTools 
+      } 
+    });
   };
 
   return (
@@ -156,46 +114,50 @@ export default function Opera() {
           </ScrollArea>
           {/* Modern chat input area */}
           <footer className="pt-2">
-            <div className="flex w-full flex-col rounded-3xl border bg-secondary shadow-sm">
-              <form onSubmit={handleSubmit} className="flex w-full items-center p-2 pr-3">
+            <div className="flex w-full flex-col rounded-lg border shadow-sm">
+              <form onSubmit={customHandleSubmit} className="flex flex-col w-full bg-background rounded-lg p-2">
                 <Textarea
-                  className="flex-1 resize-none border-0 px-2 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 rounded-2xl"
+                  className="flex-1 resize-none border-0 px-2 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 rounded-2xl mb-2"
                   placeholder="Type a message..."
                   value={input}
                   onChange={handleInputChange}
-                  rows={1}
+                  rows={3}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault();
-                      handleSubmit(e);
+                      customHandleSubmit(e);
                     }
                   }}
                 />
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex space-x-2">
+                    <Select value={selectedModel} onValueChange={handleModelChange}>
+                      <SelectTrigger size='sm' className="w-auto h-8 text-sm px-2 focus:ring-0 focus:ring-offset-0">
+                        <SelectValue placeholder="Select model" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableModels.map(model => (
+                          <SelectItem key={model.key} value={model.key}>{model.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <MultiSelect
+                      label="tools"
+                      icon={Hammer}
+                      options={availableTools.map(tool => ({ label: tool.label, value: tool.key }))}
+                      selectedOptions={selectedTools}
+                      setSelectedOptions={setSelectedTools}
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    className="bg-none rounded-full"
+                    disabled={!input.trim()}
+                  >
+                    <ArrowUp />
+                  </button>
+                </div>
               </form>
-              <div className="flex items-center gap-1 p-2">
-                <Button variant="ghost" size="icon" className="flex-shrink-0 relative">
-                  <input
-                    type="file"
-                    multiple
-                    onChange={(e) => setFiles(e.target.files || undefined)}
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                    ref={fileInputRef}
-                  />
-                  <Paperclip className="h-4 w-4" />
-                </Button>
-                <Button
-                  size="icon"
-                  className="ml-auto flex-shrink-0 rounded-full"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    if (input.trim()) {
-                      handleSubmit(e);
-                    }
-                  }}
-                >
-                  <ArrowUp className="h-4 w-4" />
-                </Button>
-              </div>
             </div>
           </footer>
         </div>
@@ -206,27 +168,7 @@ export default function Opera() {
       {/* Right stage area - Render Stage component conditionally */}
       <ResizablePanel defaultSize={70}>
         <div className="h-full p-2">
-           {browserStatus === 'running' ? (
-             <Stage className="h-full w-full" autoInitializeBrowser={false} />
-           ) : browserStatus === 'initializing' ? (
-             <div className="h-full w-full flex items-center justify-center bg-muted rounded-lg">
-                <div className="animate-spin h-8 w-8 border-4 border-primary rounded-full border-t-transparent"></div>
-                <p className="ml-3 text-muted-foreground">Initializing Browser...</p>
-             </div>
-           ) : (
-             <div className="h-full w-full flex flex-col items-center justify-center bg-muted rounded-lg p-4 text-center">
-                <AlertTriangle className="h-8 w-8 text-destructive mb-2" />
-                <p className="font-semibold">Browser Not Active</p>
-                <p className="text-sm text-muted-foreground mb-4">
-                  {browserStatus === 'error' 
-                    ? 'An error occurred. Try initializing again.' 
-                    : 'Browser is not initialized.'}
-                </p>
-                <Button onClick={handleBrowserStatusClick}>
-                    Initialize Browser
-                </Button>
-             </div>
-           )}
+           <Stage className="h-full w-full" autoInitializeBrowser={false} />
         </div>
       </ResizablePanel>
     </ResizablePanelGroup>

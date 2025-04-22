@@ -1,7 +1,8 @@
 // Central registry for models and tools, now as a class manager
 
-import { anthropic, createAnthropic } from '@ai-sdk/anthropic';
-import { createOpenAI } from '@ai-sdk/openai';
+// Only import createOpenAI as all models will use this via the proxy
+import { createOpenAI } from '@ai-sdk/openai'; 
+// Removed createAnthropic and createGoogleGenerativeAI imports
 import { computerUseTool } from '@/tools/static/computer-use';
 import { addTextTool } from '@/tools/static/add-text';
 import { getInformationTool } from '@/tools/static/get-information';
@@ -13,42 +14,67 @@ import { askForConfirmationTool } from '@/tools/static/ask-confirm';
 import { experimental_createMCPClient } from 'ai';
 import { Experimental_StdioMCPTransport } from 'ai/mcp-stdio';
 import { streamText } from 'ai';
+import { LanguageModel } from 'ai';
 
-// --- Model Factories ---
-const modelFactories = {
-  anthropicClaude: (modelName = 'claude-3-5-sonnet-20241022') => anthropic(modelName),
+// --- Unified Model Factory via OpenAI Proxy --- 
 
-  sealosQwen: (modelName = 'qwen-vl-plus-latest') => {
-    const sealos = createOpenAI({
-      name: 'sealos',
-      baseURL: process.env.SEALOS_BASE_URL,
-      apiKey: process.env.SEALOS_API_KEY,
-    });
-    return sealos(modelName);
+const createModelViaProxy = (modelName: string): LanguageModel => {
+  // Use Sealos USW endpoint configured for OpenAI SDK
+  console.log(`Creating model "${modelName}" via Sealos USW OpenAI proxy`);
+  const openai = createOpenAI({ 
+    baseURL: process.env.SEALOS_USW_BASE_URL, 
+    apiKey: process.env.SEALOS_USW_API_KEY,
+    // Ensure compatibility headers or settings are added if needed by the proxy
+  }); 
+  return openai(modelName);
+};
+
+// --- Available Model Names --- 
+const availableModelNames = [
+  'claude-3-5-sonnet-latest',
+  'claude-3-7-sonnet-20250219',
+  'gemini-2.5-pro-exp-03-25',
+  'gpt-4.1-nano',
+  'grok-3-latest',
+];
+
+// --- Tool Registry with Labels --- 
+const toolRegistry = {
+  computer: {
+    label: 'Computer Use',
+    tool: computerUseTool,
   },
-
-  claudeProxy: (modelName = 'claude-3-5-sonnet-20241022') => {
-    const claudeProxy = createAnthropic({
-      baseURL: process.env.CLAUDE_PROXY_BASE_URL,
-      apiKey: process.env.CLAUDE_PROXY_API_KEY,
-    });
-    return claudeProxy(modelName);
+  workflow: {
+    label: 'Workflow Use',
+    tool: workflowUseTool,
+  },
+  bash: {
+    label: 'Bash',
+    tool: bashTool,
+  },
+  str_replace_editor: {
+    label: 'Text Editor',
+    tool: textEditorTool,
+  },
+  addTextTool: {
+    label: 'Add Text',
+    tool: addTextTool,
+  },
+  getInformationTool: {
+    label: 'Get Information',
+    tool: getInformationTool,
+  },
+  report: {
+    label: 'Report',
+    tool: reportTool,
+  },
+  askForConfirmation: {
+    label: 'Ask for Confirmation',
+    tool: askForConfirmationTool,
   },
 };
 
-// --- Tool Registry ---
-const staticTools = {
-  computer: computerUseTool,
-  workflow: workflowUseTool,
-  bash: bashTool,
-  str_replace_editor: textEditorTool,
-  addTextTool,
-  getInformationTool,
-  report: reportTool,
-  askForConfirmation: askForConfirmationTool,
-};
-
-// --- Playwright Tools Helper ---
+// --- Playwright Tools Helper --- 
 async function getPlaywrightTools() {
   const playwrightTransport = new Experimental_StdioMCPTransport({
     command: 'node',
@@ -61,18 +87,18 @@ async function getPlaywrightTools() {
   return { playwrightTools, playwrightClient };
 }
 
-// --- CastingManager Class ---
+// --- CastingManager Class --- 
 /**
  * Manages models, tools, system prompt, and other state for casting tasks.
  * Can be extended for session-based or multi-user scenarios.
  */
 export class CastingManager {
-  private model: any = null;
-  private tools: Record<string, any> = { ...staticTools };
+  private model: LanguageModel | null = null;
+  private tools: Record<string, any> = {};
   private systemPrompt: string = '';
 
   // Setters
-  setModel(model: any) {
+  setModel(model: LanguageModel) {
     this.model = model;
   }
   setTools(tools: Record<string, any>) {
@@ -84,7 +110,7 @@ export class CastingManager {
   // Reset all state
   reset() {
     this.model = null;
-    this.tools = { ...staticTools };
+    this.tools = {};
     this.systemPrompt = '';
   }
 
@@ -105,7 +131,7 @@ export class CastingManager {
     onFinish,
     ...rest
   }: {
-    model?: any,
+    model?: LanguageModel,
     tools?: Record<string, any>,
     systemPrompt?: string,
     messages: any,
@@ -132,22 +158,58 @@ export class CastingManager {
     });
   }
 
-  // Expose factories and helpers for external selection
-  getModelFactories() {
-    return modelFactories;
+  // Methods to access models and tools
+  getModelByName(modelName: string): LanguageModel | null {
+    if (!availableModelNames.includes(modelName)) {
+      console.warn(`Requested model name "${modelName}" is not available.`);
+      return null;
+    }
+
+    try {
+      // Always use the unified proxy factory
+      return createModelViaProxy(modelName);
+    } catch (error) {
+      console.error(`Failed to create model "${modelName}" via proxy:`, error);
+      return null;
+    }
   }
+
+  getToolByKey(key: string) {
+    return toolRegistry[key as keyof typeof toolRegistry]?.tool || null;
+  }
+
+  // Expose options for listing available options
+  getModelOptions() {
+    return availableModelNames.map(name => ({
+      key: name,
+      label: name, // Use name as label
+    }));
+  }
+
+  getToolOptions() {
+    return Object.entries(toolRegistry).map(([key, tool]) => ({
+      key,
+      label: tool.label,
+    }));
+  }
+
+  // Backward compatibility methods (tools only)
   getStaticTools() {
-    return staticTools;
+    const tools: Record<string, any> = {};
+    Object.entries(toolRegistry).forEach(([key, tool]) => {
+      tools[key] = tool.tool;
+    });
+    return tools;
   }
+
   async getPlaywrightTools() {
     return getPlaywrightTools();
   }
 }
 
-// --- Singleton instance for now (can be extended to session-based) ---
+// --- Singleton instance for now (can be extended to session-based) --- 
 export const castingManager = new CastingManager();
 
-// For backward compatibility (automation/route, opera/route):
-export const models = modelFactories;
-export const tools = staticTools;
+// For backward compatibility (tools only):
+export const tools = toolRegistry;
 export { getPlaywrightTools };
