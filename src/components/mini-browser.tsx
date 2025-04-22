@@ -320,7 +320,7 @@ const MiniBrowser: React.FC = () => {
           <div
             ref={interactionDivRef}
             tabIndex={0}
-            className="relative rounded-md inline-block focus:outline-1 focus:outline-offset-1 focus:outline-white"
+            className="relative rounded-md inline-block focus:outline-1 focus:outline-offset-1 focus:outline-white px-1"
             onMouseMove={handleMouseMove}
             onMouseLeave={handleMouseLeave}
             onClick={handleClick}
@@ -339,7 +339,7 @@ const MiniBrowser: React.FC = () => {
             <img
               src={screenshotData}
               alt="Browser Screenshot"
-              className="w-full h-full object-contain p-1 rounded-md"
+              className="w-full h-full object-contain rounded-md"
             />
             {showAxes && (
               <>

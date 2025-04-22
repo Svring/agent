@@ -1,4 +1,8 @@
 import { castingManager } from '@/backstage/casting-manager';
+// Infer type from the factory function as direct type export might be missing/changed
+import { experimental_createMCPClient } from 'ai'; 
+
+type PlaywrightClientType = Awaited<ReturnType<typeof experimental_createMCPClient>>; 
 
 export async function POST(req: Request) {
   const body = await req.json();
@@ -20,28 +24,10 @@ export async function POST(req: Request) {
   console.log('Selected Tool Keys:', selectedToolKeys);
 
   // Get model by name
-  // Use the first available model name as default if none is provided
   const defaultModelName = castingManager.getModelOptions()[0]?.key || 'claude-3-5-sonnet-latest'; 
   const model = castingManager.getModelByName(selectedModelName || defaultModelName);
   if (!model) {
     console.log('Error: Invalid or unavailable model selected:', selectedModelName);
-    // Attempt to use the default model as a fallback
-    const fallbackModel = castingManager.getModelByName(defaultModelName);
-    if (!fallbackModel) {
-      console.error('Fatal Error: Default model is also unavailable!');
-      return new Response(JSON.stringify({ error: 'Selected model unavailable, and default model failed.' }), {
-        status: 500, 
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-    }
-    console.warn(`Falling back to default model: ${defaultModelName}`);
-    // If we are here, the fallback model is used (variable name stays 'model' for simplicity)
-    // Need to reassign model here if we want to continue with the fallback
-    // model = fallbackModel; // Re-assigning `model` to the fallback if we want to proceed.
-    // However, the current logic structure returns an error. Let's adjust to proceed with fallback.
-    // For now, let's return an error as initially designed if the requested model fails.
      return new Response(JSON.stringify({ error: `Invalid or unavailable model selected: ${selectedModelName}` }), {
       status: 400,
       headers: {
@@ -54,39 +40,57 @@ export async function POST(req: Request) {
 
   const systemPrompt = `
   You are a confident agent who loves to tell everyone you encounter all the tools you have in stock and give suggestions on how to use them.
+  If you have the 'Web Browsing' tool enabled, you can use it to browse websites, get information, and interact with pages. 
   `;
 
-  // Dynamically load playwright tools
-  console.log('Loading playwright tools...');
-  const { playwrightTools, playwrightClient } = await castingManager.getPlaywrightTools();
-  console.log('Playwright tools loaded:', Object.keys(playwrightTools));
+  // Initialize tools object and playwright client variable
+  const tools: Record<string, any> = {};
+  let playwrightClient: PlaywrightClientType | null = null; // Use inferred type
+  let loadedPlaywrightTools: Record<string, any> = {};
 
-  const tools: Record<string, any> = {
-    ...playwrightTools,
-  };
+  // Check if playwright tool is selected
+  const usePlaywright = selectedToolKeys?.includes('playwright');
 
-  // Add selected tools to the tools object
+  if (usePlaywright) {
+    console.log('Playwright tool selected. Loading playwright tools...');
+    try {
+      const { playwrightTools: dynamicTools, playwrightClient: client } = await castingManager.getPlaywrightTools();
+      playwrightClient = client; // Assign the client
+      loadedPlaywrightTools = dynamicTools;
+      console.log('Playwright tools loaded:', Object.keys(loadedPlaywrightTools));
+      Object.assign(tools, loadedPlaywrightTools); // Merge playwright tools
+    } catch (error) {
+      console.error('Failed to load playwright tools:', error);
+      // Decide if you want to return an error or continue without playwright tools
+      // For now, let's log and continue without them
+    }
+  }
+
+  // Add selected *static* tools to the tools object
   if (selectedToolKeys && Array.isArray(selectedToolKeys)) {
-    console.log('Adding selected tools...');
+    console.log('Adding selected static tools...');
     selectedToolKeys.forEach((toolKey: string) => {
+      // Skip the playwright key as it's handled above
+      if (toolKey === 'playwright') return;
+      
       const tool = castingManager.getToolByKey(toolKey);
       if (tool) {
         tools[toolKey] = tool;
-        console.log(`Tool added: ${toolKey}`);
+        console.log(`Static tool added: ${toolKey}`);
       } else {
-        console.log(`Tool not found: ${toolKey}`);
+        console.log(`Static tool not found or invalid: ${toolKey}`);
       }
     });
   }
 
-  console.log('Final tools list:', Object.keys(tools));
+  console.log('Final tools list for casting:', Object.keys(tools));
 
   let result;
   try {
     console.log('Initiating casting process...');
     result = await castingManager.cast({
-      model, // Pass the retrieved model object
-      tools,
+      model, 
+      tools, // Pass the final combined tools object
       systemPrompt,
       messages,
       maxSteps: 5,
@@ -102,14 +106,25 @@ export async function POST(req: Request) {
         });
       },
       onFinish: async () => {
-        console.log('Casting process finished, closing playwright client...');
-        await playwrightClient.close();
-        console.log('Playwright client closed.');
+        // Conditionally close playwright client
+        if (playwrightClient) {
+          console.log('Casting process finished, closing playwright client...');
+          await playwrightClient.close();
+          console.log('Playwright client closed.');
+        } else {
+          console.log('Casting process finished (no playwright client to close).');
+        }
       },
     });
     console.log('Casting process completed successfully.');
   } catch (err) {
     console.error('[DEBUG] Error in POST handler:', err);
+    // Ensure client is closed even if casting fails mid-stream
+    if (playwrightClient) {
+      console.log('Error occurred, ensuring playwright client is closed...');
+      await playwrightClient.close();
+      console.log('Playwright client closed after error.');
+    }
     throw err;
   }
 

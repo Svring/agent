@@ -19,10 +19,12 @@ import { LanguageModel } from 'ai';
 // --- Unified Model Factory via OpenAI Proxy --- 
 
 const createModelViaProxy = (modelName: string): LanguageModel => {
-  // Use Sealos USW endpoint configured for OpenAI SDK
-  console.log(`Creating model "${modelName}" via Sealos USW OpenAI proxy`);
+  // Use the standard Sealos USW endpoint for all models via OpenAI SDK
+  const baseURL = process.env.SEALOS_USW_BASE_URL;
+  console.log(`Creating model "${modelName}" via standard proxy URL: ${baseURL}`);
+  
   const openai = createOpenAI({ 
-    baseURL: process.env.SEALOS_USW_BASE_URL, 
+    baseURL: baseURL, 
     apiKey: process.env.SEALOS_USW_API_KEY,
     // Ensure compatibility headers or settings are added if needed by the proxy
   }); 
@@ -38,8 +40,12 @@ const availableModelNames = [
   'grok-3-latest',
 ];
 
-// --- Tool Registry with Labels --- 
+// --- Tool Registry with Labels (Includes pseudo-tool for Playwright) --- 
 const toolRegistry = {
+  playwright: { // Pseudo-tool key for enabling Playwright
+    label: 'Web Browsing',
+    tool: null, // No actual static tool, just used for selection
+  },
   computer: {
     label: 'Computer Use',
     tool: computerUseTool,
@@ -175,6 +181,8 @@ export class CastingManager {
   }
 
   getToolByKey(key: string) {
+    // Exclude the pseudo-tool for playwright
+    if (key === 'playwright') return null;
     return toolRegistry[key as keyof typeof toolRegistry]?.tool || null;
   }
 
@@ -187,6 +195,7 @@ export class CastingManager {
   }
 
   getToolOptions() {
+    // Return all entries from toolRegistry, including the pseudo-tool
     return Object.entries(toolRegistry).map(([key, tool]) => ({
       key,
       label: tool.label,
@@ -195,11 +204,14 @@ export class CastingManager {
 
   // Backward compatibility methods (tools only)
   getStaticTools() {
-    const tools: Record<string, any> = {};
+    const staticTools: Record<string, any> = {};
     Object.entries(toolRegistry).forEach(([key, tool]) => {
-      tools[key] = tool.tool;
+      // Exclude the pseudo-tool when getting actual static tools
+      if (key !== 'playwright') {
+        staticTools[key] = tool.tool;
+      }
     });
-    return tools;
+    return staticTools;
   }
 
   async getPlaywrightTools() {

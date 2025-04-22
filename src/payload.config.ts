@@ -37,7 +37,6 @@ export default buildConfig({
       connectionString: process.env.DATABASE_URI || '',
     },
   }),
-  sharp,
   plugins: [
     payloadCloudPlugin(),
     // storage-adapter-placeholder

@@ -4,7 +4,8 @@ import {
   ChevronDown, Settings, Moon, Sun, Eye,
   SquareMousePointer, Gauge, Bird, MessageCircle, Book,
   TriangleDashed, Sparkle, Plus, Loader2,
-  Globe
+  Globe,
+  SquareChevronRight
 } from "lucide-react"
 import Link from "next/link"
 import { listApplications, createApplication } from '@/db/actions/Applications';
@@ -66,6 +67,11 @@ const workspaceChatItems = [
     title: "Playwright",
     url: "/playwright",
     icon: Globe,
+  },
+  {
+    title: "Props",
+    url: "/props",
+    icon: SquareChevronRight,
   }
 ]
 
