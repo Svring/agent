@@ -56,23 +56,23 @@ const claudeModels = [
 // --- Tool Registry with Labels (Includes pseudo-tool for Playwright) --- 
 const toolRegistry = {
   playwright: { // Pseudo-tool key for enabling Playwright
-    label: 'Web Browsing',
+    label: 'Browser Control',
     tool: null, // No actual static tool, just used for selection
   },
-  computer: {
-    label: 'Computer Use',
-    tool: computerUseTool,
-  },
-  bash: {
-    label: 'Bash',
-    tool: bashTool,
-  },
-  str_replace_editor: {
-    label: 'Text Editor',
-    tool: textEditorTool,
-  },
+  // computer: {
+  //   label: 'Computer Use',
+  //   tool: computerUseTool,
+  // },
+  // bash: {
+  //   label: 'Bash',
+  //   tool: bashTool,
+  // },
+  // str_replace_editor: {
+  //   label: 'Text Editor',
+  //   tool: textEditorTool,
+  // },
   props: { // Pseudo-tool key for enabling Props SSH commands
-    label: 'Remote Props (SSH)',
+    label: 'Terminal Execution',
     tool: null, // No actual static tool, just used for selection
   },
 };

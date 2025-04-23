@@ -3,7 +3,6 @@ import { Cat, Bot, Cog, Eye, EyeOff, Hammer } from 'lucide-react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Button } from '@/components/ui/button';
 import React from 'react';
-import Markdown from 'react-markdown'
 
 // Helper function to count lines in a text string
 const countLines = (text: string): number => {

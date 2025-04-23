@@ -268,6 +268,26 @@ const MiniBrowser: React.FC = () => {
         onClick={() => setShowAxes(!showAxes)}
         variant="outline" size="sm" title={showAxes ? 'Hide Axes' : 'Show Axes'}
       > {showAxes ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />} </Button>
+      <Button
+        onClick={async () => {
+          const response = await fetch('/api/playwright', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'screenshot',
+              options: { path: 'screenshot.png', fullPage: true }
+            })
+          });
+          const data = await response.json();
+          if (data.success) {
+            alert('Screenshot saved successfully to screenshot.png');
+          } else {
+            alert('Failed to save screenshot: ' + data.message);
+          }
+        }}
+        variant="outline" size="sm" title="Save Screenshot to Local Path"
+        disabled={browserStatus !== 'ready'}
+      > <Frame className="h-4 w-4" /> </Button>
     </div>
   );
 

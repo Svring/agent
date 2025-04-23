@@ -117,16 +117,24 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ success: true, message: `Navigated to ${requestBody.url}` });
       }
 
-      case 'screenshot':
-        const buffer = await manager.screenshot('main', requestBody?.options || {});
-        console.log('Screenshot taken.');
+      case 'screenshot': {
+        // Extract options from the request body
+        const options = requestBody?.options || {};
+        const buffer = await manager.screenshot('main', options);
+        console.log('Screenshot taken with options:', options);
+        
+        // Determine mimeType based on options (default to png if not specified)
+        const mimeType = options.type === 'jpeg' ? 'image/jpeg' : 'image/png';
+        
         const viewportSize = manager.getViewportSize('opera');
         return NextResponse.json({
           success: true,
           message: 'Screenshot captured successfully.',
           data: buffer.toString('base64'),
+          mimeType: mimeType, // Use determined mimeType
           viewport: viewportSize
         });
+      }
 
       case 'getViewportSize': {
         const viewportSize = manager.getViewportSize('opera');

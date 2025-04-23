@@ -31,13 +31,16 @@ server.tool(
       });
       
       if (!initResponse.ok) {
-        const initError = await initResponse.json();
-        console.error(`[PropsMCP] Failed to initialize SSH: ${initError.message}`);
+        const initErrorText = await initResponse.text();
+        console.error(`[PropsMCP] Failed to initialize SSH: ${initErrorText}`);
         return {
           type: "text",
-          text: `Failed to initialize SSH connection: ${initError.message}`
+          text: `Failed to initialize SSH connection: ${initErrorText || 'Unknown error'}`
         };
       }
+      
+      const initResult = await initResponse.json();
+      console.log(`[PropsMCP] SSH initialization result: ${initResult.message}`);
       
       // Execute the command
       const execResponse = await fetch(PROPS_API_URL, {
@@ -50,31 +53,31 @@ server.tool(
       });
       
       if (!execResponse.ok) {
-        const execError = await execResponse.json();
-        console.error(`[PropsMCP] Command execution error: ${execError.message}`);
+        const execErrorText = await execResponse.text();
+        console.error(`[PropsMCP] Command execution error: ${execErrorText}`);
         return {
           type: "text",
-          text: `Command execution error: ${execError.message}`
+          text: `Command execution error: ${execErrorText || 'Unknown error'}`
         };
       }
       
       const result = await execResponse.json();
       
       // Format the result for MCP output
-      const resultText = `${result.message}${result.stderr ? `\nStderr: ${result.stderr}` : ''}`;
+      const resultText = `${result.message}${result.stdout ? `\nStdout: ${result.stdout}` : ''}${result.stderr ? `\nStderr: ${result.stderr}` : ''}`;
       console.log(`[PropsMCP] Command result: ${resultText}`);
       
       return {
         type: "text",
         text: resultText,
-        stdout: result.stdout,
-        stderr: result.stderr
+        stdout: result.stdout || '',
+        stderr: result.stderr || ''
       };
     } catch (err) {
-      console.error(`[PropsMCP] Unexpected error: ${err.message}`);
+      console.error(`[PropsMCP] Unexpected error: ${err instanceof Error ? err.message : String(err)}`);
       return {
         type: "text",
-        text: `Error: ${err.message}`
+        text: `Error: ${err instanceof Error ? err.message : String(err)}`
       };
     }
   }
@@ -93,7 +96,13 @@ server.tool(
       });
       
       if (!statusResponse.ok) {
-        throw new Error(`Failed to get status: ${statusResponse.statusText}`);
+        const errorText = await statusResponse.text();
+        console.error(`[PropsMCP] Failed to get status: ${errorText}`);
+        return {
+          type: "text",
+          text: `Failed to get status: ${errorText || 'Unknown error'}`,
+          connected: false
+        };
       }
       
       const status = await statusResponse.json();
@@ -106,10 +115,10 @@ server.tool(
         connected: status.status === 'Connected'
       };
     } catch (err) {
-      console.error(`[PropsMCP] Status check error: ${err.message}`);
+      console.error(`[PropsMCP] Status check error: ${err instanceof Error ? err.message : String(err)}`);
       return {
         type: "text",
-        text: `Error checking status: ${err.message}`,
+        text: `Error checking status: ${err instanceof Error ? err.message : String(err)}`,
         connected: false
       };
     }

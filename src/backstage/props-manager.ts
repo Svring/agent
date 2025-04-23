@@ -8,7 +8,7 @@ export class PropsManager {
   private static instance: PropsManager;
   private ssh: NodeSSH;
   private isConnected: boolean = false;
-  private privateKeyPath: string = '/Users/linkling/Code/agent/src/config/hzh.sealos.run_ns-qezqvm92_devbox';
+  private privateKeyPath: string = '/Users/linkling/Code/agent/src/auth/hzh.sealos.run_ns-qezqvm92_devbox';
 
   public constructor() {
     this.ssh = new NodeSSH();

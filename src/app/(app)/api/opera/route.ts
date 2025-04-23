@@ -3,6 +3,7 @@ import { castingManager } from '@/backstage/casting-manager';
 import { experimental_createMCPClient } from 'ai'; 
 
 type PlaywrightClientType = Awaited<ReturnType<typeof experimental_createMCPClient>>; 
+type PropsClientType = Awaited<ReturnType<typeof experimental_createMCPClient>>;
 
 export async function POST(req: Request) {
   const body = await req.json();
@@ -47,9 +48,12 @@ export async function POST(req: Request) {
   const tools: Record<string, any> = {};
   let playwrightClient: PlaywrightClientType | null = null; // Use inferred type
   let loadedPlaywrightTools: Record<string, any> = {};
+  let propsClient: PropsClientType | null = null;
+  let loadedPropsTools: Record<string, any> = {};
 
   // Check if playwright tool is selected
   const usePlaywright = selectedToolKeys?.includes('playwright');
+  const useProps = selectedToolKeys?.includes('props');
 
   if (usePlaywright) {
     console.log('Playwright tool selected. Loading playwright tools...');
@@ -66,12 +70,26 @@ export async function POST(req: Request) {
     }
   }
 
+  if (useProps) {
+    console.log('Props tool selected. Loading props tools...');
+    try {
+      const { propsTools: dynamicTools, propsClient: client } = await castingManager.getPropsTools();
+      propsClient = client; // Assign the client
+      loadedPropsTools = dynamicTools;
+      console.log('Props tools loaded:', Object.keys(loadedPropsTools));
+      Object.assign(tools, loadedPropsTools); // Merge props tools
+    } catch (error) {
+      console.error('Failed to load props tools:', error);
+      // Continue without props tools if loading fails
+    }
+  }
+
   // Add selected *static* tools to the tools object
   if (selectedToolKeys && Array.isArray(selectedToolKeys)) {
     console.log('Adding selected static tools...');
     selectedToolKeys.forEach((toolKey: string) => {
-      // Skip the playwright key as it's handled above
-      if (toolKey === 'playwright') return;
+      // Skip the playwright and props keys as they're handled above
+      if (toolKey === 'playwright' || toolKey === 'props') return;
       
       const tool = castingManager.getToolByKey(toolKey);
       if (tool) {
@@ -106,24 +124,36 @@ export async function POST(req: Request) {
         });
       },
       onFinish: async () => {
-        // Conditionally close playwright client
-        if (playwrightClient) {
-          console.log('Casting process finished, closing playwright client...');
-          await playwrightClient.close();
-          console.log('Playwright client closed.');
+        // Conditionally close playwright and props clients
+        if (playwrightClient || propsClient) {
+          console.log('Casting process finished, closing clients...');
+          if (playwrightClient) {
+            await playwrightClient.close();
+            console.log('Playwright client closed.');
+          }
+          if (propsClient) {
+            await propsClient.close();
+            console.log('Props client closed.');
+          }
         } else {
-          console.log('Casting process finished (no playwright client to close).');
+          console.log('Casting process finished (no clients to close).');
         }
       },
     });
     console.log('Casting process completed successfully.');
   } catch (err) {
     console.error('[DEBUG] Error in POST handler:', err);
-    // Ensure client is closed even if casting fails mid-stream
-    if (playwrightClient) {
-      console.log('Error occurred, ensuring playwright client is closed...');
-      await playwrightClient.close();
-      console.log('Playwright client closed after error.');
+    // Ensure clients are closed even if casting fails mid-stream
+    if (playwrightClient || propsClient) {
+      console.log('Error occurred, ensuring clients are closed...');
+      if (playwrightClient) {
+        await playwrightClient.close();
+        console.log('Playwright client closed after error.');
+      }
+      if (propsClient) {
+        await propsClient.close();
+        console.log('Props client closed after error.');
+      }
     }
     throw err;
   }

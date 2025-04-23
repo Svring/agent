@@ -198,7 +198,7 @@ export class PlaywrightManager {
    */
   public async screenshot(
     pageId = 'default',
-    options: { fullPage?: boolean; path?: string } = {}
+    options: { fullPage?: boolean; path?: string, type?: 'png' | 'jpeg', quality?: number } = {}
   ): Promise<Buffer> {
     const page = await this.getPage('default', pageId);
     return await page.screenshot(options);

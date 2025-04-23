@@ -36,7 +36,7 @@ async function takeScreenshotIfRequested(screenshotAfter = true, fullPage = true
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       action: 'screenshot',
-      options: { fullPage }
+      options: { fullPage, type: 'jpeg', quality: 80 }
     })
   });
   await checkApiResponse(screenshotResponse, 'take screenshot after action');
@@ -44,7 +44,7 @@ async function takeScreenshotIfRequested(screenshotAfter = true, fullPage = true
   return {
     type: "image",
     data: screenshotResult.data,
-    mimeType: "image/png"
+    mimeType: "image/jpeg"
   };
 }
 
@@ -52,7 +52,7 @@ async function takeScreenshotIfRequested(screenshotAfter = true, fullPage = true
 const server = new McpServer({
   name: "Playwright",
   version: "1.0.0",
-  description: "A tool for interacting with web pages using Playwright. Assumes browser is already initialized and page is loaded."
+  description: "Provides tools to interact with a server-managed mini-browser for viewing and controlling websites. Available actions include taking screenshots, simulating mouse clicks/drags/scrolls, and typing text/keys. This tool only performs these interactions; browser initialization and cleanup must be handled separately. If the browser is not ready (e.g., not initialized), report the error and await user instructions."
 });
 
 // --- Screenshot Tool --- 
@@ -70,7 +70,7 @@ server.tool(
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'screenshot',
-          options: { fullPage }
+          options: { fullPage, type: 'jpeg', quality: 80 }
         })
       });
       await checkApiResponse(screenshotResponse, 'take screenshot');
@@ -80,7 +80,7 @@ server.tool(
       return {
         type: "image",
         data: screenshotResult.data,
-        mimeType: "image/png"
+        mimeType: "image/jpeg"
       };
     } catch (err) {
       console.error('[PlaywrightMCP] Screenshot Error:', err);
