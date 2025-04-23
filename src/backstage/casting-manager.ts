@@ -4,14 +4,9 @@
 import { createOpenAI } from '@ai-sdk/openai'; 
 // Removed createAnthropic and createGoogleGenerativeAI imports
 import { createAnthropic } from '@ai-sdk/anthropic';
-import { computerUseTool } from '@/tools/static/computer-use';
-import { addTextTool } from '@/tools/static/add-text';
-import { getInformationTool } from '@/tools/static/get-information';
-import { workflowUseTool } from '@/tools/static/workflow-use/workflow-use';
-import { bashTool } from '@/tools/static/bash';
-import { textEditorTool } from '@/tools/static/text-editor';
-import { reportTool } from '@/tools/static/report';
-import { askForConfirmationTool } from '@/tools/static/ask-confirm';
+import { computerUseTool } from '@/tools/functions/computer-use';
+import { bashTool } from '@/tools/functions/bash';
+import { textEditorTool } from '@/tools/functions/text-editor';
 import { experimental_createMCPClient } from 'ai';
 import { Experimental_StdioMCPTransport } from 'ai/mcp-stdio';
 import { streamText } from 'ai';
@@ -68,10 +63,6 @@ const toolRegistry = {
     label: 'Computer Use',
     tool: computerUseTool,
   },
-  workflow: {
-    label: 'Workflow Use',
-    tool: workflowUseTool,
-  },
   bash: {
     label: 'Bash',
     tool: bashTool,
@@ -79,22 +70,6 @@ const toolRegistry = {
   str_replace_editor: {
     label: 'Text Editor',
     tool: textEditorTool,
-  },
-  addTextTool: {
-    label: 'Add Text',
-    tool: addTextTool,
-  },
-  getInformationTool: {
-    label: 'Get Information',
-    tool: getInformationTool,
-  },
-  report: {
-    label: 'Report',
-    tool: reportTool,
-  },
-  askForConfirmation: {
-    label: 'Ask for Confirmation',
-    tool: askForConfirmationTool,
   },
   props: { // Pseudo-tool key for enabling Props SSH commands
     label: 'Remote Props (SSH)',

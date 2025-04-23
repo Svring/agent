@@ -17,37 +17,8 @@ import {
   numeric,
   integer,
   jsonb,
-  pgEnum,
 } from "@payloadcms/db-postgres/drizzle/pg-core";
 import { sql, relations } from "@payloadcms/db-postgres/drizzle";
-export const enum_workflows_steps_action = pgEnum(
-  "enum_workflows_steps_action",
-  [
-    "screenshot",
-    "left_click",
-    "right_click",
-    "middle_click",
-    "double_click",
-    "left_click_drag",
-    "mouse_move",
-    "type",
-    "key",
-    "cursor_position",
-  ],
-);
-export const enum_messages_parts_type = pgEnum("enum_messages_parts_type", [
-  "text",
-  "tool-invocation",
-]);
-export const enum_messages_parts_tool_invocation_state = pgEnum(
-  "enum_messages_parts_tool_invocation_state",
-  ["result", "pending", "error"],
-);
-export const enum_messages_role = pgEnum("enum_messages_role", [
-  "user",
-  "assistant",
-  "tool",
-]);
 
 export const users = pgTable(
   "users",
@@ -126,290 +97,6 @@ export const media = pgTable(
   }),
 );
 
-export const texts = pgTable(
-  "texts",
-  {
-    id: serial("id").primaryKey(),
-    content: varchar("content").notNull(),
-    application: integer("application_id")
-      .notNull()
-      .references(() => applications.id, {
-        onDelete: "set null",
-      }),
-    updatedAt: timestamp("updated_at", {
-      mode: "string",
-      withTimezone: true,
-      precision: 3,
-    })
-      .defaultNow()
-      .notNull(),
-    createdAt: timestamp("created_at", {
-      mode: "string",
-      withTimezone: true,
-      precision: 3,
-    })
-      .defaultNow()
-      .notNull(),
-  },
-  (columns) => ({
-    texts_application_idx: index("texts_application_idx").on(
-      columns.application,
-    ),
-    texts_updated_at_idx: index("texts_updated_at_idx").on(columns.updatedAt),
-    texts_created_at_idx: index("texts_created_at_idx").on(columns.createdAt),
-  }),
-);
-
-export const embeddings = pgTable(
-  "embeddings",
-  {
-    id: serial("id").primaryKey(),
-    content: varchar("content").notNull(),
-    embedding: jsonb("embedding").notNull(),
-    sourceText: integer("source_text_id")
-      .notNull()
-      .references(() => texts.id, {
-        onDelete: "set null",
-      }),
-    updatedAt: timestamp("updated_at", {
-      mode: "string",
-      withTimezone: true,
-      precision: 3,
-    })
-      .defaultNow()
-      .notNull(),
-    createdAt: timestamp("created_at", {
-      mode: "string",
-      withTimezone: true,
-      precision: 3,
-    })
-      .defaultNow()
-      .notNull(),
-  },
-  (columns) => ({
-    embeddings_source_text_idx: index("embeddings_source_text_idx").on(
-      columns.sourceText,
-    ),
-    embeddings_updated_at_idx: index("embeddings_updated_at_idx").on(
-      columns.updatedAt,
-    ),
-    embeddings_created_at_idx: index("embeddings_created_at_idx").on(
-      columns.createdAt,
-    ),
-  }),
-);
-
-export const workflows_steps = pgTable(
-  "workflows_steps",
-  {
-    _order: integer("_order").notNull(),
-    _parentID: integer("_parent_id").notNull(),
-    id: varchar("id").primaryKey(),
-    action: enum_workflows_steps_action("action").notNull(),
-    description: varchar("description").notNull(),
-  },
-  (columns) => ({
-    _orderIdx: index("workflows_steps_order_idx").on(columns._order),
-    _parentIDIdx: index("workflows_steps_parent_id_idx").on(columns._parentID),
-    _parentIDFk: foreignKey({
-      columns: [columns["_parentID"]],
-      foreignColumns: [workflows.id],
-      name: "workflows_steps_parent_id_fk",
-    }).onDelete("cascade"),
-  }),
-);
-
-export const workflows = pgTable(
-  "workflows",
-  {
-    id: serial("id").primaryKey(),
-    name: varchar("name").notNull(),
-    description: varchar("description"),
-    sequenceDescription: varchar("sequence_description"),
-    application: integer("application_id")
-      .notNull()
-      .references(() => applications.id, {
-        onDelete: "set null",
-      }),
-    updatedAt: timestamp("updated_at", {
-      mode: "string",
-      withTimezone: true,
-      precision: 3,
-    })
-      .defaultNow()
-      .notNull(),
-    createdAt: timestamp("created_at", {
-      mode: "string",
-      withTimezone: true,
-      precision: 3,
-    })
-      .defaultNow()
-      .notNull(),
-  },
-  (columns) => ({
-    workflows_application_idx: index("workflows_application_idx").on(
-      columns.application,
-    ),
-    workflows_updated_at_idx: index("workflows_updated_at_idx").on(
-      columns.updatedAt,
-    ),
-    workflows_created_at_idx: index("workflows_created_at_idx").on(
-      columns.createdAt,
-    ),
-  }),
-);
-
-export const chat_sessions = pgTable(
-  "chat_sessions",
-  {
-    id: serial("id").primaryKey(),
-    name: varchar("name").notNull(),
-    application: integer("application_id")
-      .notNull()
-      .references(() => applications.id, {
-        onDelete: "set null",
-      }),
-    updatedAt: timestamp("updated_at", {
-      mode: "string",
-      withTimezone: true,
-      precision: 3,
-    })
-      .defaultNow()
-      .notNull(),
-    createdAt: timestamp("created_at", {
-      mode: "string",
-      withTimezone: true,
-      precision: 3,
-    })
-      .defaultNow()
-      .notNull(),
-  },
-  (columns) => ({
-    chat_sessions_name_idx: uniqueIndex("chat_sessions_name_idx").on(
-      columns.name,
-    ),
-    chat_sessions_application_idx: index("chat_sessions_application_idx").on(
-      columns.application,
-    ),
-    chat_sessions_updated_at_idx: index("chat_sessions_updated_at_idx").on(
-      columns.updatedAt,
-    ),
-    chat_sessions_created_at_idx: index("chat_sessions_created_at_idx").on(
-      columns.createdAt,
-    ),
-  }),
-);
-
-export const applications = pgTable(
-  "applications",
-  {
-    id: serial("id").primaryKey(),
-    name: varchar("name").notNull(),
-    description: varchar("description").notNull(),
-    version: varchar("version"),
-    updatedAt: timestamp("updated_at", {
-      mode: "string",
-      withTimezone: true,
-      precision: 3,
-    })
-      .defaultNow()
-      .notNull(),
-    createdAt: timestamp("created_at", {
-      mode: "string",
-      withTimezone: true,
-      precision: 3,
-    })
-      .defaultNow()
-      .notNull(),
-  },
-  (columns) => ({
-    applications_name_idx: index("applications_name_idx").on(columns.name),
-    applications_updated_at_idx: index("applications_updated_at_idx").on(
-      columns.updatedAt,
-    ),
-    applications_created_at_idx: index("applications_created_at_idx").on(
-      columns.createdAt,
-    ),
-  }),
-);
-
-export const messages_parts = pgTable(
-  "messages_parts",
-  {
-    _order: integer("_order").notNull(),
-    _parentID: integer("_parent_id").notNull(),
-    id: varchar("id").primaryKey(),
-    type: enum_messages_parts_type("type").notNull(),
-    text: varchar("text"),
-    toolInvocation_state: enum_messages_parts_tool_invocation_state(
-      "tool_invocation_state",
-    ).default("pending"),
-    toolInvocation_step: numeric("tool_invocation_step"),
-    toolInvocation_toolCallId: varchar("tool_invocation_tool_call_id"),
-    toolInvocation_toolName: varchar("tool_invocation_tool_name"),
-    toolInvocation_args: jsonb("tool_invocation_args"),
-    toolInvocation_result: jsonb("tool_invocation_result"),
-  },
-  (columns) => ({
-    _orderIdx: index("messages_parts_order_idx").on(columns._order),
-    _parentIDIdx: index("messages_parts_parent_id_idx").on(columns._parentID),
-    messages_parts_tool_invocation_tool_invocation_tool_call_id_idx: index(
-      "messages_parts_tool_invocation_tool_invocation_tool_call_id_idx",
-    ).on(columns.toolInvocation_toolCallId),
-    messages_parts_tool_invocation_tool_invocation_tool_name_idx: index(
-      "messages_parts_tool_invocation_tool_invocation_tool_name_idx",
-    ).on(columns.toolInvocation_toolName),
-    _parentIDFk: foreignKey({
-      columns: [columns["_parentID"]],
-      foreignColumns: [messages.id],
-      name: "messages_parts_parent_id_fk",
-    }).onDelete("cascade"),
-  }),
-);
-
-export const messages = pgTable(
-  "messages",
-  {
-    id: serial("id").primaryKey(),
-    chatSession: integer("chat_session_id")
-      .notNull()
-      .references(() => chat_sessions.id, {
-        onDelete: "set null",
-      }),
-    role: enum_messages_role("role").notNull(),
-    content: varchar("content"),
-    revisionId: varchar("revision_id"),
-    updatedAt: timestamp("updated_at", {
-      mode: "string",
-      withTimezone: true,
-      precision: 3,
-    })
-      .defaultNow()
-      .notNull(),
-    createdAt: timestamp("created_at", {
-      mode: "string",
-      withTimezone: true,
-      precision: 3,
-    })
-      .defaultNow()
-      .notNull(),
-  },
-  (columns) => ({
-    messages_chat_session_idx: index("messages_chat_session_idx").on(
-      columns.chatSession,
-    ),
-    messages_revision_id_idx: index("messages_revision_id_idx").on(
-      columns.revisionId,
-    ),
-    messages_updated_at_idx: index("messages_updated_at_idx").on(
-      columns.updatedAt,
-    ),
-    messages_created_at_idx: index("messages_created_at_idx").on(
-      columns.createdAt,
-    ),
-  }),
-);
-
 export const payload_locked_documents = pgTable(
   "payload_locked_documents",
   {
@@ -452,12 +139,6 @@ export const payload_locked_documents_rels = pgTable(
     path: varchar("path").notNull(),
     usersID: integer("users_id"),
     mediaID: integer("media_id"),
-    textsID: integer("texts_id"),
-    embeddingsID: integer("embeddings_id"),
-    workflowsID: integer("workflows_id"),
-    chat_sessionsID: integer("chat_sessions_id"),
-    applicationsID: integer("applications_id"),
-    messagesID: integer("messages_id"),
   },
   (columns) => ({
     order: index("payload_locked_documents_rels_order_idx").on(columns.order),
@@ -471,24 +152,6 @@ export const payload_locked_documents_rels = pgTable(
     payload_locked_documents_rels_media_id_idx: index(
       "payload_locked_documents_rels_media_id_idx",
     ).on(columns.mediaID),
-    payload_locked_documents_rels_texts_id_idx: index(
-      "payload_locked_documents_rels_texts_id_idx",
-    ).on(columns.textsID),
-    payload_locked_documents_rels_embeddings_id_idx: index(
-      "payload_locked_documents_rels_embeddings_id_idx",
-    ).on(columns.embeddingsID),
-    payload_locked_documents_rels_workflows_id_idx: index(
-      "payload_locked_documents_rels_workflows_id_idx",
-    ).on(columns.workflowsID),
-    payload_locked_documents_rels_chat_sessions_id_idx: index(
-      "payload_locked_documents_rels_chat_sessions_id_idx",
-    ).on(columns.chat_sessionsID),
-    payload_locked_documents_rels_applications_id_idx: index(
-      "payload_locked_documents_rels_applications_id_idx",
-    ).on(columns.applicationsID),
-    payload_locked_documents_rels_messages_id_idx: index(
-      "payload_locked_documents_rels_messages_id_idx",
-    ).on(columns.messagesID),
     parentFk: foreignKey({
       columns: [columns["parent"]],
       foreignColumns: [payload_locked_documents.id],
@@ -503,36 +166,6 @@ export const payload_locked_documents_rels = pgTable(
       columns: [columns["mediaID"]],
       foreignColumns: [media.id],
       name: "payload_locked_documents_rels_media_fk",
-    }).onDelete("cascade"),
-    textsIdFk: foreignKey({
-      columns: [columns["textsID"]],
-      foreignColumns: [texts.id],
-      name: "payload_locked_documents_rels_texts_fk",
-    }).onDelete("cascade"),
-    embeddingsIdFk: foreignKey({
-      columns: [columns["embeddingsID"]],
-      foreignColumns: [embeddings.id],
-      name: "payload_locked_documents_rels_embeddings_fk",
-    }).onDelete("cascade"),
-    workflowsIdFk: foreignKey({
-      columns: [columns["workflowsID"]],
-      foreignColumns: [workflows.id],
-      name: "payload_locked_documents_rels_workflows_fk",
-    }).onDelete("cascade"),
-    chat_sessionsIdFk: foreignKey({
-      columns: [columns["chat_sessionsID"]],
-      foreignColumns: [chat_sessions.id],
-      name: "payload_locked_documents_rels_chat_sessions_fk",
-    }).onDelete("cascade"),
-    applicationsIdFk: foreignKey({
-      columns: [columns["applicationsID"]],
-      foreignColumns: [applications.id],
-      name: "payload_locked_documents_rels_applications_fk",
-    }).onDelete("cascade"),
-    messagesIdFk: foreignKey({
-      columns: [columns["messagesID"]],
-      foreignColumns: [messages.id],
-      name: "payload_locked_documents_rels_messages_fk",
     }).onDelete("cascade"),
   }),
 );
@@ -633,68 +266,6 @@ export const payload_migrations = pgTable(
 
 export const relations_users = relations(users, () => ({}));
 export const relations_media = relations(media, () => ({}));
-export const relations_texts = relations(texts, ({ one }) => ({
-  application: one(applications, {
-    fields: [texts.application],
-    references: [applications.id],
-    relationName: "application",
-  }),
-}));
-export const relations_embeddings = relations(embeddings, ({ one }) => ({
-  sourceText: one(texts, {
-    fields: [embeddings.sourceText],
-    references: [texts.id],
-    relationName: "sourceText",
-  }),
-}));
-export const relations_workflows_steps = relations(
-  workflows_steps,
-  ({ one }) => ({
-    _parentID: one(workflows, {
-      fields: [workflows_steps._parentID],
-      references: [workflows.id],
-      relationName: "steps",
-    }),
-  }),
-);
-export const relations_workflows = relations(workflows, ({ one, many }) => ({
-  application: one(applications, {
-    fields: [workflows.application],
-    references: [applications.id],
-    relationName: "application",
-  }),
-  steps: many(workflows_steps, {
-    relationName: "steps",
-  }),
-}));
-export const relations_chat_sessions = relations(chat_sessions, ({ one }) => ({
-  application: one(applications, {
-    fields: [chat_sessions.application],
-    references: [applications.id],
-    relationName: "application",
-  }),
-}));
-export const relations_applications = relations(applications, () => ({}));
-export const relations_messages_parts = relations(
-  messages_parts,
-  ({ one }) => ({
-    _parentID: one(messages, {
-      fields: [messages_parts._parentID],
-      references: [messages.id],
-      relationName: "parts",
-    }),
-  }),
-);
-export const relations_messages = relations(messages, ({ one, many }) => ({
-  chatSession: one(chat_sessions, {
-    fields: [messages.chatSession],
-    references: [chat_sessions.id],
-    relationName: "chatSession",
-  }),
-  parts: many(messages_parts, {
-    relationName: "parts",
-  }),
-}));
 export const relations_payload_locked_documents_rels = relations(
   payload_locked_documents_rels,
   ({ one }) => ({
@@ -712,36 +283,6 @@ export const relations_payload_locked_documents_rels = relations(
       fields: [payload_locked_documents_rels.mediaID],
       references: [media.id],
       relationName: "media",
-    }),
-    textsID: one(texts, {
-      fields: [payload_locked_documents_rels.textsID],
-      references: [texts.id],
-      relationName: "texts",
-    }),
-    embeddingsID: one(embeddings, {
-      fields: [payload_locked_documents_rels.embeddingsID],
-      references: [embeddings.id],
-      relationName: "embeddings",
-    }),
-    workflowsID: one(workflows, {
-      fields: [payload_locked_documents_rels.workflowsID],
-      references: [workflows.id],
-      relationName: "workflows",
-    }),
-    chat_sessionsID: one(chat_sessions, {
-      fields: [payload_locked_documents_rels.chat_sessionsID],
-      references: [chat_sessions.id],
-      relationName: "chat_sessions",
-    }),
-    applicationsID: one(applications, {
-      fields: [payload_locked_documents_rels.applicationsID],
-      references: [applications.id],
-      relationName: "applications",
-    }),
-    messagesID: one(messages, {
-      fields: [payload_locked_documents_rels.messagesID],
-      references: [messages.id],
-      relationName: "messages",
     }),
   }),
 );
@@ -782,20 +323,8 @@ export const relations_payload_migrations = relations(
 );
 
 type DatabaseSchema = {
-  enum_workflows_steps_action: typeof enum_workflows_steps_action;
-  enum_messages_parts_type: typeof enum_messages_parts_type;
-  enum_messages_parts_tool_invocation_state: typeof enum_messages_parts_tool_invocation_state;
-  enum_messages_role: typeof enum_messages_role;
   users: typeof users;
   media: typeof media;
-  texts: typeof texts;
-  embeddings: typeof embeddings;
-  workflows_steps: typeof workflows_steps;
-  workflows: typeof workflows;
-  chat_sessions: typeof chat_sessions;
-  applications: typeof applications;
-  messages_parts: typeof messages_parts;
-  messages: typeof messages;
   payload_locked_documents: typeof payload_locked_documents;
   payload_locked_documents_rels: typeof payload_locked_documents_rels;
   payload_preferences: typeof payload_preferences;
@@ -803,14 +332,6 @@ type DatabaseSchema = {
   payload_migrations: typeof payload_migrations;
   relations_users: typeof relations_users;
   relations_media: typeof relations_media;
-  relations_texts: typeof relations_texts;
-  relations_embeddings: typeof relations_embeddings;
-  relations_workflows_steps: typeof relations_workflows_steps;
-  relations_workflows: typeof relations_workflows;
-  relations_chat_sessions: typeof relations_chat_sessions;
-  relations_applications: typeof relations_applications;
-  relations_messages_parts: typeof relations_messages_parts;
-  relations_messages: typeof relations_messages;
   relations_payload_locked_documents_rels: typeof relations_payload_locked_documents_rels;
   relations_payload_locked_documents: typeof relations_payload_locked_documents;
   relations_payload_preferences_rels: typeof relations_payload_preferences_rels;
@@ -818,7 +339,7 @@ type DatabaseSchema = {
   relations_payload_migrations: typeof relations_payload_migrations;
 };
 
-declare module "@payloadcms/db-postgres/types" {
+declare module "@payloadcms/db-postgres" {
   export interface GeneratedDatabaseSchema {
     schema: DatabaseSchema;
   }
