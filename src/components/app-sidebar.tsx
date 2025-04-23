@@ -16,6 +16,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  useSidebar
 } from "@/components/ui/sidebar"
 
 import {
@@ -48,7 +49,8 @@ const workspaceChatItems = [
 
 export function AppSidebar() {
   const { theme, setTheme } = useTheme();
-
+  const { state } = useSidebar();
+  
   return (
     <Sidebar collapsible="icon" variant="inset">
       <SidebarContent>
@@ -81,7 +83,7 @@ export function AppSidebar() {
       </SidebarContent>
 
       <SidebarFooter>
-        <div className="flex flex-row justify-between w-full">
+        <div className={`flex ${state === 'collapsed' ? 'flex-col' : 'flex-row justify-between'} w-full`}>
           <Button variant="ghost" size="icon" className="rounded-full">
             <Settings />
           </Button>

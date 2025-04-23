@@ -27,7 +27,7 @@ export default function Opera() {
   const [openStates, setOpenStates] = useState<Record<string, boolean>>({});
   const [expandedResults, setExpandedResults] = useState<Record<string, boolean>>({});
   const messagesEndRef = useRef(null);
-  const [selectedModel, setSelectedModel] = useState<string>('gpt-4.1-nano');
+  const [selectedModel, setSelectedModel] = useState<string>('claude-3-5-sonnet-latest');
   const [selectedTools, setSelectedTools] = useState<string[]>([]);
   const [availableModels, setAvailableModels] = useState<{key: string, label: string}[]>([]);
   const [availableTools, setAvailableTools] = useState<{key: string, label: string}[]>([]);
