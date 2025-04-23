@@ -22,7 +22,7 @@ export default function RootLayout({
         <body
           className={`antialiased h-screen w-screen`}
         >
-          <SidebarProvider className="border-4 border-muted rounded-lg w-full h-full">
+          <SidebarProvider defaultOpen={false} className="border-4 border-muted rounded-lg w-full h-full">
             <AppSidebar />
             <SidebarInset className="border border-muted rounded-lg">
               <main className="py-1.5 flex flex-1 flex-col w-full h-full rounded-lg">

@@ -125,6 +125,139 @@ server.tool(
   }
 );
 
+// Tool to edit a remote file
+server.tool(
+  "props_edit_file",
+  {
+    filePath: z.string().describe("The path of the file to edit on the remote server."),
+    content: z.string().describe("The content to write to the file.")
+  },
+  async ({ filePath, content }) => {
+    try {
+      console.log(`[PropsMCP] Editing file: ${filePath}`);
+      
+      // First ensure connection is initialized
+      const initResponse = await fetch(PROPS_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'initialize' })
+      });
+      
+      if (!initResponse.ok) {
+        const initErrorText = await initResponse.text();
+        console.error(`[PropsMCP] Failed to initialize SSH: ${initErrorText}`);
+        return {
+          type: "text",
+          text: `Failed to initialize SSH connection: ${initErrorText || 'Unknown error'}`
+        };
+      }
+      
+      const initResult = await initResponse.json();
+      console.log(`[PropsMCP] SSH initialization result: ${initResult.message}`);
+      
+      // Edit the file
+      const editResponse = await fetch(PROPS_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'editFile',
+          filePath: filePath,
+          content: content
+        })
+      });
+      
+      if (!editResponse.ok) {
+        const editErrorText = await editResponse.text();
+        console.error(`[PropsMCP] File edit error: ${editErrorText}`);
+        return {
+          type: "text",
+          text: `File edit error: ${editErrorText || 'Unknown error'}`
+        };
+      }
+      
+      const editResult = await editResponse.json();
+      console.log(`[PropsMCP] File edit result: ${editResult.message}`);
+      
+      return {
+        type: "text",
+        text: editResult.message
+      };
+    } catch (err) {
+      console.error(`[PropsMCP] Unexpected error during file edit: ${err instanceof Error ? err.message : String(err)}`);
+      return {
+        type: "text",
+        text: `Error: ${err instanceof Error ? err.message : String(err)}`
+      };
+    }
+  }
+);
+
+// Tool to read a remote file
+server.tool(
+  "props_read_file",
+  {
+    filePath: z.string().describe("The path of the file to read from the remote server.")
+  },
+  async ({ filePath }) => {
+    try {
+      console.log(`[PropsMCP] Reading file: ${filePath}`);
+      
+      // First ensure connection is initialized
+      const initResponse = await fetch(PROPS_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'initialize' })
+      });
+      
+      if (!initResponse.ok) {
+        const initErrorText = await initResponse.text();
+        console.error(`[PropsMCP] Failed to initialize SSH: ${initErrorText}`);
+        return {
+          type: "text",
+          text: `Failed to initialize SSH connection: ${initErrorText || 'Unknown error'}`
+        };
+      }
+      
+      const initResult = await initResponse.json();
+      console.log(`[PropsMCP] SSH initialization result: ${initResult.message}`);
+      
+      // Read the file
+      const readResponse = await fetch(PROPS_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'readFile',
+          filePath: filePath
+        })
+      });
+      
+      if (!readResponse.ok) {
+        const readErrorText = await readResponse.text();
+        console.error(`[PropsMCP] File read error: ${readErrorText}`);
+        return {
+          type: "text",
+          text: `File read error: ${readErrorText || 'Unknown error'}`
+        };
+      }
+      
+      const readResult = await readResponse.json();
+      console.log(`[PropsMCP] File read result: ${readResult.message}`);
+      
+      return {
+        type: "text",
+        text: `${readResult.message}${readResult.content ? `\nContent: ${readResult.content}` : ''}`,
+        content: readResult.content || ''
+      };
+    } catch (err) {
+      console.error(`[PropsMCP] Unexpected error during file read: ${err instanceof Error ? err.message : String(err)}`);
+      return {
+        type: "text",
+        text: `Error: ${err instanceof Error ? err.message : String(err)}`
+      };
+    }
+  }
+);
+
 // Start receiving messages on stdin and sending messages on stdout
 const transport = new StdioServerTransport();
 await server.connect(transport);

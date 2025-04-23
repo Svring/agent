@@ -28,6 +28,7 @@ import {
 
 import { Button } from "@/components/ui/button"
 import { useTheme } from "@/components/theme-provider"
+import { useEffect } from "react"
 
 const workspaceChatItems = [
   {

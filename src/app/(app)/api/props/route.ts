@@ -31,6 +31,42 @@ export async function POST(req: NextRequest) {
           console.log('Command execution failed via API:', execResult.message);
           return NextResponse.json({ message: execResult.message }, { status: 500 });
         }
+      case 'editFile':
+        const filePath = body.filePath;
+        const content = body.content;
+        if (!filePath || content === undefined) {
+          return NextResponse.json({ message: 'filePath and content are required for editFile action' }, { status: 400 });
+        }
+        const editResult = await propsManager.editRemoteFile(filePath, content);
+        if (editResult.success) {
+          console.log('File edit successful via API.');
+          return NextResponse.json({ message: editResult.message }, { status: 200 });
+        } else {
+          console.log('File edit failed via API:', editResult.message);
+          return NextResponse.json({ message: editResult.message }, { status: 500 });
+        }
+      case 'readFile':
+        const readFilePath = body.filePath;
+        if (!readFilePath) {
+          return NextResponse.json({ message: 'filePath is required for readFile action' }, { status: 400 });
+        }
+        const readResult = await propsManager.readRemoteFile(readFilePath);
+        if (readResult.success) {
+          console.log('File read successful via API.');
+          return NextResponse.json({ message: readResult.message, content: readResult.content }, { status: 200 });
+        } else {
+          console.log('File read failed via API:', readResult.message);
+          return NextResponse.json({ message: readResult.message }, { status: 500 });
+        }
+      case 'disconnect':
+        try {
+          await propsManager.disconnectSSH();
+          console.log('SSH Disconnection successful via API.');
+          return NextResponse.json({ message: 'SSH disconnected successfully' }, { status: 200 });
+        } catch (disconnectErr) {
+          console.error('SSH Disconnection failed via API:', disconnectErr);
+          return NextResponse.json({ message: `SSH Disconnection failed: ${disconnectErr instanceof Error ? disconnectErr.message : String(disconnectErr)}` }, { status: 500 });
+        }
       default:
         return NextResponse.json({ message: 'Invalid action specified' }, { status: 400 });
     }
@@ -43,8 +79,12 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// GET handler to check status
+// GET handler to check status and CWD
 export async function GET(req: NextRequest) {
   const status = propsManager.getStatus();
-  return NextResponse.json({ status: status.connected ? 'Connected' : 'Disconnected' });
+  const cwd = propsManager.getCurrentWorkingDirectory();
+  return NextResponse.json({
+    status: status.connected ? 'Connected' : 'Disconnected',
+    cwd: cwd
+  });
 }

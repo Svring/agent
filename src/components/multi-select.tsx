@@ -53,7 +53,7 @@ const MultiSelect = ({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent
-          className=""
+          className="w-auto"
           onCloseAutoFocus={(e) => e.preventDefault()}
         >
           {values.map((value: ISelectProps["options"][0], index: number) => {
