@@ -122,7 +122,7 @@ async function executeTextEditorFunction({
   }
 }
 
-export const textEditorTool = anthropic.tools.textEditor_20241022({
+export const textEditorTool = anthropic.tools.textEditor_20250124({
   execute: async ({
     command,
     path,

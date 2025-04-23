@@ -3,6 +3,7 @@
 // Only import createOpenAI as all models will use this via the proxy
 import { createOpenAI } from '@ai-sdk/openai'; 
 // Removed createAnthropic and createGoogleGenerativeAI imports
+import { createAnthropic } from '@ai-sdk/anthropic';
 import { computerUseTool } from '@/tools/static/computer-use';
 import { addTextTool } from '@/tools/static/add-text';
 import { getInformationTool } from '@/tools/static/get-information';
@@ -31,6 +32,18 @@ const createModelViaProxy = (modelName: string): LanguageModel => {
   return openai(modelName);
 };
 
+// --- Anthropic Model Factory for Claude --- 
+
+const createClaudeModel = (modelName: string): LanguageModel => {
+  console.log(`Creating Claude model "${modelName}" directly via Anthropic SDK`);
+  const anthropic = createAnthropic({
+    apiKey: process.env.SEALOS_USW_API_KEY,
+    // Use the same Sealos endpoint if needed, or default to Anthropic's endpoint
+    baseURL: process.env.SEALOS_USW_BASE_URL,
+  });
+  return anthropic(modelName);
+};
+
 // --- Available Model Names --- 
 const availableModelNames = [
   'claude-3-5-sonnet-latest',
@@ -38,6 +51,11 @@ const availableModelNames = [
   'gemini-2.5-pro-exp-03-25',
   'gpt-4.1-nano',
   'grok-3-latest',
+];
+
+const claudeModels = [
+  'claude-3-5-sonnet-latest',
+  'claude-3-7-sonnet-20250219',
 ];
 
 // --- Tool Registry with Labels (Includes pseudo-tool for Playwright) --- 
@@ -78,6 +96,10 @@ const toolRegistry = {
     label: 'Ask for Confirmation',
     tool: askForConfirmationTool,
   },
+  props: { // Pseudo-tool key for enabling Props SSH commands
+    label: 'Remote Props (SSH)',
+    tool: null, // No actual static tool, just used for selection
+  },
 };
 
 // --- Playwright Tools Helper --- 
@@ -91,6 +113,19 @@ async function getPlaywrightTools() {
   });
   const playwrightTools = await playwrightClient.tools();
   return { playwrightTools, playwrightClient };
+}
+
+// --- Props Tools Helper --- 
+async function getPropsTools() {
+  const propsTransport = new Experimental_StdioMCPTransport({
+    command: 'node',
+    args: ['src/tools/mcp/props.mjs'], // Path to the props tool
+  });
+  const propsClient = await experimental_createMCPClient({
+    transport: propsTransport,
+  });
+  const propsTools = await propsClient.tools();
+  return { propsTools, propsClient };
 }
 
 // --- CastingManager Class --- 
@@ -172,7 +207,11 @@ export class CastingManager {
     }
 
     try {
-      // Always use the unified proxy factory
+      // Use Anthropic SDK for Claude models
+      if (claudeModels.includes(modelName)) {
+        return createClaudeModel(modelName);
+      }
+      // Otherwise, use the unified proxy factory
       return createModelViaProxy(modelName);
     } catch (error) {
       console.error(`Failed to create model "${modelName}" via proxy:`, error);
@@ -206,8 +245,8 @@ export class CastingManager {
   getStaticTools() {
     const staticTools: Record<string, any> = {};
     Object.entries(toolRegistry).forEach(([key, tool]) => {
-      // Exclude the pseudo-tool when getting actual static tools
-      if (key !== 'playwright') {
+      // Exclude the pseudo-tools when getting actual static tools
+      if (key !== 'playwright' && key !== 'props') {
         staticTools[key] = tool.tool;
       }
     });
@@ -217,6 +256,10 @@ export class CastingManager {
   async getPlaywrightTools() {
     return getPlaywrightTools();
   }
+
+  async getPropsTools() {
+    return getPropsTools();
+  }
 }
 
 // --- Singleton instance for now (can be extended to session-based) --- 
@@ -224,4 +267,4 @@ export const castingManager = new CastingManager();
 
 // For backward compatibility (tools only):
 export const tools = toolRegistry;
-export { getPlaywrightTools };
+export { getPlaywrightTools, getPropsTools };

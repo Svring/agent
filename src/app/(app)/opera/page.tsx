@@ -8,7 +8,7 @@ import Stage from '@/components/stage';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { ArrowUp, Hammer } from 'lucide-react';
+import { ArrowUp, Hammer, Send } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import MultiSelect from '@/components/multi-select';
 
@@ -88,37 +88,43 @@ export default function Opera() {
   return (
     <ResizablePanelGroup
       direction="horizontal"
-      className="w-full h-full"
+      className="w-full h-full rounded-lg"
     >
       {/* Left sidebar - resizable, defaulting to 30% */}
       <ResizablePanel defaultSize={30} minSize={20} maxSize={50}>
-        <div className="h-full flex flex-col p-2">
-          <div className="flex flex-row px-1 items-center w-full rounded-lg">
+        <div className="h-full flex flex-col">
+          {/* Title Bar - Fixed height, always at top */}
+          <header className="flex items-center px-3 py-2 shrink-0">
             <SidebarTrigger />
             <p className="flex-1 text-lg font-serif text-center"> Opera </p>
+          </header>
+
+          {/* Messages Section - Takes remaining space, scrollable */}
+          <div className="flex-1 overflow-hidden">
+            <ScrollArea className="h-full px-3 pb-2">
+              <div className="space-y-2">
+                {messages.map(m => (
+                  <MessageBubble
+                    key={m.id}
+                    m={m}
+                    openStates={openStates}
+                    expandedResults={expandedResults}
+                    toggleOpen={toggleOpen}
+                    toggleExpandResult={toggleExpandResult}
+                  />
+                ))}
+                <div ref={messagesEndRef} />
+              </div>
+            </ScrollArea>
           </div>
-          <ScrollArea className="flex-1 h-[calc(100vh-120px)]">
-            <div className="space-y-4 pr-2">
-              {messages.map(m => (
-                <MessageBubble
-                  key={m.id}
-                  m={m}
-                  openStates={openStates}
-                  expandedResults={expandedResults}
-                  toggleOpen={toggleOpen}
-                  toggleExpandResult={toggleExpandResult}
-                />
-              ))}
-              <div ref={messagesEndRef} />
-            </div>
-          </ScrollArea>
-          {/* Modern chat input area */}
-          <footer className="pt-2">
+
+          {/* Input Section - Fixed height, always at bottom */}
+          <footer className="p-2 border-t shrink-0">
             <div className="flex w-full flex-col rounded-lg border shadow-sm">
               <form onSubmit={customHandleSubmit} className="flex flex-col w-full bg-background rounded-lg p-2">
                 <Textarea
-                  className="flex-1 resize-none border-0 px-2 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 rounded-2xl mb-2"
-                  placeholder="Type a message..."
+                  className="flex-1 resize-none border-0 px-2 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 rounded-lg mb-2"
+                  placeholder="What's on your mind?"
                   value={input}
                   onChange={handleInputChange}
                   rows={3}
@@ -154,7 +160,7 @@ export default function Opera() {
                     className="bg-none rounded-full"
                     disabled={!input.trim()}
                   >
-                    <ArrowUp />
+                    <Send />
                   </button>
                 </div>
               </form>

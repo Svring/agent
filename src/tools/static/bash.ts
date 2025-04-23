@@ -121,7 +121,7 @@ function formatCommandOutput(result: CommandResponse): string {
 }
 
 // Tool definition
-export const bashTool = anthropic.tools.bash_20241022({
+export const bashTool = anthropic.tools.bash_20250124({
   execute: async ({ command, restart = false }) => {
     try {
       // Execute the command via the operator service

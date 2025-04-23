@@ -20,12 +20,12 @@ export default function RootLayout({
     <ThemeProvider>
       <html lang="en">
         <body
-          className={`antialiased`}
+          className={`antialiased h-screen w-screen`}
         >
-          <SidebarProvider className="border-4 border-muted rounded-lg">
+          <SidebarProvider className="border-4 border-muted rounded-lg w-full h-full">
             <AppSidebar />
             <SidebarInset className="border border-muted rounded-lg bg-transparent">
-              <main className="py-1.5 flex flex-1 flex-col w-full h-screen rounded-lg">
+              <main className="py-1.5 flex flex-1 flex-col w-full h-full rounded-lg">
                 {children}
               </main>
             </SidebarInset>

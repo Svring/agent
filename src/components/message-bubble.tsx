@@ -3,6 +3,7 @@ import { Cat, Bot, Cog, Eye, EyeOff, Hammer } from 'lucide-react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Button } from '@/components/ui/button';
 import React from 'react';
+import Markdown from 'react-markdown'
 
 // Helper function to count lines in a text string
 const countLines = (text: string): number => {
@@ -20,12 +21,10 @@ interface MessageBubbleProps {
 const MessageBubble: React.FC<MessageBubbleProps> = ({ m, openStates, expandedResults, toggleOpen, toggleExpandResult }) => {
   if (Array.isArray(m.parts)) {
     return (
-      <div className={`flex items-start gap-3 ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-        {m.role !== 'user' && (
-          <Avatar className="border">
-            <AvatarFallback><Bot /></AvatarFallback>
-          </Avatar>
-        )}
+      <div className="flex items-start gap-2 justify-start">
+        <Avatar className="border">
+          <AvatarFallback>{m.role === 'user' ? <Cat /> : <Bot />}</AvatarFallback>
+        </Avatar>
         <div className="space-y-1 max-w-3xl">
           {m.parts.map((part: any, partIndex: number) => {
             const partKey = `${m.id}-${partIndex}`;
@@ -130,26 +129,32 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ m, openStates, expandedRe
               // default for tool-invocation
               return <div key={partKey} className={`${toolStyle} text-xs italic break-words`}>Tool ({toolName}) - State: {toolInvocation.state}</div>;
             }
+            if (part.type === 'step-start') {
+              // show step boundaries as horizontal lines:
+              return partIndex > 0 ? (
+                <div key={partKey} className="relative my-2 text-muted-foreground p-1 flex items-center justify-center">
+                  <hr className="border-muted flex-1" />
+                  <span className="px-2 text-xs font-medium">new step</span>
+                  <hr className="border-muted flex-1" />
+                </div>
+              ) : null;
+            }
             // fallback for unknown part type
-            return <div key={partKey} className="break-words">Unsupported part type</div>;
+            return <div key={partKey} className="break-words text-sm bg-muted/30 rounded-lg px-3 py-2">
+              <p className="font-medium text-foreground">Unsupported part type</p>
+              <pre className="whitespace-pre-wrap text-xs text-muted-foreground mt-1">{JSON.stringify(part, null, 2)}</pre>
+            </div>;
           })}
         </div>
-        {m.role === 'user' && (
-          <Avatar className="border">
-            <AvatarFallback><Cat /></AvatarFallback>
-          </Avatar>
-        )}
       </div>
     );
   }
   // fallback for non-array parts
   return (
-    <div className={`flex items-start gap-3 ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-      {m.role !== 'user' && (
-        <Avatar className="border">
-          <AvatarFallback><Bot /></AvatarFallback>
-        </Avatar>
-      )}
+    <div className="flex items-start gap-3 justify-start">
+      <Avatar className="border">
+        <AvatarFallback>{m.role === 'user' ? <Cat /> : <Bot />}</AvatarFallback>
+      </Avatar>
       <div className="space-y-1 max-w-3xl">
         {m.content && m.content.length > 0 ? (
           <p className="whitespace-pre-wrap text-sm">{m.content}</p>
@@ -159,11 +164,6 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ m, openStates, expandedRe
           </p>
         )}
       </div>
-      {m.role === 'user' && (
-        <Avatar className="border">
-          <AvatarFallback><Cat /></AvatarFallback>
-        </Avatar>
-      )}
     </div>
   );
 };
