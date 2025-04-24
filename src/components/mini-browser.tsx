@@ -2,10 +2,11 @@ import React, { useState, useEffect, useRef, useContext } from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { RefreshCw, ArrowRightCircle, Eye, EyeOff, ChevronLeft, ChevronRight, Frame, Cookie, Loader2, Image as ImageIcon, Check, Trash2 } from 'lucide-react';
+import { RefreshCw, ArrowRightCircle, Eye, EyeOff, ChevronLeft, ChevronRight, X, Cookie, Loader2, Image as ImageIcon, Check, Trash2, Edit } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { PlaywrightContext } from '@/context/PlaywrightContext';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 
 type BrowserStatus = 'not-initialized' | 'initializing' | 'ready' | 'error';
 
@@ -31,10 +32,14 @@ const MiniBrowser: React.FC = () => {
   const [contextInput, setContextInput] = useState('opera');
   const [availableContexts, setAvailableContexts] = useState<{ id: string }[]>([]);
   const interactionDivRef = useRef<HTMLDivElement>(null);
-  const [showAxes, setShowAxes] = useState(true);
+  const [showAxes, setShowAxes] = useState(false);
   const [availablePages, setAvailablePages] = useState<{ id: string; contextId: string | null }[]>([]);
   const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
   const { setActivePage } = useContext(PlaywrightContext);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [renameDialogOpen, setRenameDialogOpen] = useState(false);
+  const [pageToRename, setPageToRename] = useState<string | null>(null);
+  const [newPageName, setNewPageName] = useState('');
 
   // Update the context whenever contextInput or selectedPageId changes
   useEffect(() => {
@@ -107,6 +112,7 @@ const MiniBrowser: React.FC = () => {
   };
 
   useEffect(() => {
+    let intervalId: NodeJS.Timeout | null = null;
     const checkBrowserStatus = async () => {
       if (browserStatus === 'not-initialized') {
         const response = await fetch('/api/playwright', {
@@ -155,11 +161,30 @@ const MiniBrowser: React.FC = () => {
           if (screenshotDataPayload.success && screenshotDataPayload.data) {
             setScreenshotData(`data:image/png;base64,${screenshotDataPayload.data}`);
           }
+          // Clear interval once browser is initialized
+          if (intervalId) {
+            clearInterval(intervalId);
+            intervalId = null;
+          }
         }
+      } else if (intervalId) {
+        clearInterval(intervalId);
+        intervalId = null;
       }
     };
+    // Initial check
     checkBrowserStatus();
-  }, [browserStatus]);
+    // Set up interval to check every 5 seconds if not initialized
+    if (browserStatus === 'not-initialized') {
+      intervalId = setInterval(checkBrowserStatus, 5000);
+    }
+    // Cleanup interval on unmount
+    return () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+    };
+  }, [browserStatus, contextInput, selectedPageId]);
 
   useEffect(() => {
     if (screenshotData) {
@@ -328,6 +353,94 @@ const MiniBrowser: React.FC = () => {
     await fetchScreenshotForPage(pageId);
   };
 
+  const handleDeletePage = async (pageId: string) => {
+    if (browserStatus !== 'ready') return;
+    setIsDeleting(true);
+    try {
+      const response = await fetch('/api/playwright', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'deletePage', pageId, contextId: contextInput || 'opera' })
+      });
+      const data = await response.json();
+      if (data.success) {
+        // Refresh the list of pages
+        const statusRes = await fetch('/api/playwright', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'getStatus' })
+        });
+        const statusData = await statusRes.json();
+        if (statusData.success && statusData.status.pages) {
+          setAvailablePages(statusData.status.pages);
+          // If the deleted page was selected, select another page or clear selection
+          if (selectedPageId === pageId) {
+            const newSelectedPage = statusData.status.pages.length > 0 ? statusData.status.pages[0].id : null;
+            setSelectedPageId(newSelectedPage);
+            if (newSelectedPage) {
+              await fetchScreenshotForPage(newSelectedPage);
+            } else {
+              setScreenshotData(null);
+            }
+          }
+        }
+      } else {
+        console.error('Failed to delete page:', data.message);
+      }
+    } catch (error) {
+      console.error('Error deleting page:', error);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleOpenRenameDialog = (pageId: string) => {
+    setPageToRename(pageId);
+    setNewPageName(pageId);
+    setRenameDialogOpen(true);
+  };
+
+  const handleRenamePage = async () => {
+    if (browserStatus !== 'ready' || !pageToRename || !newPageName) return;
+    try {
+      const response = await fetch('/api/playwright', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          action: 'renamePage', 
+          pageId: pageToRename, 
+          newPageId: newPageName, 
+          contextId: contextInput || 'opera' 
+        })
+      });
+      const data = await response.json();
+      if (data.success) {
+        // Refresh the list of pages
+        const statusRes = await fetch('/api/playwright', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'getStatus' })
+        });
+        const statusData = await statusRes.json();
+        if (statusData.success && statusData.status.pages) {
+          setAvailablePages(statusData.status.pages);
+          // Update selected page ID if it was renamed
+          if (selectedPageId === pageToRename) {
+            setSelectedPageId(newPageName);
+            await fetchScreenshotForPage(newPageName);
+          }
+        }
+        setRenameDialogOpen(false);
+        setPageToRename(null);
+        setNewPageName('');
+      } else {
+        console.error('Failed to rename page:', data.message);
+      }
+    } catch (error) {
+      console.error('Error renaming page:', error);
+    }
+  };
+
   const renderTitleBarButtons = () => (
     <div className="flex items-center gap-2">
       <Button onClick={() => callPlaywrightAPI('goBack', {}, setIsRefreshing, setScreenshotData, setViewportWidth, setViewportHeight, setBrowserStatus)} variant="outline" size="sm" title="Go Back" disabled={browserStatus !== 'ready'}> <ChevronLeft className="h-4 w-4" /> </Button>
@@ -336,7 +449,7 @@ const MiniBrowser: React.FC = () => {
       <Button onClick={handleCleanup} disabled={browserStatus === 'not-initialized' || browserStatus === 'initializing'} variant="outline" size="sm" title="Cleanup Browser Instance"> <Trash2 className="h-4 w-4" /> </Button>
       <div className="flex-grow max-w-md mx-auto flex items-center gap-2">
         <Select value={contextInput} onValueChange={setContextInput} disabled={browserStatus !== 'ready'}>
-          <SelectTrigger className="w-24 h-8 text-sm px-2 focus:ring-0 focus:ring-offset-0">
+          <SelectTrigger size='sm' className="w-auto text-sm px-2 focus:ring-0 focus:ring-offset-0">
             <SelectValue placeholder="Context" />
           </SelectTrigger>
           <SelectContent>
@@ -357,15 +470,29 @@ const MiniBrowser: React.FC = () => {
   const renderPagesRow = () => {
     if (availablePages.length === 0) return null;
     return (
-      <div className="flex w-full border-t gap-1 py-1">
+      <div className="flex w-full border-t gap-1 py-1 overflow-x-auto">
         {availablePages.map(page => (
           <div
             key={page.id}
-            className={`flex-1 text-center text-xs px-2 py-1 rounded-md cursor-pointer border border-border/60 ${selectedPageId === page.id ? 'bg-muted' : 'bg-muted/20 hover:bg-muted/60'}`}
+            className={`flex flex-1 text-center text-xs px-2 py-1 rounded-md cursor-pointer border border-border/60 justify-center items-center ${selectedPageId === page.id ? 'bg-muted' : 'bg-muted/20 hover:bg-muted/60'} min-w-[150px]`}
             title={`${page.contextId || 'unknown'} - ${page.id}`}
-            onClick={() => handlePageSelect(page.id)}
+            onClick={() => {
+              handlePageSelect(page.id);
+              if (selectedPageId === page.id) {
+                handleOpenRenameDialog(page.id);
+              }
+            }}
           >
-            {`${page.contextId || 'unknown'} - ${page.id}`}
+            <span className="truncate flex-1">{`${page.contextId || 'unknown'} - ${page.id}`}</span>
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="h-5 w-5 p-0 ml-1" 
+              onClick={(e) => { e.stopPropagation(); handleDeletePage(page.id); }}
+              disabled={browserStatus !== 'ready' || isDeleting || availablePages.length <= 1}
+            >
+              <X className="h-3 w-3" />
+            </Button>
           </div>
         ))}
       </div>
@@ -374,7 +501,7 @@ const MiniBrowser: React.FC = () => {
 
   return (
     <Card className="w-auto h-auto mx-auto bg-background">
-      {browserStatus !== 'not-initialized' && (
+      {browserStatus !== 'not-initialized' && screenshotData && (
         <CardHeader className='pt-1'>
           {renderTitleBarButtons()}
           {renderPagesRow()}
@@ -438,9 +565,33 @@ const MiniBrowser: React.FC = () => {
             )}
           </div>
         ) : (
-          <></>
+          <div className="flex flex-col items-center justify-center border rounded-lg w-full h-full">
+            <div className="p-6 bg-background rounded-xl shadow-lg max-w-xs w-full text-center">
+              <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+              <p className="text-sm text-foreground/70">Loading browser screenshot...</p>
+            </div>
+          </div>
         )}
       </CardContent>
+      <Dialog open={renameDialogOpen} onOpenChange={setRenameDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rename Page</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-4">
+            <Label htmlFor="newPageName">New Page Name</Label>
+            <Input 
+              id="newPageName" 
+              value={newPageName} 
+              onChange={(e) => setNewPageName(e.target.value)} 
+              placeholder="Enter new page name" 
+            />
+            <Button onClick={handleRenamePage} disabled={!newPageName || browserStatus !== 'ready'}>
+              <Check className="h-4 w-4 mr-2" /> Rename
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 };

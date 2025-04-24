@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { propsManager } from '@/backstage/props-manager';
+import fs from 'fs';
+import path from 'path';
+import * as toml from '@iarna/toml';
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
@@ -67,6 +70,37 @@ export async function POST(req: NextRequest) {
           console.error('SSH Disconnection failed via API:', disconnectErr);
           return NextResponse.json({ message: `SSH Disconnection failed: ${disconnectErr instanceof Error ? disconnectErr.message : String(disconnectErr)}` }, { status: 500 });
         }
+      case 'updateCredentials':
+        const credentials = body.credentials;
+        if (!credentials || typeof credentials !== 'object') {
+          return NextResponse.json({ message: 'Credentials object is required for updateCredentials action' }, { status: 400 });
+        }
+        const updateResult = propsManager.updateSSHCredentials(credentials);
+        if (updateResult.success) {
+          // Save credentials to TOML file
+          try {
+            const configFilePath = path.join(process.cwd(), 'src', 'auth', 'props', 'credential.toml');
+            let config: { ssh: { host: string; username: string; port: number; privateKeyPath: string } } = { ssh: { host: '', username: '', port: 22, privateKeyPath: '' } };
+            if (fs.existsSync(configFilePath)) {
+              const configData = fs.readFileSync(configFilePath, 'utf8');
+              config = toml.parse(configData) as typeof config;
+            }
+            config.ssh.host = credentials.host || config.ssh.host;
+            config.ssh.username = credentials.username || config.ssh.username;
+            config.ssh.port = credentials.port || config.ssh.port;
+            config.ssh.privateKeyPath = credentials.privateKeyPath || config.ssh.privateKeyPath;
+            fs.writeFileSync(configFilePath, toml.stringify(config));
+            console.log('SSH credentials saved to config file');
+          } catch (error) {
+            console.error('Failed to save credentials to config file:', error);
+            return NextResponse.json({ message: 'Failed to save credentials to config file' }, { status: 500 });
+          }
+          console.log('SSH credentials updated successfully via API.');
+          return NextResponse.json({ message: updateResult.message }, { status: 200 });
+        } else {
+          console.log('SSH credentials update failed via API:', updateResult.message);
+          return NextResponse.json({ message: updateResult.message }, { status: 500 });
+        }
       default:
         return NextResponse.json({ message: 'Invalid action specified' }, { status: 400 });
     }
@@ -83,8 +117,15 @@ export async function POST(req: NextRequest) {
 export async function GET(req: NextRequest) {
   const status = propsManager.getStatus();
   const cwd = propsManager.getCurrentWorkingDirectory();
+  const credentials = propsManager.getSSHCredentials();
   return NextResponse.json({
     status: status.connected ? 'Connected' : 'Disconnected',
-    cwd: cwd
+    cwd: cwd,
+    credentials: {
+      host: credentials.host,
+      username: credentials.username,
+      port: credentials.port,
+      privateKeyPath: credentials.privateKeyPath
+    }
   });
 }

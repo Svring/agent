@@ -28,7 +28,16 @@ import {
 
 import { Button } from "@/components/ui/button"
 import { useTheme } from "@/components/theme-provider"
-import { useEffect } from "react"
+import { useEffect, useState, useRef } from "react"
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 
 const workspaceChatItems = [
   {
@@ -51,7 +60,87 @@ const workspaceChatItems = [
 export function AppSidebar() {
   const { theme, setTheme } = useTheme();
   const { state } = useSidebar();
-  
+  const [sshHost, setSshHost] = useState('');
+  const [sshUsername, setSshUsername] = useState('');
+  const [sshPort, setSshPort] = useState('');
+  const [sshPrivateKeyPath, setSshPrivateKeyPath] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    // Load initial credentials from API
+    fetch('/api/props')
+      .then(response => response.json())
+      .then(data => {
+        if (data.credentials) {
+          setSshHost(data.credentials.host);
+          setSshUsername(data.credentials.username);
+          setSshPort(data.credentials.port.toString());
+          setSshPrivateKeyPath(data.credentials.privateKeyPath);
+        }
+      })
+      .catch(error => console.error('Failed to load SSH credentials:', error));
+  }, []);
+
+  const handleSaveCredentials = async () => {
+    setIsLoading(true);
+    try {
+      const credentials = {
+        host: sshHost,
+        username: sshUsername,
+        port: parseInt(sshPort, 10),
+        privateKeyPath: sshPrivateKeyPath
+      };
+      const response = await fetch('/api/props', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'updateCredentials',
+          credentials: credentials
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        console.error('Failed to save SSH credentials:', result.message);
+      }
+    } catch (error) {
+      console.error('Error saving SSH credentials:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleFileSelect = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  };
+
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      // Upload the file to the backend
+      const formData = new FormData();
+      formData.append('file', file);
+      try {
+        const response = await fetch('/api/props/upload-key', {
+          method: 'POST',
+          body: formData,
+        });
+        const result = await response.json();
+        if (response.ok && result.path) {
+          setSshPrivateKeyPath(result.path);
+        } else {
+          console.error('Failed to upload private key:', result.message);
+        }
+      } catch (error) {
+        console.error('Error uploading private key:', error);
+      }
+    }
+  };
+
   return (
     <Sidebar collapsible="icon" variant="inset">
       <SidebarContent>
@@ -85,9 +174,48 @@ export function AppSidebar() {
 
       <SidebarFooter>
         <div className={`flex ${state === 'collapsed' ? 'flex-col' : 'flex-row justify-between'} w-full`}>
-          <Button variant="ghost" size="icon" className="rounded-full">
-            <Settings />
-          </Button>
+          <Sheet>
+            <SheetTrigger asChild>
+              <Button variant="ghost" size="icon" className="rounded-full">
+                <Settings />
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="left">
+              <SheetHeader>
+                <SheetTitle>SSH Settings for Props Manager</SheetTitle>
+              </SheetHeader>
+              <div className="mt-4 space-y-4">
+                <div>
+                  <Label htmlFor="sshHost">Host</Label>
+                  <Input id="sshHost" value={sshHost} onChange={(e) => setSshHost(e.target.value)} />
+                </div>
+                <div>
+                  <Label htmlFor="sshUsername">Username</Label>
+                  <Input id="sshUsername" value={sshUsername} onChange={(e) => setSshUsername(e.target.value)} />
+                </div>
+                <div>
+                  <Label htmlFor="sshPort">Port</Label>
+                  <Input id="sshPort" value={sshPort} onChange={(e) => setSshPort(e.target.value)} />
+                </div>
+                <div>
+                  <Label htmlFor="sshPrivateKeyPath">Private Key Path</Label>
+                  <Button variant="outline" size="sm" onClick={handleFileSelect}>
+                    Browse
+                  </Button>
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    style={{ display: 'none' }}
+                    onChange={handleFileChange}
+                  // accept any file type
+                  />
+                </div>
+                <Button onClick={handleSaveCredentials} disabled={isLoading}>
+                  {isLoading ? 'Saving...' : 'Save Credentials'}
+                </Button>
+              </div>
+            </SheetContent>
+          </Sheet>
           <Button
             variant="ghost"
             size="icon"

@@ -12,7 +12,7 @@ interface RequestBody {
   action: 'init' | 'cleanup' | 'goto' | 'screenshot' | 'click' |
   'pressKey' | 'typeText' | 'mouseMove' | 'doubleClick' |
   'mouseDown' | 'mouseUp' | 'cursor_position' |
-  'scroll' | 'drag' | 'getViewportSize' | 'setViewportSize' | 'goBack' | 'goForward' | 'getCookies' | 'getStatus' | 'createPage';
+  'scroll' | 'drag' | 'getViewportSize' | 'setViewportSize' | 'goBack' | 'goForward' | 'getCookies' | 'getStatus' | 'createPage' | 'deletePage' | 'renamePage';
   url?: string;
   x?: number;         // Viewport coordinate
   y?: number;         // Viewport coordinate
@@ -29,6 +29,7 @@ interface RequestBody {
   height?: number;    // Viewport height
   contextId?: string; // For specifying context
   pageId?: string;    // For specifying page
+  newPageId?: string; // For renaming page
   options?: any;      // Generic options for playwright methods
 }
 
@@ -50,7 +51,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, message: 'Action is required in the request body.' }, { status: 400 });
     }
 
-    console.log(`Received playwright request with action: ${action}`);
+    // console.log(`Received playwright request with action: ${action}`);
 
     const manager = PlaywrightManager.getInstance();
 
@@ -144,7 +145,7 @@ export async function POST(request: NextRequest) {
       case 'getViewportSize': {
         const contextId = requestBody?.contextId || 'opera';
         const viewportSize = manager.getViewportSize(contextId);
-        console.log(`Retrieved viewport size: ${viewportSize.width}x${viewportSize.height} for context ${contextId}`);
+        // console.log(`Retrieved viewport size: ${viewportSize.width}x${viewportSize.height} for context ${contextId}`);
         return NextResponse.json({
           success: true,
           message: 'Viewport size retrieved.',
@@ -295,7 +296,7 @@ export async function POST(request: NextRequest) {
       case 'getStatus': {
         const manager = PlaywrightManager.getInstance();
         const status = manager.getStatus();
-        console.log('[Playwright API] getStatus called', status); // Log status server-side
+        // console.log('[Playwright API] getStatus called', status); // Log status server-side
         return NextResponse.json({ success: true, status });
       }
 
@@ -320,6 +321,35 @@ export async function POST(request: NextRequest) {
           pageId,
           contextId,
           viewport: viewportSize
+        });
+      }
+
+      case 'deletePage': {
+        const pageId = requestBody?.pageId;
+        const contextId = requestBody?.contextId || 'opera';
+        if (!pageId) {
+          return NextResponse.json({ success: false, message: 'pageId is required for deletePage action.' }, { status: 400 });
+        }
+        await manager.deletePage(contextId, pageId);
+        console.log(`Deleted page ${pageId} from context ${contextId}`);
+        return NextResponse.json({
+          success: true,
+          message: `Page ${pageId} deleted from context ${contextId}`
+        });
+      }
+
+      case 'renamePage': {
+        const pageId = requestBody?.pageId;
+        const newPageId = requestBody?.newPageId;
+        const contextId = requestBody?.contextId || 'opera';
+        if (!pageId || !newPageId) {
+          return NextResponse.json({ success: false, message: 'pageId and newPageId are required for renamePage action.' }, { status: 400 });
+        }
+        await manager.renamePage(contextId, pageId, newPageId);
+        console.log(`Renamed page ${pageId} to ${newPageId} in context ${contextId}`);
+        return NextResponse.json({
+          success: true,
+          message: `Page ${pageId} renamed to ${newPageId} in context ${contextId}`
         });
       }
 

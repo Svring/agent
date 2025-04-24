@@ -34,3 +34,12 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## SSH Credentials Setup
+
+1. Copy the example credential file:
+   cp src/auth/props/credential.example.toml src/auth/props/credential.toml
+
+2. Edit `credential.toml` and fill in your SSH server details.
+
+3. Upload your private key to `src/auth/props/` and update the `privateKeyPath` in the TOML file. You can use the provided `private_key.example` as a template.

@@ -48,3 +48,8 @@ node_modules/
 /playwright-report/
 /blob-report/
 /playwright/.cache/
+
+# Auth credentials (never commit real secrets)
+src/auth/props/*
+!src/auth/props/credential.example.toml
+!src/auth/props/private_key.example

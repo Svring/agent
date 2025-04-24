@@ -43,6 +43,7 @@ const availableModelNames = [
   'gemini-2.5-pro-exp-03-25',
   'gpt-4.1-nano',
   'grok-3-latest',
+  'gpt-image-1',
 ];
 
 const claudeModels = [

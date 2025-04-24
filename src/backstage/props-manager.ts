@@ -1,5 +1,7 @@
 import { NodeSSH } from 'node-ssh';
 import fs from 'fs';
+import path from 'path';
+import * as toml from '@iarna/toml';
 
 /**
  * Singleton class to manage SSH connections and actions
@@ -8,11 +10,46 @@ export class PropsManager {
   private static instance: PropsManager;
   private ssh: NodeSSH;
   private isConnected: boolean = false;
-  private privateKeyPath: string = '/Users/linkling/Code/agent/src/auth/hzh.sealos.run_ns-qezqvm92_devbox';
+  private privateKeyPath: string = '';
   private currentWorkingDirectory: string | null = null;
+  private host: string = '';
+  private username: string = '';
+  private port: number = 22;
+  private configFilePath: string = path.join(process.cwd(), 'src', 'auth', 'props', 'credential.toml');
 
   public constructor() {
     this.ssh = new NodeSSH();
+    this.loadCredentialsFromConfig();
+  }
+
+  /**
+   * Load SSH credentials from TOML config file
+   */
+  private loadCredentialsFromConfig(): void {
+    try {
+      if (fs.existsSync(this.configFilePath)) {
+        const configData = fs.readFileSync(this.configFilePath, 'utf8');
+        const config = toml.parse(configData) as { ssh?: { host?: string; username?: string; port?: number | string; privateKeyPath?: string } };
+        if (config.ssh) {
+          this.host = config.ssh.host || '';
+          this.username = config.ssh.username || '';
+          // Handle port number that might contain underscores or be a string
+          if (config.ssh.port) {
+            this.port = typeof config.ssh.port === 'string' ? parseInt(config.ssh.port.replace('_', ''), 10) : config.ssh.port;
+          } else {
+            this.port = 22;
+          }
+          this.privateKeyPath = config.ssh.privateKeyPath || '';
+          console.log('SSH credentials loaded from config file');
+        } else {
+          console.warn('No SSH section found in credential.toml');
+        }
+      } else {
+        console.warn('Credentials config file not found at:', this.configFilePath);
+      }
+    } catch (error) {
+      console.error('Failed to load credentials from config file:', error);
+    }
   }
 
   /**
@@ -26,12 +63,52 @@ export class PropsManager {
   }
 
   /**
+   * Update SSH credentials
+   */
+  public updateSSHCredentials(credentials: { host?: string; username?: string; port?: number; privateKeyPath?: string }): { success: boolean; message: string } {
+    if (credentials.host) this.host = credentials.host;
+    if (credentials.username) this.username = credentials.username;
+    if (credentials.port) this.port = credentials.port;
+    if (credentials.privateKeyPath) this.privateKeyPath = credentials.privateKeyPath;
+    
+    // If we're already connected, disconnect to reconnect with new credentials
+    if (this.isConnected && this.ssh.isConnected()) {
+      this.disconnectSSH();
+      console.log('Disconnected existing SSH connection to apply new credentials.');
+    }
+    
+    return { success: true, message: 'SSH credentials updated successfully.' };
+  }
+
+  /**
+   * Get current SSH credentials
+   */
+  public getSSHCredentials(): { host: string; username: string; port: number; privateKeyPath: string } {
+    return {
+      host: this.host,
+      username: this.username,
+      port: this.port,
+      privateKeyPath: this.privateKeyPath
+    };
+  }
+
+  /**
    * Initialize SSH connection
    */
   public async initializeSSH(): Promise<{ success: boolean; message: string; data?: any }> {
     if (this.isConnected && this.ssh.isConnected()) {
       console.log('SSH already connected.');
       return { success: true, message: 'Already connected' };
+    }
+
+    // Reload credentials from config file before initializing connection
+    this.loadCredentialsFromConfig();
+
+    // Check if credentials are set
+    if (!this.host || !this.username || !this.privateKeyPath) {
+      const errorMsg = 'SSH credentials are not properly configured. Please check credential.toml';
+      console.error(`❌ ${errorMsg}`);
+      return { success: false, message: errorMsg };
     }
 
     // Check if the key file exists
@@ -52,11 +129,11 @@ export class PropsManager {
     }
 
     try {
-      console.log(`Attempting SSH connection to hzh.sealos.run:32699...`);
+      console.log(`Attempting SSH connection to ${this.host}:${this.port}...`);
       await this.ssh.connect({
-        host: 'hzh.sealos.run',
-        username: 'devbox',
-        port: 32699,
+        host: this.host,
+        username: this.username,
+        port: this.port,
         privateKey: privateKeyContent,
       });
 

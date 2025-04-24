@@ -10,6 +10,7 @@ export class PlaywrightManager {
   private contexts: Map<string, BrowserContext> = new Map();
   private pages: Map<string, Page> = new Map();
   private viewportSizes: Map<string, { width: number, height: number }> = new Map();
+  private pageToContext: Map<string, string> = new Map();
 
   private constructor() { }
 
@@ -59,7 +60,7 @@ export class PlaywrightManager {
     this.contexts.set(id, context);
     // Store the viewport size for this context
     this.viewportSizes.set(id, { width, height });
-    
+
     console.log(`[PlaywrightManager] Context created with id: ${id}, viewport: ${width}x${height}. Stored size updated.`);
     return context;
   }
@@ -77,20 +78,20 @@ export class PlaywrightManager {
 
     if (!this.contexts.has(id)) {
       console.log(`[PlaywrightManager] No existing context found for id: ${id}. Creating new context.`);
-      return this.createContext(id, {width: requestedWidth, height: requestedHeight});
+      return this.createContext(id, { width: requestedWidth, height: requestedHeight });
     }
-    
+
     const existingSize = this.viewportSizes.get(id);
     console.log(`[PlaywrightManager] Existing context found for id: ${id}. Stored size: ${existingSize?.width}x${existingSize?.height}`);
 
     // If the viewport size is different, recreate the context
-    if (existingSize && 
-        (existingSize.width !== requestedWidth || 
-         existingSize.height !== requestedHeight)) {
+    if (existingSize &&
+      (existingSize.width !== requestedWidth ||
+        existingSize.height !== requestedHeight)) {
       console.log(`[PlaywrightManager] Viewport size mismatch for id: ${id}. Recreating context.`);
-      return this.createContext(id, {width: requestedWidth, height: requestedHeight});
+      return this.createContext(id, { width: requestedWidth, height: requestedHeight });
     }
-    
+
     console.log(`[PlaywrightManager] Returning existing context for id: ${id}.`);
     return this.contexts.get(id)!;
   }
@@ -112,6 +113,7 @@ export class PlaywrightManager {
 
     const page = await context.newPage();
     this.pages.set(pageId, page);
+    this.pageToContext.set(pageId, contextId);
     console.log(`Page created with id: ${pageId} in context: ${contextId}`);
     return page;
   }
@@ -128,7 +130,7 @@ export class PlaywrightManager {
     if (options.width || options.height) {
       await this.getContext(contextId, options);
     }
-    
+
     if (!this.pages.has(pageId)) {
       return this.createPage(contextId, pageId, options);
     }
@@ -320,32 +322,61 @@ export class PlaywrightManager {
   /**
    * Get the current status of the manager (browser, contexts, pages)
    */
-  public getStatus(): { 
-    browserInitialized: boolean; 
-    contexts: { id: string; viewport: { width: number; height: number } }[]; 
-    pages: { id: string; contextId: string | null }[]; 
+  public getStatus(): {
+    browserInitialized: boolean;
+    contexts: { id: string }[];
+    pages: { id: string, contextId: string | null }[];
   } {
-    const contextList = Array.from(this.contexts.keys()).map(id => ({
-      id,
-      viewport: this.viewportSizes.get(id) || { width: 0, height: 0 } // Default if size somehow missing
-    }));
-
-    const pageList = Array.from(this.pages.entries()).map(([pageId, page]) => {
-      // Find the context ID this page belongs to
-      let contextId: string | null = null;
-      for (const [ctxId, ctx] of this.contexts.entries()) {
-        if (page.context() === ctx) {
-          contextId = ctxId;
-          break;
-        }
-      }
-      return { id: pageId, contextId };
-    });
-
+    const contexts = Array.from(this.contexts.keys()).map(id => ({ id }));
+    const pages = Array.from(this.pages.keys()).map(id => ({ id, contextId: this.pageToContext.get(id) || null }));
     return {
       browserInitialized: this.browser !== null,
-      contexts: contextList,
-      pages: pageList
+      contexts,
+      pages
     };
+  }
+
+
+  async deletePage(contextId: string, pageId: string): Promise<void> {
+    const page = this.pages.get(pageId);
+    if (!page) {
+      throw new Error(`Page ${pageId} not found.`);
+    }
+    await page.close();
+    this.pages.delete(pageId);
+    this.pageToContext.delete(pageId);
+    console.log(`Deleted page ${pageId} from context ${contextId}`);
+    // Check if there are any other pages in this context; if not, close the context
+    let hasOtherPages = false;
+    for (const [pId, p] of this.pages) {
+      if (this.pageToContext.get(pId) === contextId) {
+        hasOtherPages = true;
+        break;
+      }
+    }
+    if (!hasOtherPages) {
+      const context = this.contexts.get(contextId);
+      if (context) {
+        await context.close();
+        this.contexts.delete(contextId);
+        console.log(`Closed context ${contextId} as it has no more pages.`);
+      }
+    }
+  }
+
+  async renamePage(contextId: string, oldPageId: string, newPageId: string): Promise<void> {
+    const page = this.pages.get(oldPageId);
+    if (!page) {
+      throw new Error(`Page ${oldPageId} not found.`);
+    }
+    if (this.pages.has(newPageId)) {
+      throw new Error(`Page ID ${newPageId} already exists.`);
+    }
+    this.pages.delete(oldPageId);
+    this.pages.set(newPageId, page);
+    // Update context association
+    this.pageToContext.delete(oldPageId);
+    this.pageToContext.set(newPageId, contextId);
+    console.log(`Renamed page from ${oldPageId} to ${newPageId} in context ${contextId}`);
   }
 }
