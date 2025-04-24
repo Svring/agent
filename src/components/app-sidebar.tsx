@@ -2,7 +2,8 @@
 
 import {
   ChevronDown, Settings, Moon, Sun, MessageCircle,
-  Globe, SquareChevronRight, File
+  Globe, SquareChevronRight, File,
+  Terminal
 } from "lucide-react"
 import Link from "next/link"
 
@@ -46,19 +47,19 @@ const workspaceChatItems = [
     icon: MessageCircle,
   },
   {
-    title: "Playwright",
-    url: "/playwright",
+    title: "Browser",
+    url: "/browser",
     icon: Globe,
-  },
-  {
-    title: "Props",
-    url: "/props",
-    icon: SquareChevronRight,
   },
   {
     title: "Explorer",
     url: "/explorer",
     icon: File,
+  },
+  {
+    title: "Terminal",
+    url: "/terminal",
+    icon: Terminal,
   }
 ]
 

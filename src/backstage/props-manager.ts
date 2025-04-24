@@ -144,7 +144,9 @@ export class PropsManager {
       try {
         const pwdResult = await this.ssh.execCommand('pwd');
         if (pwdResult.stdout && !pwdResult.stderr) {
-          this.currentWorkingDirectory = pwdResult.stdout.trim();
+          // Clean the stdout to ensure it's a single line path
+          const cleanedCwd = pwdResult.stdout.split('\n').filter(line => line.trim().length > 0)[0]?.trim();
+          this.currentWorkingDirectory = cleanedCwd || null;
           console.log(`Initial working directory set to: ${this.currentWorkingDirectory}`);
         } else {
           console.warn(`Could not determine initial working directory. stderr: ${pwdResult.stderr}`);
@@ -215,11 +217,13 @@ export class PropsManager {
           };
         } else {
           // cd succeeded, update CWD
-          this.currentWorkingDirectory = result.stdout.trim();
+          // Clean the stdout to ensure it's a single line path
+          const cleanedCwd = result.stdout.split('\n').filter(line => line.trim().length > 0)[0]?.trim();
+          this.currentWorkingDirectory = cleanedCwd || null;
           console.log(`Working directory changed to: ${this.currentWorkingDirectory}`);
           return {
             success: true,
-            message: `Working directory changed to ${this.currentWorkingDirectory}`,
+            message: `Working directory changed to ${this.currentWorkingDirectory || 'unknown'}`,
             stdout: '', // No stdout from the original cd command itself
             stderr: ''
           };
