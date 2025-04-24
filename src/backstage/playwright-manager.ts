@@ -216,7 +216,7 @@ export class PlaywrightManager {
     // Add https:// prefix if not present
     const formattedUrl = url.startsWith('http://') || url.startsWith('https://') ? url : `https://${url}`;
     await page.goto(formattedUrl, { waitUntil: options.waitUntil || 'networkidle' });
-    console.log(`Navigated to ${formattedUrl}`);
+    console.log(`Navigated to ${formattedUrl} on page ${pageId}`);
   }
 
   /**
@@ -248,6 +248,7 @@ export class PlaywrightManager {
         await page.mouse.dblclick(x, y, { button: options.button || 'left' });
         break;
     }
+    console.log(`Performed ${action} at (${x}, ${y}) on page ${pageId}`);
   }
 
   /**
@@ -256,6 +257,7 @@ export class PlaywrightManager {
   public async typeText(text: string, pageId = 'default'): Promise<void> {
     const page = await this.getPage('default', pageId);
     await page.keyboard.type(text);
+    console.log(`Typed text '${text}' on page ${pageId}`);
   }
 
   /**
@@ -264,6 +266,7 @@ export class PlaywrightManager {
   public async pressKey(key: string, pageId = 'default'): Promise<void> {
     const page = await this.getPage('default', pageId);
     await page.keyboard.press(key);
+    console.log(`Pressed key '${key}' on page ${pageId}`);
   }
 
   /**

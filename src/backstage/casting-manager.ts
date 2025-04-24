@@ -4,9 +4,6 @@
 import { createOpenAI } from '@ai-sdk/openai'; 
 // Removed createAnthropic and createGoogleGenerativeAI imports
 import { createAnthropic } from '@ai-sdk/anthropic';
-import { computerUseTool } from '@/tools/functions/computer-use';
-import { bashTool } from '@/tools/functions/bash';
-import { textEditorTool } from '@/tools/functions/text-editor';
 import { experimental_createMCPClient } from 'ai';
 import { Experimental_StdioMCPTransport } from 'ai/mcp-stdio';
 import { streamText } from 'ai';

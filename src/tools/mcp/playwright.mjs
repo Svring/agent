@@ -27,7 +27,7 @@ async function checkApiResponse(response, actionName) {
 }
 
 // Helper function to optionally take a screenshot after an action
-async function takeScreenshotIfRequested(screenshotAfter = true, fullPage = true) {
+async function takeScreenshotIfRequested(screenshotAfter = true, fullPage = true, contextId = 'opera', pageId = 'main') {
   if (!screenshotAfter) {
     return null; // Indicate no screenshot was taken
   }
@@ -36,6 +36,8 @@ async function takeScreenshotIfRequested(screenshotAfter = true, fullPage = true
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       action: 'screenshot',
+      contextId,
+      pageId,
       options: { fullPage, type: 'jpeg', quality: 80 }
     })
   });
@@ -59,17 +61,21 @@ const server = new McpServer({
 server.tool(
   "playwright_screenshot",
   {
-    fullPage: z.boolean().optional().describe("Whether to capture the full scrollable page.")
+    fullPage: z.boolean().optional().describe("Whether to capture the full scrollable page."),
+    contextId: z.string().optional().default('opera').describe("The ID of the context to interact with."),
+    pageId: z.string().optional().default('main').describe("The ID of the page to take a screenshot of.")
   },
-  async ({ fullPage = true }) => {
+  async ({ fullPage = true, contextId = 'opera', pageId = 'main' }) => {
     try {
-      console.log(`[PlaywrightMCP] Taking screenshot of current page.`);
+      console.log(`[PlaywrightMCP] Taking screenshot of page ${pageId} in context ${contextId}.`);
       
       const screenshotResponse = await fetch(PLAYWRIGHT_API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'screenshot',
+          contextId,
+          pageId,
           options: { fullPage, type: 'jpeg', quality: 80 }
         })
       });
@@ -99,12 +105,14 @@ server.tool(
     action: z.enum(["click", "doubleClick", "rightClick"]).describe("The type of click action to perform."),
     x: z.number().describe("The x-coordinate (viewport relative).)"),
     y: z.number().describe("The y-coordinate (viewport relative).)"),
+    contextId: z.string().optional().default('opera').describe("The ID of the context to interact with."),
+    pageId: z.string().optional().default('main').describe("The ID of the page to perform the action on."),
     screenshotAfter: z.boolean().optional().default(true).describe("Whether to take a screenshot after the action."),
     fullPage: z.boolean().optional().default(true).describe("Whether the post-action screenshot should capture the full page.")
   },
-  async ({ action, x, y, screenshotAfter, fullPage }) => {
+  async ({ action, x, y, contextId = 'opera', pageId = 'main', screenshotAfter, fullPage }) => {
     try {
-      console.log(`[PlaywrightMCP] Performing ${action} at (${x},${y}) on current page`);
+      console.log(`[PlaywrightMCP] Performing ${action} at (${x},${y}) on page ${pageId} in context ${contextId}`);
                   
       let apiAction;
       let button = 'left';
@@ -130,14 +138,16 @@ server.tool(
           action: apiAction,
           x: x,
           y: y,
-          button: button
+          button: button,
+          contextId,
+          pageId
         })
       });
       await checkApiResponse(actionResponse, `perform ${apiAction} action`);
             
-      const screenshotResult = await takeScreenshotIfRequested(screenshotAfter, fullPage);
+      const screenshotResult = await takeScreenshotIfRequested(screenshotAfter, fullPage, contextId, pageId);
       
-      return screenshotResult || { type: "text", text: `${action} performed successfully at (${x}, ${y}).` };
+      return screenshotResult || { type: "text", text: `${action} performed successfully at (${x}, ${y}) on page ${pageId}.` };
 
     } catch (err) {
       console.error(`[PlaywrightMCP] ${action} Error:`, err);
@@ -154,21 +164,23 @@ server.tool(
   "playwright_press_key",
   {
     key: z.string().describe("Name of the key to press (e.g., 'Enter', 'Tab', 'a', 'Shift')."),
+    contextId: z.string().optional().default('opera').describe("The ID of the context to interact with."),
+    pageId: z.string().optional().default('main').describe("The ID of the page to press the key on."),
     screenshotAfter: z.boolean().optional().default(true).describe("Whether to take a screenshot after the action."),
     fullPage: z.boolean().optional().default(true).describe("Whether the post-action screenshot should capture the full page.")
   },
-  async ({ key, screenshotAfter, fullPage }) => {
+  async ({ key, contextId = 'opera', pageId = 'main', screenshotAfter, fullPage }) => {
     try {
-      console.log(`[PlaywrightMCP] Pressing key: ${key}`);
+      console.log(`[PlaywrightMCP] Pressing key: ${key} on page ${pageId} in context ${contextId}`);
       const actionResponse = await fetch(PLAYWRIGHT_API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'pressKey', key: key })
+        body: JSON.stringify({ action: 'pressKey', key: key, contextId, pageId })
       });
       await checkApiResponse(actionResponse, 'press key');
       
-      const screenshotResult = await takeScreenshotIfRequested(screenshotAfter, fullPage);
-      return screenshotResult || { type: "text", text: `Key '${key}' pressed successfully.` };
+      const screenshotResult = await takeScreenshotIfRequested(screenshotAfter, fullPage, contextId, pageId);
+      return screenshotResult || { type: "text", text: `Key '${key}' pressed successfully on page ${pageId}.` };
 
     } catch (err) {
       console.error('[PlaywrightMCP] Press Key Error:', err);
@@ -181,21 +193,23 @@ server.tool(
   "playwright_type_text",
   {
     text: z.string().describe("The text to type into the focused element."),
+    contextId: z.string().optional().default('opera').describe("The ID of the context to interact with."),
+    pageId: z.string().optional().default('main').describe("The ID of the page to type text on."),
     screenshotAfter: z.boolean().optional().default(true).describe("Whether to take a screenshot after the action."),
     fullPage: z.boolean().optional().default(true).describe("Whether the post-action screenshot should capture the full page.")
   },
-  async ({ text, screenshotAfter, fullPage }) => {
+  async ({ text, contextId = 'opera', pageId = 'main', screenshotAfter, fullPage }) => {
     try {
-      console.log(`[PlaywrightMCP] Typing text: ${text}`);
+      console.log(`[PlaywrightMCP] Typing text: ${text} on page ${pageId} in context ${contextId}`);
       const actionResponse = await fetch(PLAYWRIGHT_API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'typeText', text: text })
+        body: JSON.stringify({ action: 'typeText', text: text, contextId, pageId })
       });
       await checkApiResponse(actionResponse, 'type text');
 
-      const screenshotResult = await takeScreenshotIfRequested(screenshotAfter, fullPage);
-      return screenshotResult || { type: "text", text: `Text typed successfully.` };
+      const screenshotResult = await takeScreenshotIfRequested(screenshotAfter, fullPage, contextId, pageId);
+      return screenshotResult || { type: "text", text: `Text typed successfully on page ${pageId}.` };
 
     } catch (err) {
       console.error('[PlaywrightMCP] Type Text Error:', err);
@@ -210,21 +224,23 @@ server.tool(
   {
     x: z.number().describe("The target x-coordinate (viewport relative).)"),
     y: z.number().describe("The target y-coordinate (viewport relative).)"),
+    contextId: z.string().optional().default('opera').describe("The ID of the context to interact with."),
+    pageId: z.string().optional().default('main').describe("The ID of the page to move the mouse on."),
     screenshotAfter: z.boolean().optional().default(false).describe("Whether to take a screenshot after the action (default false)."), // Default false for move
     fullPage: z.boolean().optional().default(true).describe("Whether the post-action screenshot should capture the full page.")
   },
-  async ({ x, y, screenshotAfter, fullPage }) => {
+  async ({ x, y, contextId = 'opera', pageId = 'main', screenshotAfter, fullPage }) => {
     try {
-      console.log(`[PlaywrightMCP] Moving mouse to (${x},${y})`);
+      console.log(`[PlaywrightMCP] Moving mouse to (${x},${y}) on page ${pageId} in context ${contextId}`);
       const actionResponse = await fetch(PLAYWRIGHT_API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'mouseMove', x, y })
+        body: JSON.stringify({ action: 'mouseMove', x, y, contextId, pageId })
       });
       await checkApiResponse(actionResponse, 'move mouse');
 
-      const screenshotResult = await takeScreenshotIfRequested(screenshotAfter, fullPage);
-      return screenshotResult || { type: "text", text: `Mouse moved to (${x}, ${y}).` };
+      const screenshotResult = await takeScreenshotIfRequested(screenshotAfter, fullPage, contextId, pageId);
+      return screenshotResult || { type: "text", text: `Mouse moved to (${x}, ${y}) on page ${pageId}.` };
 
     } catch (err) {
       console.error('[PlaywrightMCP] Mouse Move Error:', err);
@@ -239,21 +255,23 @@ server.tool(
     x: z.number().describe("The x-coordinate to press down at (viewport relative).)"),
     y: z.number().describe("The y-coordinate to press down at (viewport relative).)"),
     button: z.enum(["left", "right", "middle"]).optional().default('left').describe("Mouse button."),
+    contextId: z.string().optional().default('opera').describe("The ID of the context to interact with."),
+    pageId: z.string().optional().default('main').describe("The ID of the page to perform mouse down on."),
     screenshotAfter: z.boolean().optional().default(true).describe("Whether to take a screenshot after the action."),
     fullPage: z.boolean().optional().default(true).describe("Whether the post-action screenshot should capture the full page.")
   },
-  async ({ x, y, button, screenshotAfter, fullPage }) => {
+  async ({ x, y, button, contextId = 'opera', pageId = 'main', screenshotAfter, fullPage }) => {
     try {
-      console.log(`[PlaywrightMCP] Mouse down at (${x},${y}) with ${button} button`);
+      console.log(`[PlaywrightMCP] Mouse down at (${x},${y}) with ${button} button on page ${pageId} in context ${contextId}`);
       const actionResponse = await fetch(PLAYWRIGHT_API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'mouseDown', x, y, button })
+        body: JSON.stringify({ action: 'mouseDown', x, y, button, contextId, pageId })
       });
       await checkApiResponse(actionResponse, 'mouse down');
 
-      const screenshotResult = await takeScreenshotIfRequested(screenshotAfter, fullPage);
-      return screenshotResult || { type: "text", text: `Mouse down performed at (${x}, ${y}).` };
+      const screenshotResult = await takeScreenshotIfRequested(screenshotAfter, fullPage, contextId, pageId);
+      return screenshotResult || { type: "text", text: `Mouse down performed at (${x}, ${y}) on page ${pageId}.` };
 
     } catch (err) {
       console.error('[PlaywrightMCP] Mouse Down Error:', err);
@@ -268,21 +286,23 @@ server.tool(
     x: z.number().describe("The x-coordinate to release at (viewport relative).)"),
     y: z.number().describe("The y-coordinate to release at (viewport relative).)"),
     button: z.enum(["left", "right", "middle"]).optional().default('left').describe("Mouse button."),
+    contextId: z.string().optional().default('opera').describe("The ID of the context to interact with."),
+    pageId: z.string().optional().default('main').describe("The ID of the page to perform mouse up on."),
     screenshotAfter: z.boolean().optional().default(true).describe("Whether to take a screenshot after the action."),
     fullPage: z.boolean().optional().default(true).describe("Whether the post-action screenshot should capture the full page.")
   },
-  async ({ x, y, button, screenshotAfter, fullPage }) => {
+  async ({ x, y, button, contextId = 'opera', pageId = 'main', screenshotAfter, fullPage }) => {
     try {
-      console.log(`[PlaywrightMCP] Mouse up at (${x},${y}) with ${button} button`);
+      console.log(`[PlaywrightMCP] Mouse up at (${x},${y}) with ${button} button on page ${pageId} in context ${contextId}`);
       const actionResponse = await fetch(PLAYWRIGHT_API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'mouseUp', x, y, button })
+        body: JSON.stringify({ action: 'mouseUp', x, y, button, contextId, pageId })
       });
       await checkApiResponse(actionResponse, 'mouse up');
 
-      const screenshotResult = await takeScreenshotIfRequested(screenshotAfter, fullPage);
-      return screenshotResult || { type: "text", text: `Mouse up performed at (${x}, ${y}).` };
+      const screenshotResult = await takeScreenshotIfRequested(screenshotAfter, fullPage, contextId, pageId);
+      return screenshotResult || { type: "text", text: `Mouse up performed at (${x}, ${y}) on page ${pageId}.` };
 
     } catch (err) {
       console.error('[PlaywrightMCP] Mouse Up Error:', err);
@@ -299,21 +319,23 @@ server.tool(
     endX: z.number().describe("The ending x-coordinate (viewport relative).)"),
     endY: z.number().describe("The ending y-coordinate (viewport relative).)"),
     button: z.enum(["left", "right", "middle"]).optional().default('left').describe("Mouse button."),
+    contextId: z.string().optional().default('opera').describe("The ID of the context to interact with."),
+    pageId: z.string().optional().default('main').describe("The ID of the page to perform the drag on."),
     screenshotAfter: z.boolean().optional().default(true).describe("Whether to take a screenshot after the action."),
     fullPage: z.boolean().optional().default(true).describe("Whether the post-action screenshot should capture the full page.")
   },
-  async ({ startX, startY, endX, endY, button, screenshotAfter, fullPage }) => {
+  async ({ startX, startY, endX, endY, button, contextId = 'opera', pageId = 'main', screenshotAfter, fullPage }) => {
     try {
-      console.log(`[PlaywrightMCP] Dragging from (${startX},${startY}) to (${endX},${endY}) with ${button} button`);
+      console.log(`[PlaywrightMCP] Dragging from (${startX},${startY}) to (${endX},${endY}) with ${button} button on page ${pageId} in context ${contextId}`);
       const actionResponse = await fetch(PLAYWRIGHT_API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'drag', startX, startY, endX, endY, button })
+        body: JSON.stringify({ action: 'drag', startX, startY, endX, endY, button, contextId, pageId })
       });
       await checkApiResponse(actionResponse, 'drag');
 
-      const screenshotResult = await takeScreenshotIfRequested(screenshotAfter, fullPage);
-      return screenshotResult || { type: "text", text: `Drag performed from (${startX}, ${startY}) to (${endX}, ${endY}).` };
+      const screenshotResult = await takeScreenshotIfRequested(screenshotAfter, fullPage, contextId, pageId);
+      return screenshotResult || { type: "text", text: `Drag performed from (${startX}, ${startY}) to (${endX}, ${endY}) on page ${pageId}.` };
 
     } catch (err) {
       console.error('[PlaywrightMCP] Drag Error:', err);
@@ -328,21 +350,23 @@ server.tool(
   {
     deltaX: z.number().describe("Pixels to scroll horizontally (positive right, negative left).)"),
     deltaY: z.number().describe("Pixels to scroll vertically (positive down, negative up).)"),
+    contextId: z.string().optional().default('opera').describe("The ID of the context to interact with."),
+    pageId: z.string().optional().default('main').describe("The ID of the page to scroll on."),
     screenshotAfter: z.boolean().optional().default(true).describe("Whether to take a screenshot after the action."),
     fullPage: z.boolean().optional().default(true).describe("Whether the post-action screenshot should capture the full page.")
   },
-  async ({ deltaX, deltaY, screenshotAfter, fullPage }) => {
+  async ({ deltaX, deltaY, contextId = 'opera', pageId = 'main', screenshotAfter, fullPage }) => {
     try {
-      console.log(`[PlaywrightMCP] Scrolling by (${deltaX},${deltaY})`);
+      console.log(`[PlaywrightMCP] Scrolling by (${deltaX},${deltaY}) on page ${pageId} in context ${contextId}`);
       const actionResponse = await fetch(PLAYWRIGHT_API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'scroll', deltaX, deltaY })
+        body: JSON.stringify({ action: 'scroll', deltaX, deltaY, contextId, pageId })
       });
       await checkApiResponse(actionResponse, 'scroll');
 
-      const screenshotResult = await takeScreenshotIfRequested(screenshotAfter, fullPage);
-      return screenshotResult || { type: "text", text: `Scrolled by (${deltaX}, ${deltaY}).` };
+      const screenshotResult = await takeScreenshotIfRequested(screenshotAfter, fullPage, contextId, pageId);
+      return screenshotResult || { type: "text", text: `Scrolled by (${deltaX}, ${deltaY}) on page ${pageId}.` };
 
     } catch (err) {
       console.error('[PlaywrightMCP] Scroll Error:', err);

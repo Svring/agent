@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useContext } from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { RefreshCw, ArrowRightCircle, Eye, EyeOff, ChevronLeft, ChevronRight, Frame, Cookie, Loader2, AlertCircle, Check, Trash2 } from 'lucide-react';
+import { RefreshCw, ArrowRightCircle, Eye, EyeOff, ChevronLeft, ChevronRight, Frame, Cookie, Loader2, Image as ImageIcon, Check, Trash2 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
+import { PlaywrightContext } from '@/context/PlaywrightContext';
 
 type BrowserStatus = 'not-initialized' | 'initializing' | 'ready' | 'error';
 
@@ -17,66 +18,6 @@ const VIEWPORT_PRESETS = {
 };
 type ViewportPresetKey = keyof typeof VIEWPORT_PRESETS;
 
-const callPlaywrightAPI = async (
-  action: string,
-  params: any = {},
-  setIsRefreshing?: React.Dispatch<React.SetStateAction<boolean>>,
-  setScreenshotData?: React.Dispatch<React.SetStateAction<string | null>>,
-  setViewportWidth?: React.Dispatch<React.SetStateAction<number>>,
-  setViewportHeight?: React.Dispatch<React.SetStateAction<number>>,
-  setBrowserStatus?: React.Dispatch<React.SetStateAction<BrowserStatus>>
-) => {
-  if (setIsRefreshing) setIsRefreshing(true);
-  try {
-    const response = await fetch('/api/playwright', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action, ...params }),
-    });
-    const data = await response.json();
-
-    if (
-      ['screenshot', 'init', 'goto', 'click', 'doubleClick', 'scroll', 'pressKey', 'goBack', 'goForward'].includes(action) &&
-      data.success &&
-      setScreenshotData
-    ) {
-      const screenshotDataPayload = await (
-        await fetch('/api/playwright', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'screenshot' }),
-        })
-      ).json();
-      if (screenshotDataPayload.success && screenshotDataPayload.data) {
-        setScreenshotData(`data:image/png;base64,${screenshotDataPayload.data}`);
-        if (screenshotDataPayload.viewport && setViewportWidth && setViewportHeight) {
-          setViewportWidth(screenshotDataPayload.viewport.width);
-          setViewportHeight(screenshotDataPayload.viewport.height);
-        }
-      }
-    } else if (action === 'cleanup' && setScreenshotData && setBrowserStatus) {
-      setScreenshotData(null);
-      setBrowserStatus('not-initialized');
-    }
-
-    if (action === 'init' && setBrowserStatus) {
-      setBrowserStatus(data.success ? 'ready' : 'error');
-      if (data.success && data.viewport && setViewportWidth && setViewportHeight) {
-        setViewportWidth(data.viewport.width);
-        setViewportHeight(data.viewport.height);
-      }
-    }
-
-    return data;
-  } catch (error) {
-    console.error(`API Error during ${action}:`, error);
-    if (action === 'init' && setBrowserStatus) setBrowserStatus('error');
-    return { success: false, error: String(error) };
-  } finally {
-    if (setIsRefreshing) setTimeout(() => setIsRefreshing(false), 300);
-  }
-};
-
 const MiniBrowser: React.FC = () => {
   const [browserStatus, setBrowserStatus] = useState<BrowserStatus>('not-initialized');
   const [viewportWidth, setViewportWidth] = useState(1024);
@@ -87,8 +28,138 @@ const MiniBrowser: React.FC = () => {
   const [cursorPosition, setCursorPosition] = useState<{ x: number; y: number } | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [urlInput, setUrlInput] = useState('');
+  const [contextInput, setContextInput] = useState('opera');
+  const [availableContexts, setAvailableContexts] = useState<{ id: string }[]>([]);
   const interactionDivRef = useRef<HTMLDivElement>(null);
   const [showAxes, setShowAxes] = useState(true);
+  const [availablePages, setAvailablePages] = useState<{ id: string; contextId: string | null }[]>([]);
+  const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
+  const { setActivePage } = useContext(PlaywrightContext);
+
+  // Update the context whenever contextInput or selectedPageId changes
+  useEffect(() => {
+    setActivePage(contextInput, selectedPageId);
+  }, [contextInput, selectedPageId, setActivePage]);
+
+  const callPlaywrightAPI = async (
+    action: string,
+    params: any = {},
+    setIsRefreshing?: React.Dispatch<React.SetStateAction<boolean>>,
+    setScreenshotData?: React.Dispatch<React.SetStateAction<string | null>>,
+    setViewportWidth?: React.Dispatch<React.SetStateAction<number>>,
+    setViewportHeight?: React.Dispatch<React.SetStateAction<number>>,
+    setBrowserStatus?: React.Dispatch<React.SetStateAction<BrowserStatus>>
+  ) => {
+    if (setIsRefreshing) setIsRefreshing(true);
+    try {
+      const updatedParams = {
+        ...params,
+        contextId: contextInput || 'opera',
+        pageId: selectedPageId || 'main'
+      };
+      const response = await fetch('/api/playwright', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, ...updatedParams }),
+      });
+      const data = await response.json();
+
+      if (
+        ['screenshot', 'init', 'goto', 'click', 'doubleClick', 'scroll', 'pressKey', 'goBack', 'goForward'].includes(action) &&
+        data.success &&
+        setScreenshotData
+      ) {
+        const screenshotDataPayload = await (
+          await fetch('/api/playwright', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'screenshot', contextId: contextInput || 'opera', pageId: selectedPageId || 'main' }),
+          })
+        ).json();
+        if (screenshotDataPayload.success && screenshotDataPayload.data) {
+          setScreenshotData(`data:image/png;base64,${screenshotDataPayload.data}`);
+          if (screenshotDataPayload.viewport && setViewportWidth && setViewportHeight) {
+            setViewportWidth(screenshotDataPayload.viewport.width);
+            setViewportHeight(screenshotDataPayload.viewport.height);
+          }
+        }
+      } else if (action === 'cleanup' && setScreenshotData && setBrowserStatus) {
+        setScreenshotData(null);
+        setBrowserStatus('not-initialized');
+      }
+
+      if (action === 'init' && setBrowserStatus) {
+        setBrowserStatus(data.success ? 'ready' : 'error');
+        if (data.success && data.viewport && setViewportWidth && setViewportHeight) {
+          setViewportWidth(data.viewport.width);
+          setViewportHeight(data.viewport.height);
+        }
+      }
+
+      return data;
+    } catch (error) {
+      console.error(`API Error during ${action}:`, error);
+      if (action === 'init' && setBrowserStatus) setBrowserStatus('error');
+      return { success: false, error: String(error) };
+    } finally {
+      if (setIsRefreshing) setTimeout(() => setIsRefreshing(false), 300);
+    }
+  };
+
+  useEffect(() => {
+    const checkBrowserStatus = async () => {
+      if (browserStatus === 'not-initialized') {
+        const response = await fetch('/api/playwright', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'getStatus' })
+        });
+        const data = await response.json();
+        if (data.success && data.status.browserInitialized) {
+          setBrowserStatus('ready');
+          // Set available pages from status
+          if (data.status.pages) {
+            setAvailablePages(data.status.pages);
+            // Select the first page by default if available
+            if (data.status.pages.length > 0 && !selectedPageId) {
+              setSelectedPageId(data.status.pages[0].id);
+              await fetchScreenshotForPage(data.status.pages[0].id);
+            }
+          }
+          // Set available contexts from status
+          if (data.status.contexts) {
+            setAvailableContexts(data.status.contexts);
+            // Set the first context as default if available
+            if (data.status.contexts.length > 0 && contextInput === 'opera') {
+              setContextInput(data.status.contexts[0].id);
+            }
+          }
+          // Fetch viewport size
+          const viewportRes = await fetch('/api/playwright', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'getViewportSize' })
+          });
+          const viewportData = await viewportRes.json();
+          if (viewportData.success && viewportData.viewport) {
+            setViewportWidth(viewportData.viewport.width);
+            setViewportHeight(viewportData.viewport.height);
+          }
+          // Fetch screenshot data
+          const screenshotRes = await fetch('/api/playwright', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'screenshot' })
+          });
+          const screenshotDataPayload = await screenshotRes.json();
+          if (screenshotDataPayload.success && screenshotDataPayload.data) {
+            setScreenshotData(`data:image/png;base64,${screenshotDataPayload.data}`);
+          }
+        }
+      }
+    };
+    checkBrowserStatus();
+  }, [browserStatus]);
 
   useEffect(() => {
     if (screenshotData) {
@@ -103,9 +174,9 @@ const MiniBrowser: React.FC = () => {
   const handleInitialize = async () => {
     setBrowserStatus('initializing');
     setScreenshotData(null);
-    const initResponse = await callPlaywrightAPI('init', { width: viewportWidth, height: viewportHeight }, setIsRefreshing, setScreenshotData, setViewportWidth, setViewportHeight, setBrowserStatus);
+    const initResponse = await callPlaywrightAPI('init', { width: viewportWidth, height: viewportHeight, contextId: contextInput || 'opera' }, setIsRefreshing, setScreenshotData, setViewportWidth, setViewportHeight, setBrowserStatus);
     if (initResponse.success) {
-      await callPlaywrightAPI('goto', { url: 'https://google.com' }, setIsRefreshing, setScreenshotData, setViewportWidth, setViewportHeight, setBrowserStatus);
+      await callPlaywrightAPI('goto', { url: 'https://google.com', contextId: contextInput || 'opera', pageId: selectedPageId || 'main' }, setIsRefreshing, setScreenshotData, setViewportWidth, setViewportHeight, setBrowserStatus);
     }
   };
 
@@ -114,8 +185,31 @@ const MiniBrowser: React.FC = () => {
   };
 
   const refreshScreenshot = async () => {
-    if (browserStatus === 'ready') {
-      await callPlaywrightAPI('screenshot', {}, setIsRefreshing, setScreenshotData, setViewportWidth, setViewportHeight, setBrowserStatus);
+    if (browserStatus === 'ready' && selectedPageId) {
+      await fetchScreenshotForPage(selectedPageId);
+    }
+  };
+
+  const fetchScreenshotForPage = async (pageId: string) => {
+    setIsRefreshing(true);
+    try {
+      const screenshotRes = await fetch('/api/playwright', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'screenshot', contextId: contextInput || 'opera', pageId })
+      });
+      const screenshotDataPayload = await screenshotRes.json();
+      if (screenshotDataPayload.success && screenshotDataPayload.data) {
+        setScreenshotData(`data:image/png;base64,${screenshotDataPayload.data}`);
+        if (screenshotDataPayload.viewport) {
+          setViewportWidth(screenshotDataPayload.viewport.width);
+          setViewportHeight(screenshotDataPayload.viewport.height);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching screenshot:', error);
+    } finally {
+      setIsRefreshing(false);
     }
   };
 
@@ -177,7 +271,7 @@ const MiniBrowser: React.FC = () => {
     const response = await fetch('/api/playwright', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'getCookies', url: urlInput || 'https://google.com' }),
+      body: JSON.stringify({ action: 'getCookies', url: urlInput || 'https://google.com', contextId: contextInput || 'opera' })
     });
     const data = await response.json();
     if (data.success) console.log('Cookies fetched:', data.cookies);
@@ -195,27 +289,95 @@ const MiniBrowser: React.FC = () => {
     else alert('Failed to save screenshot: ' + data.message);
   };
 
+  const handleCreateNewPageWithUrl = async () => {
+    if (!urlInput || browserStatus !== 'ready') return;
+    const contextId = contextInput || 'opera';
+    const pageId = `page-${Date.now()}`;
+    const response = await fetch('/api/playwright', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        action: 'createPage', 
+        contextId, 
+        pageId, 
+        url: urlInput || 'https://google.com',
+        width: viewportWidth,
+        height: viewportHeight
+      })
+    });
+    const data = await response.json();
+    if (data.success) {
+      // Refresh the list of pages
+      const statusRes = await fetch('/api/playwright', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'getStatus' })
+      });
+      const statusData = await statusRes.json();
+      if (statusData.success && statusData.status.pages) {
+        setAvailablePages(statusData.status.pages);
+      }
+      // Set the newly created page as selected and fetch its screenshot
+      setSelectedPageId(pageId);
+      await fetchScreenshotForPage(pageId);
+    }
+  };
+
+  const handlePageSelect = async (pageId: string) => {
+    setSelectedPageId(pageId);
+    await fetchScreenshotForPage(pageId);
+  };
+
   const renderTitleBarButtons = () => (
     <div className="flex items-center gap-2">
       <Button onClick={() => callPlaywrightAPI('goBack', {}, setIsRefreshing, setScreenshotData, setViewportWidth, setViewportHeight, setBrowserStatus)} variant="outline" size="sm" title="Go Back" disabled={browserStatus !== 'ready'}> <ChevronLeft className="h-4 w-4" /> </Button>
       <Button onClick={() => callPlaywrightAPI('goForward', {}, setIsRefreshing, setScreenshotData, setViewportWidth, setViewportHeight, setBrowserStatus)} variant="outline" size="sm" title="Go Forward" disabled={browserStatus !== 'ready'}> <ChevronRight className="h-4 w-4" /> </Button>
       <Button onClick={handleGetCookies} variant="outline" size="sm" title="Get Cookies for Current/Input URL" disabled={browserStatus !== 'ready'}> <Cookie className="h-4 w-4" /> </Button>
       <Button onClick={handleCleanup} disabled={browserStatus === 'not-initialized' || browserStatus === 'initializing'} variant="outline" size="sm" title="Cleanup Browser Instance"> <Trash2 className="h-4 w-4" /> </Button>
-      <div className="flex-grow max-w-md mx-auto">
-        <Input placeholder="Enter URL (e.g., google.com)" className="w-full h-8" value={urlInput} onChange={(e) => setUrlInput(e.target.value)} disabled={browserStatus !== 'ready'} onKeyDown={(e) => { if (e.key === 'Enter') callPlaywrightAPI('goto', { url: urlInput || 'https://google.com' }, setIsRefreshing, setScreenshotData, setViewportWidth, setViewportHeight, setBrowserStatus); }} />
+      <div className="flex-grow max-w-md mx-auto flex items-center gap-2">
+        <Select value={contextInput} onValueChange={setContextInput} disabled={browserStatus !== 'ready'}>
+          <SelectTrigger className="w-24 h-8 text-sm px-2 focus:ring-0 focus:ring-offset-0">
+            <SelectValue placeholder="Context" />
+          </SelectTrigger>
+          <SelectContent>
+            {availableContexts.map(context => (
+              <SelectItem key={context.id} value={context.id}>{context.id}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Input placeholder="Enter URL (e.g., google.com)" className="flex-1 h-8" value={urlInput} onChange={(e) => setUrlInput(e.target.value)} disabled={browserStatus !== 'ready'} onKeyDown={(e) => { if (e.key === 'Enter') handleCreateNewPageWithUrl(); }} />
       </div>
-      <Button onClick={() => callPlaywrightAPI('goto', { url: urlInput || 'https://google.com' }, setIsRefreshing, setScreenshotData, setViewportWidth, setViewportHeight, setBrowserStatus)} variant="outline" size="sm" title="Go to URL" disabled={browserStatus !== 'ready' || !urlInput}> <ArrowRightCircle className="h-4 w-4" /> </Button>
+      <Button onClick={handleCreateNewPageWithUrl} variant="outline" size="sm" title="Create New Page with URL" disabled={browserStatus !== 'ready' || !urlInput}> <ArrowRightCircle className="h-4 w-4" /> </Button>
       <Button onClick={refreshScreenshot} variant="outline" size="sm" title="Refresh Screenshot" disabled={browserStatus !== 'ready' || isRefreshing}> <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} /> </Button>
       <Button onClick={() => setShowAxes(!showAxes)} variant="outline" size="sm" title={showAxes ? 'Hide Axes' : 'Show Axes'}> {showAxes ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />} </Button>
-      <Button onClick={handleSaveScreenshot} variant="outline" size="sm" title="Save Screenshot to Local Path" disabled={browserStatus !== 'ready'}> <Frame className="h-4 w-4" /> </Button>
+      <Button onClick={handleSaveScreenshot} variant="outline" size="sm" title="Save Screenshot to Local Path" disabled={browserStatus !== 'ready'}> <ImageIcon className="h-4 w-4" /> </Button>
     </div>
   );
+
+  const renderPagesRow = () => {
+    if (availablePages.length === 0) return null;
+    return (
+      <div className="flex w-full border-t gap-1 py-1">
+        {availablePages.map(page => (
+          <div
+            key={page.id}
+            className={`flex-1 text-center text-xs px-2 py-1 rounded-md cursor-pointer border border-border/60 ${selectedPageId === page.id ? 'bg-muted' : 'bg-muted/20 hover:bg-muted/60'}`}
+            title={`${page.contextId || 'unknown'} - ${page.id}`}
+            onClick={() => handlePageSelect(page.id)}
+          >
+            {`${page.contextId || 'unknown'} - ${page.id}`}
+          </div>
+        ))}
+      </div>
+    );
+  };
 
   return (
     <Card className="w-auto h-auto mx-auto bg-background">
       {browserStatus !== 'not-initialized' && (
         <CardHeader className='pt-1'>
           {renderTitleBarButtons()}
+          {renderPagesRow()}
         </CardHeader>
       )}
       <CardContent className="p-0 w-full h-auto">
@@ -244,7 +406,7 @@ const MiniBrowser: React.FC = () => {
           <div
             ref={interactionDivRef}
             tabIndex={0}
-            className="relative rounded-md inline-block focus:outline-1 focus:outline-offset-1 focus:outline-white px-1"
+            className="relative rounded-md inline-block px-1"
             onMouseMove={handleMouseMove}
             onMouseLeave={handleMouseLeave}
             onClick={handleClick}

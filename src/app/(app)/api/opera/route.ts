@@ -8,7 +8,7 @@ type PropsClientType = Awaited<ReturnType<typeof experimental_createMCPClient>>;
 export async function POST(req: Request) {
   const body = await req.json();
   console.log('Request Body:', JSON.stringify(body, null, 2));
-  const { messages, model: selectedModelName, tools: selectedToolKeys } = body;
+  const { messages, model: selectedModelName, tools: selectedToolKeys, customInfo } = body;
 
   // Check if messages array is empty
   if (!messages || messages.length === 0) {
@@ -23,7 +23,7 @@ export async function POST(req: Request) {
 
   console.log('Selected Model Name:', selectedModelName);
   console.log('Selected Tool Keys:', selectedToolKeys);
-
+  console.log('Custom Info:', customInfo);
   // Get model by name
   const defaultModelName = castingManager.getModelOptions()[0]?.key || 'claude-3-5-sonnet-latest'; 
   const model = castingManager.getModelByName(selectedModelName || defaultModelName);
@@ -42,6 +42,8 @@ export async function POST(req: Request) {
   const systemPrompt = `
   You are a confident agent who loves to tell everyone you encounter all the tools you have in stock and give suggestions on how to use them.
   If you have the 'Web Browsing' tool enabled, you can use it to browse websites, get information, and interact with pages. 
+
+  ${customInfo}
   `;
 
   // Initialize tools object and playwright client variable
