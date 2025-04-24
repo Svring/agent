@@ -2,7 +2,7 @@
 
 import {
   ChevronDown, Settings, Moon, Sun, MessageCircle,
-  Globe, SquareChevronRight
+  Globe, SquareChevronRight, File
 } from "lucide-react"
 import Link from "next/link"
 
@@ -54,6 +54,11 @@ const workspaceChatItems = [
     title: "Props",
     url: "/props",
     icon: SquareChevronRight,
+  },
+  {
+    title: "Explorer",
+    url: "/explorer",
+    icon: File,
   }
 ]
 
@@ -142,7 +147,7 @@ export function AppSidebar() {
   };
 
   return (
-    <Sidebar collapsible="icon" variant="inset">
+    <Sidebar collapsible="icon" variant="inset" className="ml-1">
       <SidebarContent>
         <Collapsible defaultOpen className="group/collapsible">
           <SidebarGroup>
@@ -180,7 +185,7 @@ export function AppSidebar() {
                 <Settings />
               </Button>
             </SheetTrigger>
-            <SheetContent side="left">
+            <SheetContent side="left" className="p-2">
               <SheetHeader>
                 <SheetTitle>SSH Settings for Props Manager</SheetTitle>
               </SheetHeader>
