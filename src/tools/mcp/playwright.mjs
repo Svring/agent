@@ -375,6 +375,49 @@ server.tool(
   }
 );
 
+// --- Navigation Tool ---
+server.tool(
+  "playwright_goto",
+  {
+    url: z.string().describe("The URL to navigate to."),
+    contextId: z.string().optional().default('opera').describe("The ID of the context to interact with."),
+    pageId: z.string().optional().default('main').describe("The ID of the page to navigate."),
+    width: z.number().optional().describe("Optional viewport width to set for the navigation context."),
+    height: z.number().optional().describe("Optional viewport height to set for the navigation context."),
+    waitUntil: z.enum(["load", "domcontentloaded", "networkidle", "commit"]).optional().default('networkidle').describe("Wait until condition."),
+    screenshotAfter: z.boolean().optional().default(true).describe("Whether to take a screenshot after navigation."),
+    fullPage: z.boolean().optional().default(true).describe("Whether the post-navigation screenshot should capture the full page.")
+  },
+  async ({ url, contextId = 'opera', pageId = 'main', width, height, waitUntil = 'networkidle', screenshotAfter, fullPage }) => {
+    try {
+      console.log(`[PlaywrightMCP] Navigating page ${pageId} in context ${contextId} to URL: ${url}`);
+
+      const requestBody = {
+        action: 'goto',
+        url,
+        contextId,
+        pageId,
+        width, 
+        height,
+        options: { waitUntil }
+      };
+
+      const actionResponse = await fetch(PLAYWRIGHT_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody)
+      });
+      await checkApiResponse(actionResponse, `navigate to ${url}`);
+
+      const screenshotResult = await takeScreenshotIfRequested(screenshotAfter, fullPage, contextId, pageId);
+      return screenshotResult || { type: "text", text: `Successfully navigated page ${pageId} to ${url}.` };
+
+    } catch (err) {
+      console.error('[PlaywrightMCP] Goto Error:', err);
+      return { type: "text", text: `Error: ${err.message}` };
+    }
+  }
+);
 
 // Start receiving messages on stdin and sending messages on stdout
 const transport = new StdioServerTransport();

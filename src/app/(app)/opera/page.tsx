@@ -8,11 +8,13 @@ import MessageBubble from '@/components/message-bubble';
 import Stage from '@/components/stage';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { Textarea } from '@/components/ui/textarea';
-import { ArrowUp, Hammer, Send, Image, Power, PowerOff } from 'lucide-react';
+import { ArrowUp, Hammer, Send, Image, Power, PowerOff, Square } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import MultiSelect from '@/components/multi-select';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+
+import useSWR from 'swr';
 
 import {
   ResizableHandle,
@@ -22,8 +24,11 @@ import {
 
 import { PlaywrightContext } from '@/context/PlaywrightContext';
 
+// Define a generic fetcher function for useSWR
+const fetcher = (url: string) => fetch(url).then((res) => res.json());
+
 export default function Opera() {
-  const { messages, input, handleInputChange, handleSubmit } = useChat({
+  const { messages, input, handleInputChange, handleSubmit, stop, isLoading } = useChat({
     maxSteps: 3,
     api: '/api/opera',
   });
@@ -31,18 +36,32 @@ export default function Opera() {
   const [openStates, setOpenStates] = useState<Record<string, boolean>>({});
   const [expandedResults, setExpandedResults] = useState<Record<string, boolean>>({});
   const messagesEndRef = useRef(null);
-  const [selectedModel, setSelectedModel] = useState<string>(''); // Initialize as empty
+  const [selectedModel, setSelectedModel] = useState<string>('');
   const [selectedTools, setSelectedTools] = useState<string[]>(['props']);
   const [availableModels, setAvailableModels] = useState<{ key: string, label: string }[]>([]);
   const [availableTools, setAvailableTools] = useState<{ key: string, label: string }[]>([]);
+  // SSH state managed by SWR effect
   const [sshStatus, setSshStatus] = useState<{ connected: boolean, cwd: string | null }>({ connected: false, cwd: null });
   const [isConnecting, setIsConnecting] = useState(false);
-  // Browser status state
+  // Browser status state - still using useEffect for now
   const [browserStatus, setBrowserStatus] = useState<{ initialized: boolean, viewport: { width: number, height: number } | null, url: string | null }>({ initialized: false, viewport: null, url: null });
   const [isBrowserLoading, setIsBrowserLoading] = useState(false);
   // State for Playwright active page
   const [activeContextId, setActiveContextId] = useState<string>('opera');
   const [activePageId, setActivePageId] = useState<string | null>('main');
+
+  // --- SWR Hooks ---
+  const { data: castingData, error: castingError } = useSWR<{
+    models: { key: string, label: string }[];
+    tools: { key: string, label: string }[];
+  }>('/api/casting', fetcher);
+
+  const { data: sshData, error: sshError } = useSWR<{
+    status: 'Connected' | 'Disconnected';
+    cwd: string | null;
+    credentials: any; // Use specific type if needed
+  }>('/api/props', fetcher, { refreshInterval: 5000 });
+  // --- End SWR Hooks ---
 
   const setActivePage = useCallback((contextId: string, pageId: string | null) => {
     setActiveContextId(contextId);
@@ -63,51 +82,55 @@ export default function Opera() {
     }
   }, [messages]);
 
-  // Fetch casting options (Models and Tools)
+  // Effect to update casting options state from SWR data
   useEffect(() => {
-    const fetchCastingOptions = async () => {
-      try {
-        const response = await fetch('/api/casting');
-        if (response.ok) {
-          const data = await response.json();
-          setAvailableModels(data.models);
-          setAvailableTools(data.tools);
-          // Set default model to 'grok-3-latest' if available, otherwise the first one
-          if (data.models.length > 0 && !selectedModel) {
-            const defaultModelKey = data.models.find((m: { key: string, label: string }) => m.key === 'grok-3-latest')
-              ? 'grok-3-latest'
-              : data.models[0].key; // Fallback to the first available model
-            setSelectedModel(defaultModelKey);
-          }
-        } else {
-          console.error('Failed to fetch casting options');
-        }
-      } catch (error) {
-        console.error('Error fetching casting options:', error);
+    if (castingData) {
+      setAvailableModels(castingData.models || []);
+      setAvailableTools(castingData.tools || []);
+      // Set default model only if it hasn't been set yet and models are available
+      if (!selectedModel && castingData.models && castingData.models.length > 0) {
+        const defaultModelKey = castingData.models.find((m) => m.key === 'grok-3-latest')
+          ? 'grok-3-latest'
+          : castingData.models[0].key; // Fallback to the first available model
+        setSelectedModel(defaultModelKey);
       }
-    };
-    fetchCastingOptions();
-  }, [selectedModel]); // Add selectedModel dependency if you want to refetch or adjust logic based on it
-
-  // Fetch SSH status periodically
-  const fetchSshStatus = async () => {
-    try {
-      const response = await fetch('/api/props');
-      if (response.ok) {
-        const data = await response.json();
-        setSshStatus({ connected: data.status === 'Connected', cwd: data.cwd });
-      } else {
-        console.error('Failed to fetch SSH status');
-        setSshStatus({ connected: false, cwd: null }); // Assume disconnected on error
-      }
-    } catch (error) {
-      console.error('Error fetching SSH status:', error);
-      setSshStatus({ connected: false, cwd: null }); // Assume disconnected on error
     }
-  };
+    if (castingError) {
+      console.error('Error fetching casting options via SWR:', castingError);
+    }
+  }, [castingData, castingError, selectedModel]);
 
-  // Fetch browser status periodically
-  const fetchBrowserStatus = async () => {
+  // Effect to update SSH status state from SWR data
+  useEffect(() => {
+    if (sshData) {
+      const newStatus = {
+        connected: sshData.status === 'Connected',
+        cwd: sshData.cwd
+      };
+      // Only update state if it actually changed to prevent unnecessary re-renders
+      if (newStatus.connected !== sshStatus.connected || newStatus.cwd !== sshStatus.cwd) {
+        setSshStatus(newStatus);
+      }
+    } else if (sshError) {
+      console.error('Error fetching SSH status via SWR:', sshError);
+      // Ensure status reflects disconnection on error
+      if (sshStatus.connected) {
+         setSshStatus({ connected: false, cwd: null });
+      }
+    }
+  }, [sshData, sshError, sshStatus]); // Include sshStatus to compare previous state
+
+  // Automatically connect to SSH if SWR indicates disconnected and not currently connecting
+  useEffect(() => {
+    if (sshData && sshData.status === 'Disconnected' && !isConnecting) {
+      console.log('SWR detected SSH disconnected, attempting to connect...');
+      handleSshToggle();
+    }
+    // No dependency array change needed here, logic depends on sshData and isConnecting state
+  }, [sshData, isConnecting]); // Rerun when sshData or isConnecting changes
+
+  // Fetch browser status periodically (keeping useEffect for this one)
+  const fetchBrowserStatus = useCallback(async () => {
     try {
       // Get browser status (initialized, etc)
       const statusRes = await fetch('/api/playwright', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'getStatus' }) });
@@ -129,19 +152,10 @@ export default function Opera() {
       }
       setBrowserStatus({ initialized, viewport, url });
     } catch (error) {
+      console.error('Error fetching browser status:', error);
       setBrowserStatus({ initialized: false, viewport: null, url: null });
     }
-  };
-
-  useEffect(() => {
-    fetchSshStatus();
-    // Automatically connect to SSH if not connected
-    if (!sshStatus.connected && !isConnecting) {
-      handleSshToggle();
-    }
-    const intervalId = setInterval(fetchSshStatus, 5000); // Fetch every 5 seconds
-    return () => clearInterval(intervalId);
-  }, []);
+  }, []); // Keep useCallback dependency array empty if it doesn't depend on changing props/state
 
   useEffect(() => {
     fetchBrowserStatus();
@@ -151,7 +165,8 @@ export default function Opera() {
     }
     const intervalId = setInterval(fetchBrowserStatus, 5000);
     return () => clearInterval(intervalId);
-  }, []);
+    // Ensure dependencies are correct, might need browserStatus.initialized, isBrowserLoading, handleBrowserInit
+  }, [fetchBrowserStatus, browserStatus.initialized, isBrowserLoading]);
 
   // Handle SSH Connection Toggle
   const handleSshToggle = async () => {
@@ -170,7 +185,7 @@ export default function Opera() {
       } else {
         console.log(`SSH ${action} successful`);
         // Immediately fetch status after action
-        await fetchSshStatus();
+        await fetchBrowserStatus();
       }
     } catch (error) {
       console.error(`Error during SSH ${action}:`, error);
@@ -304,13 +319,35 @@ export default function Opera() {
                           setSelectedOptions={setSelectedTools}
                         />
                       </div>
-                      <button
-                        type="submit"
-                        className="bg-none rounded-full"
-                        disabled={!input.trim()}
-                      >
-                        <Send />
-                      </button>
+                      {/* Conditionally render Send or Stop button using isLoading */}
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          {isLoading ? (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8" // Keep size consistent
+                              onClick={stop}
+                              disabled={!isLoading} // Button is enabled only when isLoading is true
+                            >
+                              <Square />
+                            </Button>
+                          ) : (
+                            <Button
+                              type="submit"
+                              variant="ghost"
+                              size="icon"
+                              className="h-4 w-4 " // Keep size consistent
+                              disabled={!input.trim() || isLoading} // Disable when input is empty OR loading
+                            >
+                              <Send />
+                            </Button>
+                          )}
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          {isLoading ? 'Stop Generating' : 'Send Message'}
+                        </TooltipContent>
+                      </Tooltip>
                     </div>
                   </form>
                   {/* SSH Status Bar */}
@@ -336,7 +373,7 @@ export default function Opera() {
                           size="icon"
                           className="h-5 w-5 p-0 ml-2"
                           onClick={handleSshToggle}
-                          disabled={isConnecting}
+                          disabled={isConnecting || isLoading} // Also disable if AI is loading
                         >
                           {sshStatus.connected
                             ? <PowerOff />
@@ -373,7 +410,7 @@ export default function Opera() {
                           size="icon"
                           className="h-5 w-5 p-0 ml-2"
                           onClick={browserStatus.initialized ? handleBrowserCleanup : handleBrowserInit}
-                          disabled={isBrowserLoading}
+                          disabled={isBrowserLoading || isLoading} // Use isLoading here too
                         >
                           {browserStatus.initialized
                             ? <PowerOff />

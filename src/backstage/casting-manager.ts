@@ -4,10 +4,8 @@
 import { createOpenAI } from '@ai-sdk/openai'; 
 // Removed createAnthropic and createGoogleGenerativeAI imports
 import { createAnthropic } from '@ai-sdk/anthropic';
-import { experimental_createMCPClient } from 'ai';
+import { experimental_createMCPClient, LanguageModel, streamText } from 'ai';
 import { Experimental_StdioMCPTransport } from 'ai/mcp-stdio';
-import { streamText } from 'ai';
-import { LanguageModel } from 'ai';
 
 // --- Unified Model Factory via OpenAI Proxy --- 
 
@@ -40,10 +38,10 @@ const createClaudeModel = (modelName: string): LanguageModel => {
 const availableModelNames = [
   'claude-3-5-sonnet-latest',
   'claude-3-7-sonnet-20250219',
-  'gemini-2.5-pro-exp-03-25',
   'gpt-4.1-nano',
   'grok-3-latest',
-  'gpt-image-1',
+  'o3',
+  'gpt-4.1'
 ];
 
 const claudeModels = [
@@ -110,6 +108,9 @@ export class CastingManager {
   private model: LanguageModel | null = null;
   private tools: Record<string, any> = {};
   private systemPrompt: string = '';
+  // Add private members to hold the clients
+  private playwrightClient: Awaited<ReturnType<typeof experimental_createMCPClient>> | null = null;
+  private propsClient: Awaited<ReturnType<typeof experimental_createMCPClient>> | null = null;
 
   // Setters
   setModel(model: LanguageModel) {
@@ -121,11 +122,100 @@ export class CastingManager {
   setSystemPrompt(prompt: string) {
     this.systemPrompt = prompt;
   }
-  // Reset all state
+  // Reset all state, including clients
   reset() {
     this.model = null;
     this.tools = {};
     this.systemPrompt = '';
+    // Ensure clients are reset as well
+    this.playwrightClient = null;
+    this.propsClient = null;
+  }
+
+  // New method to load tools based on selection
+  async loadSelectedTools(selectedToolKeys: string[] | undefined): Promise<Record<string, any>> {
+    const loadedTools: Record<string, any> = {};
+    this.playwrightClient = null; // Reset clients before loading
+    this.propsClient = null;
+
+    if (!selectedToolKeys || !Array.isArray(selectedToolKeys)) {
+      console.log('No tool keys provided or invalid format.');
+      return loadedTools;
+    }
+
+    // Check if playwright tool is selected
+    if (selectedToolKeys.includes('playwright')) {
+      console.log('Playwright tool selected. Loading playwright tools...');
+      try {
+        const { playwrightTools: dynamicTools, playwrightClient: client } = await getPlaywrightTools();
+        this.playwrightClient = client; // Store the client
+        console.log('Playwright tools loaded:', Object.keys(dynamicTools));
+        Object.assign(loadedTools, dynamicTools); // Merge playwright tools
+      } catch (error) {
+        console.error('Failed to load playwright tools:', error);
+        // Continue without playwright tools
+      }
+    }
+
+    // Check if props tool is selected
+    if (selectedToolKeys.includes('props')) {
+      console.log('Props tool selected. Loading props tools...');
+      try {
+        const { propsTools: dynamicTools, propsClient: client } = await getPropsTools();
+        this.propsClient = client; // Store the client
+        console.log('Props tools loaded:', Object.keys(dynamicTools));
+        Object.assign(loadedTools, dynamicTools); // Merge props tools
+      } catch (error) {
+        console.error('Failed to load props tools:', error);
+        // Continue without props tools
+      }
+    }
+
+    // Add selected *static* tools to the tools object
+    console.log('Adding selected static tools...');
+    selectedToolKeys.forEach((toolKey: string) => {
+      // Skip the dynamic tool keys handled above
+      if (toolKey === 'playwright' || toolKey === 'props') return;
+
+      const tool = this.getToolByKey(toolKey); // Use instance method
+      if (tool) {
+        loadedTools[toolKey] = tool;
+        console.log(`Static tool added: ${toolKey}`);
+      } else {
+        console.log(`Static tool not found or invalid: ${toolKey}`);
+      }
+    });
+
+    console.log('Final tools list loaded by CastingManager:', Object.keys(loadedTools));
+    this.tools = loadedTools; // Update the manager's internal tools state as well
+    return loadedTools; // Return the combined tools
+  }
+
+  // New method to close clients
+  async closeClients() {
+    if (this.playwrightClient || this.propsClient) {
+      console.log('Closing clients managed by CastingManager...');
+      try {
+        if (this.playwrightClient) {
+          await this.playwrightClient.close();
+          console.log('Playwright client closed by CastingManager.');
+          this.playwrightClient = null;
+        }
+      } catch (error) {
+        console.error('Error closing Playwright client:', error);
+      }
+      try {
+        if (this.propsClient) {
+          await this.propsClient.close();
+          console.log('Props client closed by CastingManager.');
+          this.propsClient = null;
+        }
+      } catch (error) {
+        console.error('Error closing Props client:', error);
+      }
+    } else {
+       console.log('No active clients to close in CastingManager.');
+    }
   }
 
   // Flexible cast method
@@ -167,7 +257,12 @@ export class CastingManager {
       maxSteps,
       toolCallStreaming,
       onError,
-      onFinish,
+      onFinish: async (result: any) => {
+        if (onFinish) {
+          await onFinish(result);
+        }
+        await this.closeClients();
+      },
       ...rest,
     });
   }
