@@ -500,7 +500,7 @@ const MiniBrowser: React.FC = () => {
   };
 
   return (
-    <Card className="w-auto h-auto mx-auto bg-background">
+    <Card className="mx-auto bg-background ">
       {browserStatus !== 'not-initialized' && screenshotData && (
         <CardHeader className='pt-1'>
           {renderTitleBarButtons()}

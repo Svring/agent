@@ -72,10 +72,10 @@ export default function Opera() {
           const data = await response.json();
           setAvailableModels(data.models);
           setAvailableTools(data.tools);
-          // Set default model to 'claude-3-5-sonnet-latest' if available, otherwise the first one
+          // Set default model to 'grok-3-latest' if available, otherwise the first one
           if (data.models.length > 0 && !selectedModel) {
-            const defaultModelKey = data.models.find((m: { key: string, label: string }) => m.key === 'claude-3-5-sonnet-latest')
-              ? 'claude-3-5-sonnet-latest'
+            const defaultModelKey = data.models.find((m: { key: string, label: string }) => m.key === 'grok-3-latest')
+              ? 'grok-3-latest'
               : data.models[0].key; // Fallback to the first available model
             setSelectedModel(defaultModelKey);
           }
@@ -240,7 +240,7 @@ export default function Opera() {
           className="w-full h-full rounded-lg"
         >
           {/* Left sidebar - resizable, defaulting to 30% */}
-          <ResizablePanel defaultSize={30} minSize={29} maxSize={50}>
+          <ResizablePanel defaultSize={30} minSize={30} maxSize={50}>
             <div className="h-full flex flex-col">
               {/* Title Bar - Fixed height, always at top */}
               <header className="flex items-center px-3 py-2 shrink-0">

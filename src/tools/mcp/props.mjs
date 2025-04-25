@@ -258,6 +258,172 @@ server.tool(
   }
 );
 
+// Tool to launch npm run dev in the background
+server.tool(
+  "props_launch_dev",
+  async () => {
+    // Use ss command as an alternative to lsof
+    const killCommand = "ss -ltnp 'sport = :3000' | grep LISTEN | awk '{print $7}' | sed 's/.*pid=\\([0-9]*\\).*/\\1/' | xargs -r kill -9";
+    const launchCommand = "nohup npm run dev > npm_dev.log 2>&1 &";
+    try {
+      console.log(`[PropsMCP] Attempting to kill process on port 3000 with command: ${killCommand}`);
+      console.log(`[PropsMCP] Then launching dev server with command: ${launchCommand}`);
+
+      // Ensure connection is initialized
+      const initResponse = await fetch(PROPS_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'initialize' })
+      });
+
+      if (!initResponse.ok) {
+        const initErrorText = await initResponse.text();
+        console.error(`[PropsMCP] Failed to initialize SSH: ${initErrorText}`);
+        return {
+          type: "text",
+          text: `Failed to initialize SSH connection: ${initErrorText || 'Unknown error'}`
+        };
+      }
+      const initResult = await initResponse.json();
+      console.log(`[PropsMCP] SSH initialization result: ${initResult.message}`);
+
+      // Execute the kill command first
+      const killResponse = await fetch(PROPS_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'execute',
+          command: killCommand
+        })
+      });
+
+      let killMessage = "";
+      if (!killResponse.ok) {
+        // Don't necessarily fail, could be that nothing was running
+        const killErrorText = await killResponse.text();
+        killMessage = `Attempt to kill process on port 3000 failed or nothing was running. Server response: ${killErrorText}`;
+        console.warn(`[PropsMCP] ${killMessage}`);
+      } else {
+        const killResult = await killResponse.json();
+        killMessage = `Attempt to kill process on port 3000 finished. Server response: ${killResult.message}. Output: ${killResult.stdout || ''} ${killResult.stderr || ''}`.trim();
+        console.log(`[PropsMCP] ${killMessage}`);
+      }
+
+      // Now execute the launch command
+      console.log(`[PropsMCP] Executing launch command: ${launchCommand}`);
+      const launchResponse = await fetch(PROPS_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'execute',
+          command: launchCommand
+        })
+      });
+
+      if (!launchResponse.ok) {
+        const launchErrorText = await launchResponse.text();
+        console.error(`[PropsMCP] Failed to launch dev server: ${launchErrorText}`);
+        return {
+          type: "text",
+          text: `${killMessage}. Failed to launch dev server: ${launchErrorText || 'Unknown error'}`
+        };
+      }
+
+      const launchResult = await launchResponse.json();
+      const resultText = `${killMessage}. Attempted to launch 'npm run dev' in the background. Server response: ${launchResult.message}. Check npm_dev.log for output.`;
+      console.log(`[PropsMCP] Launch sequence finished. Result: ${resultText}`);
+
+      return {
+        type: "text",
+        text: resultText
+      };
+    } catch (err) {
+      console.error(`[PropsMCP] Unexpected error during launch sequence: ${err instanceof Error ? err.message : String(err)}`);
+      return {
+        type: "text",
+        text: `Error during launch sequence: ${err instanceof Error ? err.message : String(err)}`
+      };
+    }
+  }
+);
+
+// Tool to check if 'npm run dev' is running
+server.tool(
+  "props_check_dev_status",
+  async () => {
+    const command = "ps aux | grep 'npm run dev' | grep -v grep";
+    try {
+      console.log(`[PropsMCP] Checking dev server status with command: ${command}`);
+
+      // Ensure connection is initialized
+      const initResponse = await fetch(PROPS_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'initialize' })
+      });
+
+      if (!initResponse.ok) {
+        const initErrorText = await initResponse.text();
+        console.error(`[PropsMCP] Failed to initialize SSH: ${initErrorText}`);
+        return {
+          type: "text",
+          text: `Failed to initialize SSH connection before checking status: ${initErrorText || 'Unknown error'}`
+        };
+      }
+
+      const initResult = await initResponse.json();
+      console.log(`[PropsMCP] SSH initialization result: ${initResult.message}`);
+
+      // Execute the check command
+      const execResponse = await fetch(PROPS_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'execute',
+          command: command
+        })
+      });
+
+      if (!execResponse.ok) {
+        const execErrorText = await execResponse.text();
+        console.error(`[PropsMCP] Failed to check dev server status: ${execErrorText}`);
+        return {
+          type: "text",
+          text: `Failed to check dev server status: ${execErrorText || 'Unknown error'}`
+        };
+      }
+
+      const result = await execResponse.json();
+
+      // Check the stdout for relevant process information
+      const isRunning = result.stdout && result.stdout.trim().length > 0;
+      const statusMessage = isRunning
+        ? `An 'npm run dev' process appears to be running.\nOutput:\n${result.stdout}`
+        : "No 'npm run dev' process found running.";
+        
+      if (result.stderr && result.stderr.trim().length > 0) {
+        console.warn(`[PropsMCP] Check command stderr: ${result.stderr}`);
+        // Optionally append stderr to the message if needed
+      }
+
+      console.log(`[PropsMCP] Dev server status check result: ${statusMessage}`);
+
+      return {
+        type: "text",
+        text: statusMessage,
+        isRunning: isRunning // Adding a boolean flag for potential programmatic use
+      };
+
+    } catch (err) {
+      console.error(`[PropsMCP] Unexpected error checking dev server status: ${err instanceof Error ? err.message : String(err)}`);
+      return {
+        type: "text",
+        text: `Error checking dev server status: ${err instanceof Error ? err.message : String(err)}`
+      };
+    }
+  }
+);
+
 // Start receiving messages on stdin and sending messages on stdout
 const transport = new StdioServerTransport();
 await server.connect(transport);

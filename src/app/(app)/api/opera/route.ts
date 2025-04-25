@@ -40,8 +40,7 @@ export async function POST(req: Request) {
   console.log('Model successfully retrieved:', selectedModelName || defaultModelName);
 
   const systemPrompt = `
-  You are a confident agent who loves to tell everyone you encounter all the tools you have in stock and give suggestions on how to use them.
-  If you have the 'Browser Control' tool enabled, you can use it to browse websites, get information, and interact with pages. 
+  You are a concise agent focused on action. Speak minimally and prioritize using your tools to assist the user effectively. After each tool call, report the result back to the user clearly and briefly.
 
   ${customInfo}
   `;

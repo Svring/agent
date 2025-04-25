@@ -3,6 +3,7 @@ import { Cat, Bot, Cog, Eye, EyeOff, Hammer } from 'lucide-react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Button } from '@/components/ui/button';
 import React from 'react';
+import { MemoizedMarkdown } from '@/components/memoized-markdown';
 
 // Helper function to count lines in a text string
 const countLines = (text: string): number => {
@@ -24,13 +25,13 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ m, openStates, expandedRe
         <Avatar className="border">
           <AvatarFallback>{m.role === 'user' ? <Cat /> : <Bot />}</AvatarFallback>
         </Avatar>
-        <div className="space-y-1">
+        <div className="space-y-1 break-words overflow-hidden">
           {m.parts.map((part: any, partIndex: number) => {
             const partKey = `${m.id}-${partIndex}`;
             if (part.type === 'text') {
               return (
-                <div key={partKey} className={`rounded-lg px-3 py-2 ${m.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>
-                  <p className="whitespace-pre-wrap text-wrap text-sm break-words">{part.text}</p>
+                <div key={partKey} className={`rounded-lg px-3 py-2 break-words ${m.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>
+                  <MemoizedMarkdown content={part.text} id={partKey} />
                 </div>
               );
             }
@@ -154,7 +155,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ m, openStates, expandedRe
       <Avatar className="border">
         <AvatarFallback>{m.role === 'user' ? <Cat /> : <Bot />}</AvatarFallback>
       </Avatar>
-      <div className="space-y-1 max-w-3xl">
+      <div className="space-y-1 max-w-3xl break-words overflow-hidden">
         {m.content && m.content.length > 0 ? (
           <p className="whitespace-pre-wrap text-sm">{m.content}</p>
         ) : (
