@@ -17,7 +17,8 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  useSidebar
+  useSidebar,
+  SidebarProvider
 } from "@/components/ui/sidebar"
 
 import {
@@ -37,8 +38,18 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { SettingSidebar } from "@/components/setting-sidebar"
 
 const workspaceChatItems = [
   {
@@ -72,6 +83,7 @@ export function AppSidebar() {
   const [sshPrivateKeyPath, setSshPrivateKeyPath] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [activeTab, setActiveTab] = useState('ssh-credentials');
 
   useEffect(() => {
     // Load initial credentials from API
@@ -186,39 +198,59 @@ export function AppSidebar() {
                 <Settings />
               </Button>
             </SheetTrigger>
-            <SheetContent side="left" className="p-2">
+            <SheetContent side="bottom" className="p-2 h-full w-full border rounded-md">
               <SheetHeader>
-                <SheetTitle>SSH Settings for Props Manager</SheetTitle>
+                <SheetTitle>Settings</SheetTitle>
               </SheetHeader>
-              <div className="mt-4 space-y-4">
-                <div>
-                  <Label htmlFor="sshHost">Host</Label>
-                  <Input id="sshHost" value={sshHost} onChange={(e) => setSshHost(e.target.value)} />
-                </div>
-                <div>
-                  <Label htmlFor="sshUsername">Username</Label>
-                  <Input id="sshUsername" value={sshUsername} onChange={(e) => setSshUsername(e.target.value)} />
-                </div>
-                <div>
-                  <Label htmlFor="sshPort">Port</Label>
-                  <Input id="sshPort" value={sshPort} onChange={(e) => setSshPort(e.target.value)} />
-                </div>
-                <div>
-                  <Label htmlFor="sshPrivateKeyPath">Private Key Path</Label>
-                  <Button variant="outline" size="sm" onClick={handleFileSelect}>
-                    Browse
-                  </Button>
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    style={{ display: 'none' }}
-                    onChange={handleFileChange}
-                  // accept any file type
-                  />
-                </div>
-                <Button onClick={handleSaveCredentials} disabled={isLoading}>
-                  {isLoading ? 'Saving...' : 'Save Credentials'}
-                </Button>
+              <div className="flex h-full">
+                <SettingSidebar activeTab={activeTab} setActiveTab={setActiveTab} />
+                <main className="flex-1 overflow-auto p-4">
+                  {activeTab === 'ssh-credentials' && (
+                    <div className="space-y-4">
+                      <div className="flex flex-col gap-2">
+                        <Label htmlFor="sshHost">Host</Label>
+                        <Input id="sshHost" value={sshHost} onChange={(e) => setSshHost(e.target.value)} />
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <Label htmlFor="sshUsername">Username</Label>
+                        <Input id="sshUsername" value={sshUsername} onChange={(e) => setSshUsername(e.target.value)} />
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <Label htmlFor="sshPort">Port</Label>
+                        <Input id="sshPort" value={sshPort} onChange={(e) => setSshPort(e.target.value)} />
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <Label htmlFor="sshPrivateKeyPath">Private Key Path</Label>
+                        <Button variant="outline" size="sm" onClick={handleFileSelect}>
+                          Browse
+                        </Button>
+                        <input
+                          type="file"
+                          ref={fileInputRef}
+                          style={{ display: 'none' }}
+                          onChange={handleFileChange}
+                        // accept any file type
+                        />
+                      </div>
+                      <Button onClick={handleSaveCredentials} disabled={isLoading}>
+                        {isLoading ? 'Saving...' : 'Save Credentials'}
+                      </Button>
+                    </div>
+                  )}
+                  {activeTab === 'model-credentials' && (
+                    <div className="space-y-4">
+                      <div className="flex flex-col gap-2">
+                        <Label htmlFor="modelApiKey">API Key</Label>
+                        <Input id="modelApiKey" placeholder="Enter your API key" />
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <Label htmlFor="modelEndpoint">Endpoint</Label>
+                        <Input id="modelEndpoint" placeholder="Enter model endpoint" />
+                      </div>
+                      <Button>Save Model Credentials</Button>
+                    </div>
+                  )}
+                </main>
               </div>
             </SheetContent>
           </Sheet>

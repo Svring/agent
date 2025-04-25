@@ -20,11 +20,11 @@ interface MessageBubbleProps {
 const MessageBubble: React.FC<MessageBubbleProps> = ({ m, openStates, expandedResults, toggleOpen, toggleExpandResult }) => {
   if (Array.isArray(m.parts)) {
     return (
-      <div className="flex items-start gap-2 justify-start">
+      <div className="flex items-start gap-2 w-full justify-start">
         <Avatar className="border">
           <AvatarFallback>{m.role === 'user' ? <Cat /> : <Bot />}</AvatarFallback>
         </Avatar>
-        <div className="space-y-1 max-w-3xl">
+        <div className="space-y-1">
           {m.parts.map((part: any, partIndex: number) => {
             const partKey = `${m.id}-${partIndex}`;
             if (part.type === 'text') {

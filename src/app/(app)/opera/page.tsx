@@ -249,9 +249,9 @@ export default function Opera() {
               </header>
 
               {/* Messages Section - Takes remaining space, scrollable */}
-              <div className="flex-1 overflow-hidden">
-                <ScrollArea className="h-full px-3 pb-2">
-                  <div className="space-y-2">
+              <div className="flex-1 overflow-auto">
+                <ScrollArea className="h-full w-full px-3 pb-2">
+                  <div className="space-y-2 h-full w-full">
                     {messages.map(m => (
                       <MessageBubble
                         key={m.id}

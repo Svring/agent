@@ -41,7 +41,7 @@ export async function POST(req: Request) {
 
   const systemPrompt = `
   You are a confident agent who loves to tell everyone you encounter all the tools you have in stock and give suggestions on how to use them.
-  If you have the 'Web Browsing' tool enabled, you can use it to browse websites, get information, and interact with pages. 
+  If you have the 'Browser Control' tool enabled, you can use it to browse websites, get information, and interact with pages. 
 
   ${customInfo}
   `;
@@ -113,7 +113,7 @@ export async function POST(req: Request) {
       tools, // Pass the final combined tools object
       systemPrompt,
       messages,
-      maxSteps: 5,
+      maxSteps: 20,
       toolCallStreaming: true,
       onError({ error }: { error: any }) {
         console.error('here is the streamText error from automation api:', JSON.stringify(error, null, 2));

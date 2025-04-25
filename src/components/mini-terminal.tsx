@@ -7,12 +7,24 @@ import { Terminal } from '@xterm/xterm';
 // @ts-ignore: Missing type declarations for xterm-addon-fit
 import { FitAddon } from '@xterm/addon-fit';
 import 'xterm/css/xterm.css';
+import useSWR from 'swr';
+import axios from 'axios';
 
 const DEFAULT_PATH = '/home/devbox'; // Default path, adjust if needed
 
 interface MiniTerminalProps {
   className?: string;
 }
+
+interface ApiStatusResponse {
+  status: string;
+  cwd: string | null;
+}
+
+const fetcher = async (url: string): Promise<ApiStatusResponse> => {
+  const response = await axios.get(url);
+  return response.data;
+};
 
 export const MiniTerminal: React.FC<MiniTerminalProps> = ({ className }) => {
   const [isMounted, setIsMounted] = useState(false);
@@ -25,6 +37,26 @@ export const MiniTerminal: React.FC<MiniTerminalProps> = ({ className }) => {
   const termRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const commandBuffer = useRef<string>('');
+
+  // Use SWR for fetching connection status and CWD with automatic revalidation
+  const { data: statusData, error: statusError, mutate: refreshStatus } = useSWR('/api/props', fetcher, {
+    refreshInterval: 5000,
+    revalidateOnFocus: true,
+  });
+
+  // Update status and path based on SWR data
+  useEffect(() => {
+    if (statusData) {
+      setStatus(statusData.status === 'Connected' ? 'connected' : 'idle');
+      setMessage(statusData.status === 'Connected' ? 'Connection is active.' : '');
+      if (statusData.cwd) {
+        setCurrentPath(statusData.cwd);
+      }
+    } else if (statusError) {
+      setStatus('error');
+      setMessage('Failed to fetch connection status');
+    }
+  }, [statusData, statusError]);
 
   // Keep refs updated with the latest state
   useEffect(() => {
@@ -56,16 +88,9 @@ export const MiniTerminal: React.FC<MiniTerminalProps> = ({ className }) => {
       if (response.ok) {
         setStatus('connected');
         setMessage(data.message || 'Connection successful!');
-        // Fetch the actual CWD after connection
-        const statusResponse = await fetch('/api/props', { method: 'GET' });
-        const statusData = await statusResponse.json();
-        if (statusData.cwd) {
-          setCurrentPath(statusData.cwd);
-          currentTerm.writeln(`Connection established. Current directory: ${statusData.cwd}`);
-        } else {
-          setCurrentPath(DEFAULT_PATH);
-          currentTerm.writeln('Connection established.');
-        }
+        // Refresh status to get the latest CWD
+        await refreshStatus();
+        currentTerm.writeln('Connection established.');
       } else {
         setStatus('error');
         setMessage(data.message || 'Connection failed.');
@@ -80,7 +105,7 @@ export const MiniTerminal: React.FC<MiniTerminalProps> = ({ className }) => {
     } finally {
       currentTerm.write(getPrompt());
     }
-  }, [getPrompt]); // Add dependencies for useCallback
+  }, [getPrompt, refreshStatus]); // Add dependencies for useCallback
 
   const handleCdCommand = useCallback(async (targetDir: string) => {
     const currentTerm = termRef.current;
@@ -101,7 +126,7 @@ export const MiniTerminal: React.FC<MiniTerminalProps> = ({ className }) => {
     }
 
     // Basic path normalization (remove double slashes, trailing slash)
-    newPath = newPath.replace(/\\+/g, '/').replace(/\/$/, '') || '/';
+    newPath = newPath.replace(/\+/g, '/').replace(/\/$/, '') || '/';
 
     // Execute the cd command to update server state
     try {
@@ -113,15 +138,13 @@ export const MiniTerminal: React.FC<MiniTerminalProps> = ({ className }) => {
       const data = await response.json();
 
       if (response.ok && data.message.includes('changed to')) {
-        // Update local path with the actual server CWD
-        const statusResponse = await fetch('/api/props', { method: 'GET' });
-        const statusData = await statusResponse.json();
-        if (statusData.cwd) {
-          setCurrentPath(statusData.cwd);
-          currentTerm.writeln(`Changed directory to: ${statusData.cwd}`);
-        } else {
-          setCurrentPath(newPath);
-        }
+        // Extract the new path from the message if possible, or use the calculated path
+        const newCwdMatch = data.message.match(/changed to (.*)/);
+        const newCwd = newCwdMatch ? newCwdMatch[1] : newPath;
+        setCurrentPath(newCwd); // Update immediately to reflect in prompt
+        // Refresh status to update the CWD in background
+        await refreshStatus();
+        currentTerm.writeln(`Changed directory to: ${newCwd}`);
       } else {
         currentTerm.writeln(`Failed to change directory: ${data.stderr || data.message || 'Unknown error'}`);
       }
@@ -131,7 +154,7 @@ export const MiniTerminal: React.FC<MiniTerminalProps> = ({ className }) => {
     } finally {
       currentTerm.write(getPrompt()); // Write new prompt immediately
     }
-  }, [getPrompt]); // Add dependencies for useCallback
+  }, [getPrompt, refreshStatus]); // Add dependencies for useCallback
 
   const executeCommand = useCallback(async (command: string) => {
     const currentTerm = termRef.current;
@@ -169,31 +192,9 @@ export const MiniTerminal: React.FC<MiniTerminalProps> = ({ className }) => {
     }
   }, [getPrompt]); // Add dependencies for useCallback
 
-
-  // Effect 1: Check status on mount
+  // Effect 1: Set mounted flag
   useEffect(() => {
     setIsMounted(true); // Indicate component has mounted
-    const checkStatus = async () => {
-      try {
-        const response = await fetch('/api/props', { method: 'GET' });
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-        const data = await response.json();
-        if (data.status === 'Connected') {
-          setStatus('connected');
-          setMessage('Connection is active.');
-          setCurrentPath(data.cwd || DEFAULT_PATH); // Use actual CWD from server if available
-          console.log('Initial CWD from server:', data.cwd);
-        } else {
-          setStatus('idle');
-          setMessage('');
-        }
-      } catch (error) {
-        console.error('Error checking status:', error);
-        setStatus('error');
-        setMessage('Failed to check connection status.');
-      }
-    };
-    checkStatus();
   }, []); // Run only once on mount
 
   // Effect 2: Initialize Terminal on mount
@@ -209,7 +210,7 @@ export const MiniTerminal: React.FC<MiniTerminalProps> = ({ className }) => {
         background: '#1a1a1a',
         foreground: '#ffffff',
       },
-      rows: 10, // Set initial rows for a smaller terminal
+      rows: 10, // Set initial rows for a smaller terminal, will be adjusted by fit
     });
     const fitAddon = new FitAddon();
     fitAddonRef.current = fitAddon;
@@ -229,7 +230,7 @@ export const MiniTerminal: React.FC<MiniTerminalProps> = ({ className }) => {
 
         if (command) {
           // Use the ref here to check the LATEST status
-          if (statusRef.current === 'connected') { 
+          if (statusRef.current === 'connected') {
             if (command.startsWith('cd ')) {
               const targetDir = command.substring(3).trim();
               handleCdCommand(targetDir); // Now defined above
@@ -255,21 +256,28 @@ export const MiniTerminal: React.FC<MiniTerminalProps> = ({ className }) => {
       }
     });
 
-    // Resize listener
+    // Resize listener to ensure terminal fills container on window resize
     const handleResize = () => {
-      fitAddonRef.current?.fit();
+      if (fitAddonRef.current) {
+        fitAddonRef.current.fit();
+      }
     };
     window.addEventListener('resize', handleResize);
+
+    // Initial resize after a brief delay to ensure DOM is fully rendered
+    const resizeTimeout = setTimeout(() => {
+      if (fitAddonRef.current) {
+        fitAddonRef.current.fit();
+      }
+    }, 100);
 
     // Cleanup
     return () => {
       window.removeEventListener('resize', handleResize);
-      // Consider if terminal should be disposed on unmount
-      // term.dispose(); 
-      // termRef.current = null; 
+      clearTimeout(resizeTimeout);
     };
     // Dependencies include command handlers because onKey references them
-  }, [isMounted, getPrompt, handleCdCommand, executeCommand]); 
+  }, [isMounted, getPrompt, handleCdCommand, executeCommand]);
 
   // Effect 3: Write initial message to terminal based on status
   useEffect(() => {
@@ -281,38 +289,38 @@ export const MiniTerminal: React.FC<MiniTerminalProps> = ({ className }) => {
       } else if (status === 'idle') {
         currentTerm.writeln('SSH Terminal Emulator (Initialize connection to start)');
       } else if (status === 'error') {
-         currentTerm.writeln(`Error: ${message}`);
+        currentTerm.writeln(`Error: ${message}`);
       }
       currentTerm.write(getPrompt()); // Write prompt based on current state
     }
     // Only re-run if these specific states change after mount
-  }, [status, isMounted, getPrompt, message]); 
+  }, [status, isMounted, getPrompt, message]);
 
 
   // --- Render --- 
   return (
-    <div className={`p-2 bg-black rounded-md overflow-hidden shadow-md ${className || ''}`}>
-      <div className="flex items-center justify-between mb-2 px-2 py-1 bg-gray-800 rounded-t-md">
+    <div className={`flex flex-col p-2 h-full bg-background rounded-md overflow-hidden shadow-md ${className || ''}`}>
+      <div className="flex items-center justify-between mb-2 px-2 py-1 bg-secondary rounded-md">
         <div className="flex items-center space-x-2">
-          <Button 
+          <Button
             onClick={handleConnect} // Already defined above
             disabled={status === 'connecting' || status === 'connected'}
             size="sm"
             variant="outline"
             className="text-xs py-0.5 px-1"
           >
-            {status === 'connecting' ? 'Connecting...' : 
-             status === 'connected' ? 'Connected' : 'Connect'}
+            {status === 'connecting' ? 'Connecting...' :
+              status === 'connected' ? 'Connected' : 'Connect'}
           </Button>
           <p className={`text-xs ${status === 'error' ? 'text-red-400' : 'text-gray-300'}`}>
             Status: {status} {message && `- ${message}`}
           </p>
         </div>
-        <span className="text-xs text-gray-400 truncate">{currentPath}</span>
+        <span className="text-xs text-foreground truncate">{currentPath}</span>
       </div>
       {/* Terminal container */}
-      <div className="w-full h-48 bg-black overflow-hidden">
-        <div ref={terminalRef} className="w-full h-full" />
+      <div className="flex-1 w-full h-full bg-background overflow-hidden">
+        <div ref={terminalRef} className="w-full h-full rounded-md overflow-hidden" />
       </div>
     </div>
   );
