@@ -3,7 +3,7 @@
 import {
   ChevronDown, Settings, Moon, Sun, MessageCircle,
   Globe, SquareChevronRight, File,
-  Terminal, Image
+  Terminal, Image, CheckCircle, XCircle
 } from "lucide-react"
 import Link from "next/link"
 
@@ -30,7 +30,7 @@ import {
 
 import { Button } from "@/components/ui/button"
 import { useTheme } from "@/components/theme-provider"
-import { useEffect, useState, useRef } from "react"
+import { useEffect, useState, useRef, useCallback } from "react"
 import {
   Sheet,
   SheetContent,
@@ -38,15 +38,6 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { SettingSidebar } from "@/components/setting-sidebar"
@@ -89,6 +80,11 @@ export function AppSidebar() {
   const [isLoading, setIsLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [activeTab, setActiveTab] = useState('ssh-credentials');
+  const [uploadStatus, setUploadStatus] = useState<'idle' | 'success' | 'error'>("idle");
+  const [modelApiKey, setModelApiKey] = useState('');
+  const [modelEndpoint, setModelEndpoint] = useState('');
+  const [modelSaveStatus, setModelSaveStatus] = useState<'idle' | 'success' | 'error'>("idle");
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   useEffect(() => {
     // Load initial credentials from API
@@ -100,6 +96,10 @@ export function AppSidebar() {
           setSshUsername(data.credentials.username);
           setSshPort(data.credentials.port.toString());
           setSshPrivateKeyPath(data.credentials.privateKeyPath);
+        }
+        if (data.modelProxy) {
+          setModelApiKey(data.modelProxy.apiKey);
+          setModelEndpoint(data.modelProxy.baseUrl);
         }
       })
       .catch(error => console.error('Failed to load SSH credentials:', error));
@@ -144,6 +144,20 @@ export function AppSidebar() {
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
+      setUploadStatus('idle');
+      // Delete the old key if it exists
+      if (sshPrivateKeyPath) {
+        try {
+          await fetch('/api/props/delete-key', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filename: sshPrivateKeyPath })
+          });
+        } catch (err) {
+          // Ignore error, just log
+          console.error('Failed to delete old private key:', err);
+        }
+      }
       // Upload the file to the backend
       const formData = new FormData();
       formData.append('file', file);
@@ -155,14 +169,69 @@ export function AppSidebar() {
         const result = await response.json();
         if (response.ok && result.path) {
           setSshPrivateKeyPath(result.path);
+          setUploadStatus('success');
+          // Immediately persist the new key path to .env
+          await fetch('/api/props', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'updateCredentials',
+              credentials: {
+                host: sshHost,
+                username: sshUsername,
+                port: parseInt(sshPort, 10),
+                privateKeyPath: result.path
+              }
+            })
+          });
         } else {
+          setUploadStatus('error');
           console.error('Failed to upload private key:', result.message);
         }
       } catch (error) {
+        setUploadStatus('error');
         console.error('Error uploading private key:', error);
       }
     }
   };
+
+  const handleSaveModelProxy = async () => {
+    setModelSaveStatus('idle');
+    try {
+      const response = await fetch('/api/props', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'updateModelProxyEnv',
+          proxy: {
+            baseUrl: modelEndpoint,
+            apiKey: modelApiKey
+          }
+        })
+      });
+      const result = await response.json();
+      if (response.ok) {
+        setModelSaveStatus('success');
+      } else {
+        setModelSaveStatus('error');
+        console.error('Failed to save model proxy env:', result.message);
+      }
+    } catch (error) {
+      setModelSaveStatus('error');
+      console.error('Error saving model proxy env:', error);
+    }
+  };
+
+  // Save both SSH and model credentials when the settings sheet is closed
+  const handleSheetOpenChange = useCallback(async (open: boolean) => {
+    setSheetOpen(open);
+    if (!open) {
+      // Save SSH credentials
+      await handleSaveCredentials();
+      // Save model proxy credentials
+      await handleSaveModelProxy();
+    }
+  }, [sshHost, sshUsername, sshPort, sshPrivateKeyPath, modelApiKey, modelEndpoint]);
 
   return (
     <Sidebar collapsible="icon" variant="inset" className="ml-1">
@@ -197,7 +266,7 @@ export function AppSidebar() {
 
       <SidebarFooter>
         <div className={`flex ${state === 'collapsed' ? 'flex-col' : 'flex-row justify-between'} w-full`}>
-          <Sheet>
+          <Sheet open={sheetOpen} onOpenChange={handleSheetOpenChange}>
             <SheetTrigger asChild>
               <Button variant="ghost" size="icon" className="rounded-full">
                 <Settings />
@@ -226,15 +295,25 @@ export function AppSidebar() {
                       </div>
                       <div className="flex flex-col gap-2">
                         <Label htmlFor="sshPrivateKeyPath">Private Key Path</Label>
-                        <Button variant="outline" size="sm" onClick={handleFileSelect}>
-                          Browse
-                        </Button>
+                        <div className="flex items-center gap-2">
+                          <Button variant="outline" size="sm" onClick={handleFileSelect}>
+                            Browse
+                          </Button>
+                          {sshPrivateKeyPath && (
+                            <span className="text-xs text-muted-foreground">{sshPrivateKeyPath}</span>
+                          )}
+                          {uploadStatus === 'success' && (
+                            <span title="Upload successful"><CheckCircle className="text-green-500 w-4 h-4" /></span>
+                          )}
+                          {uploadStatus === 'error' && (
+                            <span title="Upload failed"><XCircle className="text-red-500 w-4 h-4" /></span>
+                          )}
+                        </div>
                         <input
                           type="file"
                           ref={fileInputRef}
                           style={{ display: 'none' }}
                           onChange={handleFileChange}
-                        // accept any file type
                         />
                       </div>
                       <Button onClick={handleSaveCredentials} disabled={isLoading}>
@@ -246,13 +325,23 @@ export function AppSidebar() {
                     <div className="space-y-4">
                       <div className="flex flex-col gap-2">
                         <Label htmlFor="modelApiKey">API Key</Label>
-                        <Input id="modelApiKey" placeholder="Enter your API key" />
+                        <Input id="modelApiKey" placeholder="Enter your API key" value={modelApiKey} onChange={e => setModelApiKey(e.target.value)} />
                       </div>
                       <div className="flex flex-col gap-2">
                         <Label htmlFor="modelEndpoint">Endpoint</Label>
-                        <Input id="modelEndpoint" placeholder="Enter model endpoint" />
+                        <Input id="modelEndpoint" placeholder="Enter model endpoint" value={modelEndpoint} onChange={e => setModelEndpoint(e.target.value)} />
                       </div>
-                      <Button>Save Model Credentials</Button>
+                      <div className="flex items-center gap-2">
+                        <Button onClick={handleSaveModelProxy}>
+                          Save Model Credentials
+                        </Button>
+                        {modelSaveStatus === 'success' && (
+                          <span title="Save successful"><CheckCircle className="text-green-500 w-4 h-4" /></span>
+                        )}
+                        {modelSaveStatus === 'error' && (
+                          <span title="Save failed"><XCircle className="text-red-500 w-4 h-4" /></span>
+                        )}
+                      </div>
                     </div>
                   )}
                 </main>

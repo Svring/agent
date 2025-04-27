@@ -20,14 +20,15 @@ export async function POST(req: NextRequest) {
     // @ts-ignore
     const originalName = file.name || 'private_key';
     const safeName = originalName.startsWith('private_key') ? originalName : `private_key_${originalName}`;
-    const savePath = path.join(process.cwd(), 'src', 'auth', 'props', safeName);
+    // Save to project root
+    const savePath = path.join(process.cwd(), safeName);
 
     // Save file
     fs.writeFileSync(savePath, buffer);
 
     return NextResponse.json({
       message: 'File uploaded successfully',
-      path: savePath
+      path: safeName
     }, { status: 200 });
   } catch (error) {
     console.error('Failed to upload private key:', error);

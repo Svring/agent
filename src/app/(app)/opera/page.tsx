@@ -123,14 +123,35 @@ export default function Opera() {
     }
   }, [sshData, sshError, sshStatus]); // Include sshStatus to compare previous state
 
+  const reconnectCooldownMs = 5000; // 5 seconds cooldown
+  const lastReconnectAttemptRef = useRef<number>(0);
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   // Automatically connect to SSH if SWR indicates disconnected and not currently connecting
   useEffect(() => {
     if (sshData && sshData.status === 'Disconnected' && !isConnecting) {
-      console.log('SWR detected SSH disconnected, attempting to connect...');
-      handleSshToggle();
+      const now = Date.now();
+      if (now - lastReconnectAttemptRef.current > reconnectCooldownMs) {
+        lastReconnectAttemptRef.current = now;
+        handleSshToggle();
+      } else if (!reconnectTimeoutRef.current) {
+        // Schedule a retry after cooldown if not already scheduled
+        const delay = reconnectCooldownMs - (now - lastReconnectAttemptRef.current);
+        reconnectTimeoutRef.current = setTimeout(() => {
+          reconnectTimeoutRef.current = null;
+          lastReconnectAttemptRef.current = Date.now();
+          handleSshToggle();
+        }, delay);
+      }
     }
-    // No dependency array change needed here, logic depends on sshData and isConnecting state
-  }, [sshData, isConnecting]); // Rerun when sshData or isConnecting changes
+    // Cleanup timeout on unmount or when dependencies change
+    return () => {
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
+    };
+  }, [sshData, isConnecting]);
 
   // Fetch browser status periodically (keeping useEffect for this one)
   const fetchBrowserStatus = useCallback(async () => {

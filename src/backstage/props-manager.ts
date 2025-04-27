@@ -1,7 +1,9 @@
 import { NodeSSH } from 'node-ssh';
 import fs from 'fs';
 import path from 'path';
-import * as toml from '@iarna/toml';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 /**
  * Singleton class to manage SSH connections and actions
@@ -15,41 +17,21 @@ export class PropsManager {
   private host: string = '';
   private username: string = '';
   private port: number = 22;
-  private configFilePath: string = path.join(process.cwd(), 'src', 'auth', 'props', 'credential.toml');
 
   public constructor() {
     this.ssh = new NodeSSH();
-    this.loadCredentialsFromConfig();
+    this.loadCredentialsFromEnv();
   }
 
   /**
-   * Load SSH credentials from TOML config file
+   * Load SSH credentials from .env file
    */
-  private loadCredentialsFromConfig(): void {
-    try {
-      if (fs.existsSync(this.configFilePath)) {
-        const configData = fs.readFileSync(this.configFilePath, 'utf8');
-        const config = toml.parse(configData) as { ssh?: { host?: string; username?: string; port?: number | string; privateKeyPath?: string } };
-        if (config.ssh) {
-          this.host = config.ssh.host || '';
-          this.username = config.ssh.username || '';
-          // Handle port number that might contain underscores or be a string
-          if (config.ssh.port) {
-            this.port = typeof config.ssh.port === 'string' ? parseInt(config.ssh.port.replace('_', ''), 10) : config.ssh.port;
-          } else {
-            this.port = 22;
-          }
-          this.privateKeyPath = config.ssh.privateKeyPath || '';
-          console.log('SSH credentials loaded from config file');
-        } else {
-          console.warn('No SSH section found in credential.toml');
-        }
-      } else {
-        console.warn('Credentials config file not found at:', this.configFilePath);
-      }
-    } catch (error) {
-      console.error('Failed to load credentials from config file:', error);
-    }
+  private loadCredentialsFromEnv(): void {
+    this.host = process.env.SSH_HOST || '';
+    this.username = process.env.SSH_USERNAME || '';
+    this.port = process.env.SSH_PORT ? parseInt(process.env.SSH_PORT, 10) : 22;
+    this.privateKeyPath = process.env.SSH_PRIVATE_KEY_PATH || '';
+    console.log('SSH credentials loaded from .env');
   }
 
   /**
@@ -63,21 +45,51 @@ export class PropsManager {
   }
 
   /**
-   * Update SSH credentials
+   * Update SSH credentials (in-memory only, as .env cannot be written at runtime)
    */
   public updateSSHCredentials(credentials: { host?: string; username?: string; port?: number; privateKeyPath?: string }): { success: boolean; message: string } {
     if (credentials.host) this.host = credentials.host;
     if (credentials.username) this.username = credentials.username;
     if (credentials.port) this.port = credentials.port;
     if (credentials.privateKeyPath) this.privateKeyPath = credentials.privateKeyPath;
-    
     // If we're already connected, disconnect to reconnect with new credentials
     if (this.isConnected && this.ssh.isConnected()) {
       this.disconnectSSH();
       console.log('Disconnected existing SSH connection to apply new credentials.');
     }
-    
-    return { success: true, message: 'SSH credentials updated successfully.' };
+    // Persist to .env file
+    try {
+      const envPath = path.join(process.cwd(), '.env');
+      let envContent = '';
+      if (fs.existsSync(envPath)) {
+        envContent = fs.readFileSync(envPath, 'utf8');
+      }
+      const envLines = envContent.split(/\r?\n/);
+      const envMap: Record<string, string> = {};
+      for (const line of envLines) {
+        const match = line.match(/^([A-Z0-9_]+)=(.*)$/);
+        if (match) {
+          envMap[match[1]] = match[2];
+        }
+      }
+      if (this.host) envMap['SSH_HOST'] = this.host;
+      if (this.username) envMap['SSH_USERNAME'] = this.username;
+      if (this.port) envMap['SSH_PORT'] = String(this.port);
+      if (this.privateKeyPath) envMap['SSH_PRIVATE_KEY_PATH'] = this.privateKeyPath;
+      // Rebuild .env content
+      const allKeys = new Set([...Object.keys(envMap), 'SSH_HOST', 'SSH_USERNAME', 'SSH_PORT', 'SSH_PRIVATE_KEY_PATH']);
+      const newLines: string[] = [];
+      for (const key of allKeys) {
+        if (envMap[key] !== undefined) {
+          newLines.push(`${key}=${envMap[key]}`);
+        }
+      }
+      fs.writeFileSync(envPath, newLines.join('\n'));
+    } catch (err) {
+      console.error('Failed to persist SSH credentials to .env:', err);
+      return { success: false, message: 'Failed to persist SSH credentials to .env file.' };
+    }
+    return { success: true, message: 'SSH credentials updated and persisted to .env file.' };
   }
 
   /**
@@ -100,24 +112,20 @@ export class PropsManager {
       console.log('SSH already connected.');
       return { success: true, message: 'Already connected' };
     }
-
-    // Reload credentials from config file before initializing connection
-    this.loadCredentialsFromConfig();
-
+    // Reload credentials from .env before initializing connection
+    this.loadCredentialsFromEnv();
     // Check if credentials are set
     if (!this.host || !this.username || !this.privateKeyPath) {
-      const errorMsg = 'SSH credentials are not properly configured. Please check credential.toml';
+      const errorMsg = 'SSH credentials are not properly configured. Please check your .env file.';
       console.error(`❌ ${errorMsg}`);
       return { success: false, message: errorMsg };
     }
-
     // Check if the key file exists
     if (!fs.existsSync(this.privateKeyPath)) {
       const errorMsg = `Private key file not found at: ${this.privateKeyPath}`;
       console.error(`❌ ${errorMsg}`);
       return { success: false, message: errorMsg };
     }
-
     // Read the private key content
     let privateKeyContent: string;
     try {
@@ -127,7 +135,6 @@ export class PropsManager {
       console.error(`❌ ${errorMsg}`, readErr);
       return { success: false, message: `${errorMsg}: ${readErr instanceof Error ? readErr.message : String(readErr)}` };
     }
-
     try {
       console.log(`Attempting SSH connection to ${this.host}:${this.port}...`);
       await this.ssh.connect({
@@ -136,10 +143,8 @@ export class PropsManager {
         port: this.port,
         privateKey: privateKeyContent,
       });
-
       this.isConnected = true;
       console.log('✅ SSH Connected!');
-
       // Get initial working directory
       try {
         const pwdResult = await this.ssh.execCommand('pwd');
@@ -156,9 +161,7 @@ export class PropsManager {
         console.error('❌ Failed to get initial working directory:', pwdErr);
         this.currentWorkingDirectory = null; // Indicate unknown CWD
       }
-
       return { success: true, message: 'SSH connection successful' };
-
     } catch (err) {
       this.isConnected = false;
       this.currentWorkingDirectory = null; // Reset CWD on connection failure
@@ -338,6 +341,42 @@ export class PropsManager {
    */
   public getCurrentWorkingDirectory(): string | null {
     return this.currentWorkingDirectory;
+  }
+
+  /**
+   * Update model proxy environment variables in .env
+   */
+  public updateModelProxyEnv(proxy: { baseUrl?: string; apiKey?: string }): { success: boolean; message: string } {
+    try {
+      const envPath = path.join(process.cwd(), '.env');
+      let envContent = '';
+      if (fs.existsSync(envPath)) {
+        envContent = fs.readFileSync(envPath, 'utf8');
+      }
+      const envLines = envContent.split(/\r?\n/);
+      const envMap: Record<string, string> = {};
+      for (const line of envLines) {
+        const match = line.match(/^([A-Z0-9_]+)=(.*)$/);
+        if (match) {
+          envMap[match[1]] = match[2];
+        }
+      }
+      if (proxy.baseUrl) envMap['SEALOS_USW_BASE_URL'] = proxy.baseUrl;
+      if (proxy.apiKey) envMap['SEALOS_USW_API_KEY'] = proxy.apiKey;
+      // Rebuild .env content
+      const allKeys = new Set([...Object.keys(envMap), 'SEALOS_USW_BASE_URL', 'SEALOS_USW_API_KEY']);
+      const newLines: string[] = [];
+      for (const key of allKeys) {
+        if (envMap[key] !== undefined) {
+          newLines.push(`${key}=${envMap[key]}`);
+        }
+      }
+      fs.writeFileSync(envPath, newLines.join('\n'));
+    } catch (err) {
+      console.error('Failed to persist model proxy env to .env:', err);
+      return { success: false, message: 'Failed to persist model proxy env to .env file.' };
+    }
+    return { success: true, message: 'Model proxy env updated and persisted to .env file.' };
   }
 }
 
