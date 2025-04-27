@@ -218,7 +218,8 @@ export class PropsManager {
         } else {
           // cd succeeded, update CWD
           // Clean the stdout to ensure it's a single line path
-          const cleanedCwd = result.stdout.split('\n').filter(line => line.trim().length > 0)[0]?.trim();
+          const lines = result.stdout.split('\n').filter(line => line.trim().length > 0);
+          const cleanedCwd = lines[lines.length - 1]?.trim();
           this.currentWorkingDirectory = cleanedCwd || null;
           console.log(`Working directory changed to: ${this.currentWorkingDirectory}`);
           return {
