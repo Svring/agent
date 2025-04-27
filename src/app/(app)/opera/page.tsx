@@ -13,6 +13,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import MultiSelect from '@/components/multi-select';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Switch } from "@/components/ui/switch"
+import { Label } from "@/components/ui/label"
 
 import useSWR from 'swr';
 
@@ -28,9 +30,10 @@ import { PlaywrightContext } from '@/context/PlaywrightContext';
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
 export default function Opera() {
-  const { messages, input, handleInputChange, handleSubmit, stop, isLoading } = useChat({
-    maxSteps: 3,
-    api: '/api/opera',
+  const [apiRoute, setApiRoute] = useState<string>('/api/opera/chat'); // State for API route
+  const { messages, data, input, handleInputChange, handleSubmit, stop, status } = useChat({
+    maxSteps: 3, // Consider if maxSteps should differ per route
+    api: apiRoute, // Use state variable for API route
   });
 
   const [openStates, setOpenStates] = useState<Record<string, boolean>>({});
@@ -267,7 +270,7 @@ export default function Opera() {
               <div className="flex-1 overflow-auto">
                 <ScrollArea className="h-full w-full px-3 pb-2">
                   <div className="space-y-2 h-full w-full">
-                    {messages.map(m => (
+                    {messages.map((m, index) => (
                       <MessageBubble
                         key={m.id}
                         m={m}
@@ -275,6 +278,9 @@ export default function Opera() {
                         expandedResults={expandedResults}
                         toggleOpen={toggleOpen}
                         toggleExpandResult={toggleExpandResult}
+                        data={data}
+                        apiRoute={apiRoute}
+                        isLastMessage={index === messages.length - 1}
                       />
                     ))}
                     <div ref={messagesEndRef} />
@@ -300,7 +306,7 @@ export default function Opera() {
                       }}
                     />
                     <div className="flex items-center justify-between">
-                      <div className="flex space-x-2">
+                      <div className="flex space-x-2 items-center">
                         <Select value={selectedModel} onValueChange={handleModelChange}>
                           <SelectTrigger size='sm' className="w-auto h-8 text-sm px-2 focus:ring-0 focus:ring-offset-0">
                             <SelectValue placeholder="Select model" />
@@ -319,35 +325,49 @@ export default function Opera() {
                           setSelectedOptions={setSelectedTools}
                         />
                       </div>
-                      {/* Conditionally render Send or Stop button using isLoading */}
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          {isLoading ? (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8" // Keep size consistent
-                              onClick={stop}
-                              disabled={!isLoading} // Button is enabled only when isLoading is true
-                            >
-                              <Square />
-                            </Button>
-                          ) : (
-                            <Button
-                              type="submit"
-                              variant="ghost"
-                              size="icon"
-                              className="h-4 w-4 " // Keep size consistent
-                              disabled={!input.trim() || isLoading} // Disable when input is empty OR loading
-                            >
-                              <Send />
-                            </Button>
-                          )}
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          {isLoading ? 'Stop Generating' : 'Send Message'}
-                        </TooltipContent>
-                      </Tooltip>
+                      <div className="flex items-center space-x-2">
+                        <div className="flex items-center space-x-1">
+                          <Label htmlFor="api-mode-switch" className="text-xs text-muted-foreground whitespace-nowrap">
+                            {apiRoute === '/api/opera/chat' ? 'Chat' : 'Cruise'}
+                          </Label>
+                          <Switch
+                            id="api-mode-switch"
+                            checked={apiRoute === '/api/opera/counterfeit'}
+                            onCheckedChange={(checked: boolean) => {
+                              setApiRoute(checked ? '/api/opera/counterfeit' : '/api/opera/chat');
+                            }}
+                            className="h-4 w-8"
+                          />
+                        </div>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            {status === 'streaming' ? (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={stop}
+                                disabled={status === 'streaming'}
+                              >
+                                <Square />
+                              </Button>
+                            ) : (
+                              <Button
+                                type="submit"
+                                variant="ghost"
+                                size="lg"
+                                className="h-8 w-8"
+                                disabled={!input.trim() || status !== 'ready'}
+                              >
+                                <Send className="h-full w-full" />
+                              </Button>
+                            )}
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            {status === 'streaming' ? 'Stop Generating' : 'Send Message'}
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
                     </div>
                   </form>
                   {/* SSH Status Bar */}
@@ -373,7 +393,7 @@ export default function Opera() {
                           size="icon"
                           className="h-5 w-5 p-0 ml-2"
                           onClick={handleSshToggle}
-                          disabled={isConnecting || isLoading} // Also disable if AI is loading
+                          disabled={isConnecting || status !== 'streaming'}
                         >
                           {sshStatus.connected
                             ? <PowerOff />
@@ -401,7 +421,6 @@ export default function Opera() {
                         <span className="truncate" title={`Viewport: ${browserStatus.viewport.width}x${browserStatus.viewport.height}`}>{browserStatus.viewport.width}×{browserStatus.viewport.height}</span>
                       </>
                     )}
-                    {/* Optionally add URL if available in the future */}
                     <div className="flex-grow"></div>
                     <Tooltip>
                       <TooltipTrigger asChild>
@@ -410,7 +429,7 @@ export default function Opera() {
                           size="icon"
                           className="h-5 w-5 p-0 ml-2"
                           onClick={browserStatus.initialized ? handleBrowserCleanup : handleBrowserInit}
-                          disabled={isBrowserLoading || isLoading} // Use isLoading here too
+                          disabled={isBrowserLoading || status !== 'streaming'}
                         >
                           {browserStatus.initialized
                             ? <PowerOff />

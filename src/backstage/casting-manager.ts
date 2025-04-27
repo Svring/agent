@@ -1,79 +1,70 @@
-// Central registry for models and tools, now as a class manager
-
-// Only import createOpenAI as all models will use this via the proxy
-import { createOpenAI } from '@ai-sdk/openai'; 
-// Removed createAnthropic and createGoogleGenerativeAI imports
+// Central registry for models and tools
+import { createOpenAI } from '@ai-sdk/openai';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { experimental_createMCPClient, LanguageModel, streamText } from 'ai';
 import { Experimental_StdioMCPTransport } from 'ai/mcp-stdio';
 
-// --- Unified Model Factory via OpenAI Proxy --- 
+// Types
+type MCPClient = Awaited<ReturnType<typeof experimental_createMCPClient>>;
+type ToolRegistry = Record<string, { label: string; tool: any | null }>;
+type ToolCollection = Record<string, any>;
+
+// Model configurations
+const MODEL_CONFIG = {
+  AVAILABLE_MODELS: [
+    'claude-3-5-sonnet-latest',
+    'claude-3-7-sonnet-20250219',
+    'gpt-4.1-nano',
+    'grok-3-latest',
+    'o3',
+    'gpt-4.1'
+  ],
+  CLAUDE_MODELS: [
+    'claude-3-5-sonnet-latest',
+    'claude-3-7-sonnet-20250219',
+  ],
+};
+
+// Tool registry configuration
+const toolRegistry: ToolRegistry = {
+  playwright: {
+    label: 'Browser Control',
+    tool: null, // Pseudo-tool for enabling Playwright
+  },
+  props: {
+    label: 'Terminal Execution',
+    tool: null, // Pseudo-tool for enabling Props SSH commands
+  },
+  // Add additional tools here when uncommented:
+  // computer: { label: 'Computer Use', tool: computerUseTool },
+  // bash: { label: 'Bash', tool: bashTool },
+  // str_replace_editor: { label: 'Text Editor', tool: textEditorTool },
+};
+
+// Model Creation Helpers
 
 const createModelViaProxy = (modelName: string): LanguageModel => {
-  // Use the standard Sealos USW endpoint for all models via OpenAI SDK
   const baseURL = process.env.SEALOS_USW_BASE_URL;
   console.log(`Creating model "${modelName}" via standard proxy URL: ${baseURL}`);
   
   const openai = createOpenAI({ 
-    baseURL: baseURL, 
+    baseURL, 
     apiKey: process.env.SEALOS_USW_API_KEY,
-    // Ensure compatibility headers or settings are added if needed by the proxy
   }); 
   return openai(modelName);
 };
-
-// --- Anthropic Model Factory for Claude --- 
 
 const createClaudeModel = (modelName: string): LanguageModel => {
   console.log(`Creating Claude model "${modelName}" directly via Anthropic SDK`);
   const anthropic = createAnthropic({
     apiKey: process.env.SEALOS_USW_API_KEY,
-    // Use the same Sealos endpoint if needed, or default to Anthropic's endpoint
     baseURL: process.env.SEALOS_USW_BASE_URL,
   });
   return anthropic(modelName);
 };
 
-// --- Available Model Names --- 
-const availableModelNames = [
-  'claude-3-5-sonnet-latest',
-  'claude-3-7-sonnet-20250219',
-  'gpt-4.1-nano',
-  'grok-3-latest',
-  'o3',
-  'gpt-4.1'
-];
+// Dynamic Tool Loading Helpers
 
-const claudeModels = [
-  'claude-3-5-sonnet-latest',
-  'claude-3-7-sonnet-20250219',
-];
-
-// --- Tool Registry with Labels (Includes pseudo-tool for Playwright) --- 
-const toolRegistry = {
-  playwright: { // Pseudo-tool key for enabling Playwright
-    label: 'Browser Control',
-    tool: null, // No actual static tool, just used for selection
-  },
-  // computer: {
-  //   label: 'Computer Use',
-  //   tool: computerUseTool,
-  // },
-  // bash: {
-  //   label: 'Bash',
-  //   tool: bashTool,
-  // },
-  // str_replace_editor: {
-  //   label: 'Text Editor',
-  //   tool: textEditorTool,
-  // },
-  props: { // Pseudo-tool key for enabling Props SSH commands
-    label: 'Terminal Execution',
-    tool: null, // No actual static tool, just used for selection
-  },
-};
-
-// --- Playwright Tools Helper --- 
 async function getPlaywrightTools() {
   const playwrightTransport = new Experimental_StdioMCPTransport({
     command: 'node',
@@ -86,11 +77,10 @@ async function getPlaywrightTools() {
   return { playwrightTools, playwrightClient };
 }
 
-// --- Props Tools Helper --- 
 async function getPropsTools() {
   const propsTransport = new Experimental_StdioMCPTransport({
     command: 'node',
-    args: ['src/tools/mcp/props.mjs'], // Path to the props tool
+    args: ['src/tools/mcp/props.mjs'],
   });
   const propsClient = await experimental_createMCPClient({
     transport: propsTransport,
@@ -99,131 +89,164 @@ async function getPropsTools() {
   return { propsTools, propsClient };
 }
 
-// --- CastingManager Class --- 
+// Dynamic tool loader mapping
+const DYNAMIC_TOOL_LOADERS: Record<string, () => Promise<{ tools: ToolCollection; client: MCPClient }>> = {
+  playwright: async () => {
+    const { playwrightTools, playwrightClient } = await getPlaywrightTools();
+    return { tools: playwrightTools, client: playwrightClient };
+  },
+  props: async () => {
+    const { propsTools, propsClient } = await getPropsTools();
+    return { tools: propsTools, client: propsClient };
+  },
+};
+
+const DYNAMIC_TOOL_KEYS = Object.keys(DYNAMIC_TOOL_LOADERS);
+
+// Cast method parameter interface
+interface CastOptions {
+  model?: LanguageModel;
+  tools?: ToolCollection;
+  systemPrompt?: string;
+  messages: any;
+  maxSteps?: number;
+  toolCallStreaming?: boolean;
+  onError?: (event: { error: unknown }) => void;
+  onFinish?: (result: any) => void;
+  [key: string]: any;
+}
+
 /**
  * Manages models, tools, system prompt, and other state for casting tasks.
  * Can be extended for session-based or multi-user scenarios.
  */
 export class CastingManager {
   private model: LanguageModel | null = null;
-  private tools: Record<string, any> = {};
+  private tools: ToolCollection = {};
   private systemPrompt: string = '';
-  // Add private members to hold the clients
-  private playwrightClient: Awaited<ReturnType<typeof experimental_createMCPClient>> | null = null;
-  private propsClient: Awaited<ReturnType<typeof experimental_createMCPClient>> | null = null;
+  // Map of dynamic tool clients for closing connections
+  private dynamicClients: Record<string, MCPClient> = {};
 
-  // Setters
-  setModel(model: LanguageModel) {
+  // State Management
+  setModel(model: LanguageModel): void {
     this.model = model;
   }
-  setTools(tools: Record<string, any>) {
+  
+  setTools(tools: ToolCollection): void {
     this.tools = tools;
   }
-  setSystemPrompt(prompt: string) {
+  
+  setSystemPrompt(prompt: string): void {
     this.systemPrompt = prompt;
   }
-  // Reset all state, including clients
-  reset() {
+  
+  reset(): void {
     this.model = null;
     this.tools = {};
     this.systemPrompt = '';
-    // Ensure clients are reset as well
-    this.playwrightClient = null;
-    this.propsClient = null;
+    this.dynamicClients = {};
   }
 
-  // New method to load tools based on selection
-  async loadSelectedTools(selectedToolKeys: string[] | undefined): Promise<Record<string, any>> {
-    const loadedTools: Record<string, any> = {};
-    this.playwrightClient = null; // Reset clients before loading
-    this.propsClient = null;
+  // Tool Management
+  async loadSelectedTools(selectedToolKeys?: string[]): Promise<ToolCollection> {
+    const loadedTools: ToolCollection = {};
+    this.dynamicClients = {};
 
-    if (!selectedToolKeys || !Array.isArray(selectedToolKeys)) {
+    if (!selectedToolKeys?.length) {
       console.log('No tool keys provided or invalid format.');
       return loadedTools;
     }
 
-    // Check if playwright tool is selected
-    if (selectedToolKeys.includes('playwright')) {
-      console.log('Playwright tool selected. Loading playwright tools...');
-      try {
-        const { playwrightTools: dynamicTools, playwrightClient: client } = await getPlaywrightTools();
-        this.playwrightClient = client; // Store the client
-        console.log('Playwright tools loaded:', Object.keys(dynamicTools));
-        Object.assign(loadedTools, dynamicTools); // Merge playwright tools
-      } catch (error) {
-        console.error('Failed to load playwright tools:', error);
-        // Continue without playwright tools
+    // Load dynamic tools
+    for (const key of selectedToolKeys) {
+      const loader = DYNAMIC_TOOL_LOADERS[key];
+      if (loader) {
+        try {
+          const { tools: dynamicTools, client } = await loader();
+          this.dynamicClients[key] = client;
+          Object.assign(loadedTools, dynamicTools);
+          console.log(`${key} tools loaded:`, Object.keys(dynamicTools));
+        } catch (error) {
+          console.error(`Failed to load ${key} tools:`, error);
+        }
       }
     }
 
-    // Check if props tool is selected
-    if (selectedToolKeys.includes('props')) {
-      console.log('Props tool selected. Loading props tools...');
-      try {
-        const { propsTools: dynamicTools, propsClient: client } = await getPropsTools();
-        this.propsClient = client; // Store the client
-        console.log('Props tools loaded:', Object.keys(dynamicTools));
-        Object.assign(loadedTools, dynamicTools); // Merge props tools
-      } catch (error) {
-        console.error('Failed to load props tools:', error);
-        // Continue without props tools
-      }
-    }
-
-    // Add selected *static* tools to the tools object
-    console.log('Adding selected static tools...');
-    selectedToolKeys.forEach((toolKey: string) => {
-      // Skip the dynamic tool keys handled above
-      if (toolKey === 'playwright' || toolKey === 'props') return;
-
-      const tool = this.getToolByKey(toolKey); // Use instance method
+    // Load static tools
+    for (const key of selectedToolKeys.filter(k => !DYNAMIC_TOOL_KEYS.includes(k))) {
+      const tool = this.getToolByKey(key);
       if (tool) {
-        loadedTools[toolKey] = tool;
-        console.log(`Static tool added: ${toolKey}`);
+        loadedTools[key] = tool;
+        console.log(`Static tool added: ${key}`);
       } else {
-        console.log(`Static tool not found or invalid: ${toolKey}`);
+        console.log(`Static tool not found or invalid: ${key}`);
+      }
+    }
+
+    console.log('Final tools loaded:', Object.keys(loadedTools));
+    this.tools = loadedTools;
+    return loadedTools;
+  }
+
+  async closeClients(): Promise<void> {
+    for (const [key, client] of Object.entries(this.dynamicClients)) {
+      try {
+        await client.close();
+        console.log(`${key} client closed.`);
+      } catch (error) {
+        console.error(`Error closing ${key} client:`, error);
+      }
+    }
+    this.dynamicClients = {};
+  }
+
+  // Model and Tool Access
+  getModelByName(modelName: string): LanguageModel | null {
+    if (!MODEL_CONFIG.AVAILABLE_MODELS.includes(modelName)) {
+      console.warn(`Requested model "${modelName}" is not available.`);
+      return null;
+    }
+
+    try {
+      return MODEL_CONFIG.CLAUDE_MODELS.includes(modelName)
+        ? createClaudeModel(modelName)
+        : createModelViaProxy(modelName);
+    } catch (error) {
+      console.error(`Failed to create model "${modelName}":`, error);
+      return null;
+    }
+  }
+
+  getToolByKey(key: string): any {
+    if (key === 'playwright' || key === 'props') return null;
+    return toolRegistry[key as keyof typeof toolRegistry]?.tool || null;
+  }
+
+  getModelOptions(): Array<{ key: string; label: string }> {
+    return MODEL_CONFIG.AVAILABLE_MODELS.map(name => ({
+      key: name,
+      label: name,
+    }));
+  }
+
+  getToolOptions(): Array<{ key: string; label: string }> {
+    return Object.entries(toolRegistry).map(([key, tool]) => ({
+      key,
+      label: tool.label,
+    }));
+  }
+
+  getStaticTools(): ToolCollection {
+    const staticTools: ToolCollection = {};
+    Object.entries(toolRegistry).forEach(([key, tool]) => {
+      if (key !== 'playwright' && key !== 'props' && tool.tool) {
+        staticTools[key] = tool.tool;
       }
     });
-
-    console.log('Final tools list loaded by CastingManager:', Object.keys(loadedTools));
-    this.tools = loadedTools; // Update the manager's internal tools state as well
-    return loadedTools; // Return the combined tools
+    return staticTools;
   }
 
-  // New method to close clients
-  async closeClients() {
-    if (this.playwrightClient || this.propsClient) {
-      console.log('Closing clients managed by CastingManager...');
-      try {
-        if (this.playwrightClient) {
-          await this.playwrightClient.close();
-          console.log('Playwright client closed by CastingManager.');
-          this.playwrightClient = null;
-        }
-      } catch (error) {
-        console.error('Error closing Playwright client:', error);
-      }
-      try {
-        if (this.propsClient) {
-          await this.propsClient.close();
-          console.log('Props client closed by CastingManager.');
-          this.propsClient = null;
-        }
-      } catch (error) {
-        console.error('Error closing Props client:', error);
-      }
-    } else {
-       console.log('No active clients to close in CastingManager.');
-    }
-  }
-
-  // Flexible cast method
-  /**
-   * Casts (executes) a request with the given components, or falls back to current state.
-   * @param {Object} options - { model, tools, systemPrompt, messages, ...streamTextOptions }
-   * @returns {Promise<any>} - The result of streamText
-   */
+  // Execution
   async cast({
     model,
     tools,
@@ -234,21 +257,13 @@ export class CastingManager {
     onError,
     onFinish,
     ...rest
-  }: {
-    model?: LanguageModel,
-    tools?: Record<string, any>,
-    systemPrompt?: string,
-    messages: any,
-    maxSteps?: number,
-    toolCallStreaming?: boolean,
-    onError?: any,
-    onFinish?: any,
-    [key: string]: any
-  }) {
+  }: CastOptions): Promise<any> {
     const usedModel = model || this.model;
     const usedTools = tools || this.tools;
     const usedPrompt = systemPrompt || this.systemPrompt;
+    
     if (!usedModel) throw new Error('No model specified for casting');
+    
     return streamText({
       model: usedModel,
       system: usedPrompt,
@@ -267,72 +282,21 @@ export class CastingManager {
     });
   }
 
-  // Methods to access models and tools
-  getModelByName(modelName: string): LanguageModel | null {
-    if (!availableModelNames.includes(modelName)) {
-      console.warn(`Requested model name "${modelName}" is not available.`);
-      return null;
-    }
-
-    try {
-      // Use Anthropic SDK for Claude models
-      if (claudeModels.includes(modelName)) {
-        return createClaudeModel(modelName);
-      }
-      // Otherwise, use the unified proxy factory
-      return createModelViaProxy(modelName);
-    } catch (error) {
-      console.error(`Failed to create model "${modelName}" via proxy:`, error);
-      return null;
-    }
+  // Backward Compatibility
+  async getPlaywrightTools(): Promise<ToolCollection> {
+    const { tools: dynamicTools, client } = await DYNAMIC_TOOL_LOADERS.playwright();
+    this.dynamicClients['playwright'] = client;
+    return dynamicTools;
   }
 
-  getToolByKey(key: string) {
-    // Exclude the pseudo-tool for playwright
-    if (key === 'playwright') return null;
-    return toolRegistry[key as keyof typeof toolRegistry]?.tool || null;
-  }
-
-  // Expose options for listing available options
-  getModelOptions() {
-    return availableModelNames.map(name => ({
-      key: name,
-      label: name, // Use name as label
-    }));
-  }
-
-  getToolOptions() {
-    // Return all entries from toolRegistry, including the pseudo-tool
-    return Object.entries(toolRegistry).map(([key, tool]) => ({
-      key,
-      label: tool.label,
-    }));
-  }
-
-  // Backward compatibility methods (tools only)
-  getStaticTools() {
-    const staticTools: Record<string, any> = {};
-    Object.entries(toolRegistry).forEach(([key, tool]) => {
-      // Exclude the pseudo-tools when getting actual static tools
-      if (key !== 'playwright' && key !== 'props') {
-        staticTools[key] = tool.tool;
-      }
-    });
-    return staticTools;
-  }
-
-  async getPlaywrightTools() {
-    return getPlaywrightTools();
-  }
-
-  async getPropsTools() {
-    return getPropsTools();
+  async getPropsTools(): Promise<ToolCollection> {
+    const { tools: dynamicTools, client } = await DYNAMIC_TOOL_LOADERS.props();
+    this.dynamicClients['props'] = client;
+    return dynamicTools;
   }
 }
 
-// --- Singleton instance for now (can be extended to session-based) --- 
+// Exports
 export const castingManager = new CastingManager();
-
-// For backward compatibility (tools only):
 export const tools = toolRegistry;
 export { getPlaywrightTools, getPropsTools };

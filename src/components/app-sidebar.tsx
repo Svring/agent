@@ -3,7 +3,7 @@
 import {
   ChevronDown, Settings, Moon, Sun, MessageCircle,
   Globe, SquareChevronRight, File,
-  Terminal
+  Terminal, Image
 } from "lucide-react"
 import Link from "next/link"
 
@@ -71,7 +71,12 @@ const workspaceChatItems = [
     title: "Terminal",
     url: "/terminal",
     icon: Terminal,
-  }
+  },
+  {
+    title: "Gallery",
+    url: "/gallery",
+    icon: Image,
+  },
 ]
 
 export function AppSidebar() {
