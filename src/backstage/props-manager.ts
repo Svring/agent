@@ -281,14 +281,24 @@ export class PropsManager {
     }
 
     try {
-      console.log(`Uploading content to remote file: ${filePath}`);
-      // Use execCommand to create/overwrite file with content via echo command
-      // Run this command within the current working directory if filePath is relative
-      const command = `echo "${content.replace(/"/g, '\"')}" > ${filePath}`;
-      const result = await this.ssh.execCommand(command, { cwd: this.currentWorkingDirectory || undefined });
+      // Escape single quotes in the file path itself for the shell command
+      const escapedFilePath = filePath.replace(/'/g, "'\\''");
+      const command = `cat > '${escapedFilePath}'`;
+      console.log(`Uploading content via stdin to remote file: '${escapedFilePath}' using command: ${command}`);
+
+      // Use ssh.exec instead of execCommand to pass stdin
+      const result = await this.ssh.exec(command, [], {
+        cwd: this.currentWorkingDirectory || undefined,
+        stdin: content, // Pass the raw content via stdin
+        stream: 'both' // Ensure we capture stderr
+      });
+
+      // node-ssh exec doesn't throw on stderr, we need to check it
+      // It resolves with an object containing stdout and stderr or rejects on critical errors
       if (result.stderr) {
         throw new Error(result.stderr);
       }
+
       console.log(`File content uploaded successfully to: ${filePath}`);
       return {
         success: true,

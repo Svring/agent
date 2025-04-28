@@ -81,7 +81,9 @@ export async function POST(request: NextRequest) {
         console.log('Opera context ensured.');
         await manager.getPage('opera', 'main', { width, height });
         console.log('Opera main page ensured.');
-        
+        // Go to google.com by default
+        await manager.goto('https://google.com', 'main');
+        console.log('Opera main page navigated to google.com.');
         const viewportSize = manager.getViewportSize('opera');
         return NextResponse.json({ 
           success: true, 

@@ -8,13 +8,12 @@ import MessageBubble from '@/components/message-bubble';
 import Stage from '@/components/stage';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { Textarea } from '@/components/ui/textarea';
-import { ArrowUp, Hammer, Send, Image, Power, PowerOff, Square } from 'lucide-react';
+import { ArrowUp, Hammer, Send, BrainCog, Power, PowerOff, Square } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import MultiSelect from '@/components/multi-select';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Switch } from "@/components/ui/switch"
-import { Label } from "@/components/ui/label"
+import { Toggle } from "@/components/ui/toggle"
 
 import useSWR from 'swr';
 
@@ -40,7 +39,7 @@ export default function Opera() {
   const [expandedResults, setExpandedResults] = useState<Record<string, boolean>>({});
   const messagesEndRef = useRef(null);
   const [selectedModel, setSelectedModel] = useState<string>('');
-  const [selectedTools, setSelectedTools] = useState<string[]>(['props']);
+  const [selectedTools, setSelectedTools] = useState<string[]>(['props', 'playwright']);
   const [availableModels, setAvailableModels] = useState<{ key: string, label: string }[]>([]);
   const [availableTools, setAvailableTools] = useState<{ key: string, label: string }[]>([]);
   // SSH state managed by SWR effect
@@ -285,6 +284,13 @@ export default function Opera() {
               <header className="flex items-center px-3 py-2 shrink-0">
                 <SidebarTrigger />
                 <p className="flex-1 text-lg font-serif text-center"> Opera </p>
+                <Toggle
+                  pressed={apiRoute === '/api/opera/counterfeit'}
+                  onPressedChange={(checked) => setApiRoute(checked ? '/api/opera/counterfeit' : '/api/opera/chat')}
+                  className="ml-auto cursor-pointer"
+                >
+                  <BrainCog color={apiRoute === '/api/opera/counterfeit' ? 'cyan' : 'white'} />
+                </Toggle>
               </header>
 
               {/* Messages Section - Takes remaining space, scrollable */}
@@ -329,12 +335,12 @@ export default function Opera() {
                     <div className="flex items-center justify-between">
                       <div className="flex space-x-2 items-center">
                         <Select value={selectedModel} onValueChange={handleModelChange}>
-                          <SelectTrigger size='sm' className="w-auto h-8 text-sm px-2 focus:ring-0 focus:ring-offset-0">
+                          <SelectTrigger size='sm' className="w-auto h-8 text-xs px-2 focus:ring-0 focus:ring-offset-0">
                             <SelectValue placeholder="Select model" />
                           </SelectTrigger>
                           <SelectContent>
                             {availableModels.map(model => (
-                              <SelectItem key={model.key} value={model.key}>{model.label}</SelectItem>
+                              <SelectItem className="text-xs" key={model.key} value={model.key}>{model.label}</SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
@@ -346,29 +352,15 @@ export default function Opera() {
                           setSelectedOptions={setSelectedTools}
                         />
                       </div>
-                      <div className="flex items-center space-x-2">
-                        <div className="flex items-center space-x-1">
-                          <Label htmlFor="api-mode-switch" className="text-xs text-muted-foreground whitespace-nowrap">
-                            {apiRoute === '/api/opera/chat' ? 'Chat' : 'Cruise'}
-                          </Label>
-                          <Switch
-                            id="api-mode-switch"
-                            checked={apiRoute === '/api/opera/counterfeit'}
-                            onCheckedChange={(checked: boolean) => {
-                              setApiRoute(checked ? '/api/opera/counterfeit' : '/api/opera/chat');
-                            }}
-                            className="h-4 w-8"
-                          />
-                        </div>
+                      <div className="flex items-center">
                         <Tooltip>
-                          <TooltipTrigger asChild>
-                            {status === 'streaming' ? (
+                          <TooltipTrigger>
+                            {status !== 'ready' ? (
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                className="h-8 w-8"
+                                className="h-6 w-6"
                                 onClick={stop}
-                                disabled={status === 'streaming'}
                               >
                                 <Square />
                               </Button>
@@ -376,16 +368,16 @@ export default function Opera() {
                               <Button
                                 type="submit"
                                 variant="ghost"
-                                size="lg"
-                                className="h-8 w-8"
+                                size="icon"
+                                className="h-6 w-6"
                                 disabled={!input.trim() || status !== 'ready'}
                               >
-                                <Send className="h-full w-full" />
+                                <Send />
                               </Button>
                             )}
                           </TooltipTrigger>
                           <TooltipContent>
-                            {status === 'streaming' ? 'Stop Generating' : 'Send Message'}
+                            {status !== 'ready' ? 'Stop Generating' : 'Send Message'}
                           </TooltipContent>
                         </Tooltip>
                       </div>
@@ -408,13 +400,13 @@ export default function Opera() {
                     )}
                     <div className="flex-grow"></div>
                     <Tooltip>
-                      <TooltipTrigger asChild>
+                      <TooltipTrigger>
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-5 w-5 p-0 ml-2"
+                          className="h-6 w-6 p-0 ml-2"
                           onClick={handleSshToggle}
-                          disabled={isConnecting || status !== 'streaming'}
+                          disabled={isConnecting}
                         >
                           {sshStatus.connected
                             ? <PowerOff />
@@ -444,13 +436,13 @@ export default function Opera() {
                     )}
                     <div className="flex-grow"></div>
                     <Tooltip>
-                      <TooltipTrigger asChild>
+                      <TooltipTrigger>
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-5 w-5 p-0 ml-2"
+                          className="h-6 w-6 p-0 ml-2"
                           onClick={browserStatus.initialized ? handleBrowserCleanup : handleBrowserInit}
-                          disabled={isBrowserLoading || status !== 'streaming'}
+                          disabled={isBrowserLoading}
                         >
                           {browserStatus.initialized
                             ? <PowerOff />

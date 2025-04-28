@@ -47,7 +47,7 @@ const MultiSelect = ({
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="outline" size="sm" className="h-8 flex items-center space-x-1">
+          <Button variant="outline" size="sm" className="h-8 text-xs flex items-center space-x-1">
             <Icon className="h-4 w-4 opacity-80" />
             <span>{label}</span>
           </Button>
@@ -59,6 +59,7 @@ const MultiSelect = ({
           {values.map((value: ISelectProps["options"][0], index: number) => {
             return (
               <DropdownMenuCheckboxItem
+                className="text-xs"
                 onSelect={(e) => e.preventDefault()}
                 key={index}
                 checked={isOptionSelected(value.value)}

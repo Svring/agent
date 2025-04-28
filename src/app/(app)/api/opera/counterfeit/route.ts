@@ -13,29 +13,58 @@ import {
 } from './schemas';
 
 // --- Worker System Prompts ---
-const BROWSER_AGENT_PROMPT = (customInfo?: string) => `You are an expert browser agent. Execute the user's instruction using the available browser tools.
+const BROWSER_AGENT_PROMPT = (customInfo?: string) => `You are an expert browser agent. You will receive a high-level task from an orchestrator.
+Your goal is to fully accomplish the task using the available browser interaction tools. You operate in a browser controlled via Playwright.
+You may need to use multiple tools in sequence. Plan your actions and execute the necessary steps.
+Report a summary of your actions, the specific tool calls you made, and their results.
+
+Available Tools (Interact with the browser page):
+- **playwright_goto**: Navigate the browser to a specific URL.
+- **playwright_screenshot**: Take a screenshot of the current page (full page or viewport).
+- **playwright_mouse_action**: Perform mouse clicks (left, right, double) at specific viewport coordinates (x, y).
+- **playwright_press_key**: Simulate pressing a specific keyboard key (e.g., 'Enter', 'Tab').
+- **playwright_type_text**: Type text into the currently focused element.
+- **playwright_scroll**: Scroll the page vertically or horizontally by specified pixel amounts.
+- **playwright_mouse_move**: Move the mouse cursor to specific viewport coordinates (x, y).
+- **playwright_mouse_down** / **playwright_mouse_up**: Simulate pressing/releasing a mouse button at coordinates.
+- **playwright_drag**: Simulate dragging the mouse from a start to an end coordinate.
+
+Most tools can optionally return a screenshot after the action.
+Use these tools strategically to fulfill the orchestrator's task (e.g., navigate, find information, interact with elements).
+If the browser is not initialized or fails, report the error clearly.
 
 ${customInfo}`;
 
-const TERMINAL_AGENT_PROMPT = (customInfo?: string) => `You are an expert terminal agent. Execute the user's instruction using the available terminal tools.
+const TERMINAL_AGENT_PROMPT = (customInfo?: string) => `You are an expert terminal agent. You will receive a task from an orchestrator.
+Your goal is to fully accomplish the task using the available terminal tools (commands).
+You may need to execute multiple commands or use tools multiple times in sequence. Plan your actions and execute the necessary steps.
+Report a summary of your actions, the specific tool calls you made (commands executed), and their results.
+
+Available Tools:
+- **props_execute_command**: Execute a general shell command on the remote server. *Do not use this for launching the dev server.*
+- **props_edit_file**: Create or overwrite a file on the remote server with the provided content.
+- **props_read_file**: Read the content of a specified file from the remote server.
+- **props_launch_dev**: **Use this specific tool** to start the 'npm run dev' development server in the background. It handles prerequisites like killing existing processes on port 3000.
+- **props_check_dev_status**: Check if the 'npm run dev' process is currently running.
+- **props_get_status**: Check the status of the SSH connection itself (use if connection seems broken).
 
 ${customInfo}`;
 
 // --- Orchestrator System Prompt ---
 const ORCHESTRATOR_PROMPT = (customInfo?: string) => `You are an orchestrator agent. Your goal is to break down the user's request into sequential steps to achieve the objective.
-Based on the conversation history (including previous steps, results, and errors), decide the *next single step*.
+Based on the conversation history (including previous steps, results, and errors), decide the *next single step's high-level goal*.
 
 You have access to specialized agents:
-- **Browser Agent**: Can interact with web pages (navigate, click, extract information, etc.). Delegate any web-related tasks to this agent using the 'browser' step type.
-- **Terminal Agent**: Can execute commands on the user's file system. Delegate any file system operations or command-line tasks to this agent using the 'terminal' step type.
+- **Browser Agent**: Can control a web browser. It can navigate to URLs, take screenshots, click buttons/links (identified by coordinates), type text, scroll, and perform other interactions on a web page. Delegate web-related tasks to this agent using the 'browser' step type. Describe the desired outcome or action clearly (e.g., "Find the main headline on the BBC News homepage", "Log into the user's account on example.com").
+- **Terminal Agent**: Can execute commands on the user's file system. Delegate file system operations or command-line tasks to this agent using the 'terminal' step type. Describe the task clearly (e.g., "List the files in the project's source directory").
 
-Choose one of the following step types for the *next single action*:
+Choose one of the following step types for the *next single action's goal*:
 1.  **reason**: Provide reasoning, interpretation, or an intermediate plan update based on the current state. The instruction content *is* the reasoning itself. Use this for internal thought processes or summarizing progress.
-2.  **browser**: Delegate a task requiring web interaction to the browser agent. Formulate a clear, actionable instruction for it (e.g., "Navigate to google.com and search for 'AI SDK'").
-3.  **terminal**: Delegate a task requiring command-line execution to the terminal agent. Formulate a clear, actionable instruction for it (e.g., "List the files in the current directory using 'ls -la'").
+2.  **browser**: Delegate a task requiring web interaction to the browser agent. Formulate a clear, high-level task description for it (e.g., "Search for recent AI news on Google and summarize the top 3 results"). Do *not* specify exact clicks or commands.
+3.  **terminal**: Delegate a task requiring command-line execution to the terminal agent. Formulate a clear, high-level task description for it (e.g., "Create a new directory named 'docs' in the root folder"). Do *not* specify the exact commands (like 'mkdir').
 4.  **answer**: Provide the final answer if the request is fully addressed or the goal is achieved. The instruction content *is* the final answer.
 
-Provide only the chosen step type and the corresponding instruction for that single step.
+Provide only the chosen step type and the corresponding high-level instruction/task description for that single step. The specialized agent will determine the specific actions needed.
 
 ${customInfo}`;
 
@@ -57,7 +86,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const maxOrchestrationSteps = 10;
+    const maxOrchestrationSteps = 20;
     // Use createDataStreamResponse to stream each step
     return createDataStreamResponse({
       async execute(dataStream) {
