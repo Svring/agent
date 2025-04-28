@@ -29,7 +29,7 @@ import { PlaywrightContext } from '@/context/PlaywrightContext';
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
 export default function Opera() {
-  const [apiRoute, setApiRoute] = useState<string>('/api/opera/chat'); // State for API route
+  const [apiRoute, setApiRoute] = useState<string>('/api/opera/counterfeit'); // State for API route
   const { messages, data, input, handleInputChange, handleSubmit, stop, status } = useChat({
     maxSteps: 3, // Consider if maxSteps should differ per route
     api: apiRoute, // Use state variable for API route

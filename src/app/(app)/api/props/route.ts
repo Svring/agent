@@ -109,6 +109,8 @@ export async function GET(req: NextRequest) {
   const status = propsManager.getStatus();
   const cwd = propsManager.getCurrentWorkingDirectory();
   const credentials = propsManager.getSSHCredentials();
+  const commandLog = propsManager.getCommandLog();
+
   return NextResponse.json({
     status: status.connected ? 'Connected' : 'Disconnected',
     cwd: cwd,
@@ -121,6 +123,7 @@ export async function GET(req: NextRequest) {
     modelProxy: {
       baseUrl: process.env.SEALOS_USW_BASE_URL || '',
       apiKey: process.env.SEALOS_USW_API_KEY || ''
-    }
+    },
+    commandLog: commandLog
   });
 }

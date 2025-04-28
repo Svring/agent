@@ -261,13 +261,20 @@ server.tool(
 // Tool to launch npm run dev in the background
 server.tool(
   "props_launch_dev",
-  async () => {
-    // Use ss command as an alternative to lsof
-    const killCommand = "ss -ltnp 'sport = :3000' | grep LISTEN | awk '{print $7}' | sed 's/.*pid=\\([0-9]*\\).*/\\1/' | xargs -r kill -9";
-    const launchCommand = "nohup npm run dev > npm_dev.log 2>&1 &";
+  {
+    projectRoot: z.string().describe("The absolute path to the project's root directory on the remote server where 'npm run dev' should be launched.")
+  },
+  async ({ projectRoot }) => {
+    // Escape single quotes in the project path for shell safety
+    const escapedProjectRoot = projectRoot.replace(/'/g, "'\\''");
+
+    // Use pkill to find and kill processes matching the command line pattern, running within the project root
+    const killCommand = `cd '${escapedProjectRoot}' && pkill -f 'npm run dev' || true`; // Use '|| true' to prevent failure if no process is found
+    // Launch command, also ensuring it runs within the project root
+    const launchCommand = `cd '${escapedProjectRoot}' && nohup npm run dev > npm_dev.log 2>&1 &`;
     try {
-      console.log(`[PropsMCP] Attempting to kill process on port 3000 with command: ${killCommand}`);
-      console.log(`[PropsMCP] Then launching dev server with command: ${launchCommand}`);
+      console.log(`[PropsMCP] Attempting to kill existing 'npm run dev' processes in directory '${escapedProjectRoot}' with command: ${killCommand}`);
+      console.log(`[PropsMCP] Then launching dev server in directory '${escapedProjectRoot}' with command: ${launchCommand}`);
 
       // Ensure connection is initialized
       const initResponse = await fetch(PROPS_API_URL, {
@@ -299,14 +306,22 @@ server.tool(
 
       let killMessage = "";
       if (!killResponse.ok) {
-        // Don't necessarily fail, could be that nothing was running
+        // Error during pkill execution (should be rare with '|| true')
         const killErrorText = await killResponse.text();
-        killMessage = `Attempt to kill process on port 3000 failed or nothing was running. Server response: ${killErrorText}`;
-        console.warn(`[PropsMCP] ${killMessage}`);
+        killMessage = `Attempt to kill 'npm run dev' processes encountered an error. Server response: ${killErrorText}`;
+        console.error(`[PropsMCP] ${killMessage}`);
+        // Decide if we should proceed or return an error - let's proceed but log the error
       } else {
         const killResult = await killResponse.json();
-        killMessage = `Attempt to kill process on port 3000 finished. Server response: ${killResult.message}. Output: ${killResult.stdout || ''} ${killResult.stderr || ''}`.trim();
-        console.log(`[PropsMCP] ${killMessage}`);
+        // Check stderr specifically, as stdout might be empty if nothing was killed
+        if (killResult.stderr && killResult.stderr.trim().length > 0) {
+          // pkill might output messages even if it succeeds or finds nothing
+          killMessage = `Kill command stderr: ${killResult.stderr}`.trim();
+          console.log(`[PropsMCP] ${killMessage}`);
+        } else {
+          killMessage = `Attempt to kill existing 'npm run dev' processes finished.`
+          console.log(`[PropsMCP] ${killMessage}`);
+        }
       }
 
       // Now execute the launch command
@@ -419,6 +434,134 @@ server.tool(
       return {
         type: "text",
         text: `Error checking dev server status: ${err instanceof Error ? err.message : String(err)}`
+      };
+    }
+  }
+);
+
+// Tool to read the dev server log file (npm_dev.log)
+server.tool(
+  "props_read_dev_log",
+  {
+    projectRoot: z.string().describe("The absolute path to the project's root directory on the remote server where 'npm_dev.log' is located.")
+  },
+  async ({ projectRoot }) => {
+    // Combine project root and log file name. Assuming POSIX paths for remote server.
+    // Ensure no double slashes if projectRoot ends with /
+    const logFilePath = `${projectRoot.replace(/\/$/, '')}/npm_dev.log`;
+    try {
+      console.log(`[PropsMCP] Reading dev server log file from path: ${logFilePath}`);
+
+      // Ensure connection is initialized (readFile action in API also checks this)
+      const initResponse = await fetch(PROPS_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'initialize' })
+      });
+
+      if (!initResponse.ok) {
+        const initErrorText = await initResponse.text();
+        console.error(`[PropsMCP] Failed to initialize SSH before reading log: ${initErrorText}`);
+        return {
+          type: "text",
+          text: `Failed to initialize SSH connection before reading log: ${initErrorText || 'Unknown error'}`
+        };
+      }
+      const initResult = await initResponse.json();
+      console.log(`[PropsMCP] SSH initialization result: ${initResult.message}`);
+
+      // Call the readFile action from the props API
+      const readResponse = await fetch(PROPS_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'readFile',
+          filePath: logFilePath // Use the full path
+        })
+      });
+
+      if (!readResponse.ok) {
+        const readErrorText = await readResponse.text();
+        // Handle case where log file might not exist yet
+        if (readResponse.status === 500 && readErrorText.includes('No such file or directory')) {
+          console.warn(`[PropsMCP] Dev log file not found: ${logFilePath}`);
+          return { type: "text", text: `Dev log file (${logFilePath}) not found. The server might not have started or logged anything yet.` };
+        } else {
+          console.error(`[PropsMCP] Failed to read dev log file: ${readErrorText}`);
+          return { type: "text", text: `Failed to read dev log file: ${readErrorText || 'Unknown error'}` };
+        }
+      }
+
+      const readResult = await readResponse.json();
+      console.log(`[PropsMCP] Dev log file read successfully.`);
+
+      return {
+        type: "text",
+        text: `Content of ${logFilePath}:
+${readResult.content || '(empty)'}`,
+        content: readResult.content || ''
+      };
+
+    } catch (err) {
+      console.error(`[PropsMCP] Unexpected error reading dev log: ${err instanceof Error ? err.message : String(err)}`);
+      return {
+        type: "text",
+        text: `Error reading dev log file: ${err instanceof Error ? err.message : String(err)}`
+      };
+    }
+  }
+);
+
+// Tool to read the command execution log
+server.tool(
+  "props_read_command_log",
+  async () => {
+    try {
+      console.log(`[PropsMCP] Reading command log via GET request.`);
+
+      // Call the GET endpoint of the props API
+      const response = await fetch(PROPS_API_URL, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`[PropsMCP] Failed to get command log: ${errorText}`);
+        return {
+          type: "text",
+          text: `Failed to fetch command log: ${errorText || 'Unknown error'}`
+        };
+      }
+
+      const result = await response.json();
+      const commandLog = result.commandLog || [];
+
+      console.log(`[PropsMCP] Command log fetched successfully (${commandLog.length} entries).`);
+
+      // Format the log for output
+      let formattedLog = "Command Execution Log:\n";
+      if (commandLog.length === 0) {
+        formattedLog += "(No commands executed yet in this session)";
+      } else {
+        formattedLog += commandLog.map(entry => 
+          `[${new Date(entry.timestamp).toISOString()}] ${entry.success ? '✅' : '❌'} ${entry.command}\n` +
+          `${entry.stdout ? `  STDOUT: ${entry.stdout}\n` : ''}` +
+          `${entry.stderr ? `  STDERR: ${entry.stderr}\n` : ''}`
+        ).join('\n');
+      }
+
+      return {
+        type: "text",
+        text: formattedLog,
+        logData: commandLog // Return raw data as well if needed
+      };
+
+    } catch (err) {
+      console.error(`[PropsMCP] Unexpected error reading command log: ${err instanceof Error ? err.message : String(err)}`);
+      return {
+        type: "text",
+        text: `Error reading command log: ${err instanceof Error ? err.message : String(err)}`
       };
     }
   }

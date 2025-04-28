@@ -5,6 +5,14 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+interface CommandLogEntry {
+  timestamp: Date;
+  command: string;
+  stdout?: string;
+  stderr?: string;
+  success: boolean;
+}
+
 /**
  * Singleton class to manage SSH connections and actions
  */
@@ -17,6 +25,7 @@ export class PropsManager {
   private host: string = '';
   private username: string = '';
   private port: number = 22;
+  private commandLog: CommandLogEntry[] = []; // Array to store command logs
 
   public constructor() {
     this.ssh = new NodeSSH();
@@ -195,11 +204,14 @@ export class PropsManager {
    */
   public async executeCommand(command: string): Promise<{ success: boolean; message: string; stdout?: string; stderr?: string }> {
     if (!this.isConnected || !this.ssh.isConnected()) {
+      // Log attempt even if not connected
+      this.logCommand(command, undefined, 'SSH not connected', false);
       return { success: false, message: 'SSH not connected. Please initialize connection first.' };
     }
 
     // Trim the command
     const trimmedCommand = command.trim();
+    let result: { success: boolean; message: string; stdout?: string; stderr?: string };
 
     try {
       // Check if it's a cd command
@@ -208,24 +220,24 @@ export class PropsManager {
         // Handle 'cd' without arguments (goes to home)
         const cdCommand = trimmedCommand === 'cd' ? 'cd && pwd' : `${trimmedCommand} && pwd`;
         console.log(`Executing cd command: ${cdCommand} in ${this.currentWorkingDirectory || 'default directory'}`);
-        const result = await this.ssh.execCommand(cdCommand, { cwd: this.currentWorkingDirectory || undefined });
+        const cdResult = await this.ssh.execCommand(cdCommand, { cwd: this.currentWorkingDirectory || undefined });
 
-        if (result.stderr) {
-          console.error(`cd command stderr: ${result.stderr}`);
+        if (cdResult.stderr) {
+          console.error(`cd command stderr: ${cdResult.stderr}`);
           // cd failed, CWD remains unchanged
-          return {
+          result = {
             success: false,
-            message: `Failed to change directory: ${result.stderr}`,
-            stderr: result.stderr
+            message: `Failed to change directory: ${cdResult.stderr}`,
+            stderr: cdResult.stderr
           };
         } else {
           // cd succeeded, update CWD
           // Clean the stdout to ensure it's a single line path
-          const lines = result.stdout.split('\n').filter(line => line.trim().length > 0);
+          const lines = cdResult.stdout.split('\n').filter(line => line.trim().length > 0);
           const cleanedCwd = lines[lines.length - 1]?.trim();
           this.currentWorkingDirectory = cleanedCwd || null;
           console.log(`Working directory changed to: ${this.currentWorkingDirectory}`);
-          return {
+          result = {
             success: true,
             message: `Working directory changed to ${this.currentWorkingDirectory || 'unknown'}`,
             stdout: '', // No stdout from the original cd command itself
@@ -235,26 +247,90 @@ export class PropsManager {
       } else {
         // Execute other commands in the current working directory
         console.log(`Executing command: ${trimmedCommand} in ${this.currentWorkingDirectory || 'default directory'}`);
-        const result = await this.ssh.execCommand(trimmedCommand, { cwd: this.currentWorkingDirectory || undefined });
-        console.log(`Command executed. Stdout: ${result.stdout}`);
-        if (result.stderr) {
-          console.error(`Command stderr: ${result.stderr}`);
-        }
-        return {
-          success: true,
-          message: 'Command executed successfully',
-          stdout: result.stdout,
-          stderr: result.stderr
+        const execResult = await this.ssh.execCommand(trimmedCommand, { cwd: this.currentWorkingDirectory || undefined });
+        console.log(`Command executed. Stdout length: ${execResult.stdout.length}, Stderr length: ${execResult.stderr.length}`);
+        // Determine success based on stderr for simplicity here (could be refined)
+        const success = !execResult.stderr || execResult.stderr.trim().length === 0;
+        result = {
+          success: success,
+          message: success ? 'Command executed successfully' : 'Command executed with errors/output on stderr',
+          stdout: execResult.stdout,
+          stderr: execResult.stderr
         };
       }
     } catch (err) {
       const errorMsg = `Failed to execute command: ${command}`;
       console.error(`❌ ${errorMsg}:`, err);
-      return {
+      result = {
         success: false,
-        message: `${errorMsg}: ${err instanceof Error ? err.message : String(err)}`
+        message: `${errorMsg}: ${err instanceof Error ? err.message : String(err)}`,
+        stderr: err instanceof Error ? err.message : String(err)
       };
     }
+
+    // Log the command result
+    this.logCommand(trimmedCommand, result.stdout, result.stderr, result.success);
+    return result;
+  }
+
+  /**
+   * Log command execution details
+   */
+  private async logCommand(command: string, stdout: string | undefined, stderr: string | undefined, success: boolean): Promise<void> {
+    const timestamp = new Date();
+    const logEntry: CommandLogEntry = {
+      timestamp,
+      command,
+      stdout,
+      stderr,
+      success
+    };
+    this.commandLog.push(logEntry);
+
+    // --- Append to remote log file ---
+    const logFileName = 'command.log';
+    // Format for file logging (adjust as needed)
+    const fileLogEntry = 
+      `[${timestamp.toISOString()}] ${success ? '✅' : '❌'} CMD: ${command}\n` +
+      `${stdout ? `[${timestamp.toISOString()}] STDOUT: ${stdout}\n` : ''}` +
+      `${stderr ? `[${timestamp.toISOString()}] STDERR: ${stderr}\n` : ''}`;
+
+    if (this.isConnected && this.ssh.isConnected()) {
+      try {
+        const appendCommand = `tee -a ${logFileName}`;
+        console.log(`Appending command log entry to remote file: ${logFileName} in CWD: ${this.currentWorkingDirectory || 'default'}`);
+        // Use ssh.exec to pass the log entry via stdin to tee
+        const resultStderr = await this.ssh.exec(appendCommand, [], {
+          cwd: this.currentWorkingDirectory || undefined,
+          stdin: fileLogEntry, // Pass the formatted log entry via stdin
+          stream: 'stderr' // Only capture stderr for this operation
+        });
+
+        // Check if the result (stderr string) is non-empty
+        if (resultStderr && resultStderr.trim().length > 0) {
+          // Log append error but don't throw, as logging is secondary
+          console.error(`❌ Failed to append to remote command log (${logFileName}): ${resultStderr}`);
+        }
+      } catch (err) {
+        // Log append error but don't throw
+        console.error(`❌ Error appending to remote command log (${logFileName}):`, err);
+      }
+    } else {
+      console.warn(`SSH not connected, cannot append to remote command log file: ${logFileName}`);
+    }
+    // ---------------------------------
+
+    // Optional: Add logic here to limit in-memory log size (e.g., keep last N entries)
+    // if (this.commandLog.length > MAX_LOG_ENTRIES) {
+    //   this.commandLog.shift();
+    // }
+  }
+
+  /**
+   * Get the command execution log
+   */
+  public getCommandLog(): CommandLogEntry[] {
+    return [...this.commandLog]; // Return a copy
   }
 
   /**

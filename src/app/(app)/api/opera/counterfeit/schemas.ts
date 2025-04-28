@@ -1,7 +1,8 @@
 import { z } from 'zod';
 
 // --- Schemas ---
-export const StepInstructionSchema = z.object({
+
+export const PlanStepInstructionSchema = z.object({
   type: z.enum(['reason', 'browser', 'terminal', 'answer']).describe("The type of step to perform: reasoning, browser action, terminal action, or final answer."),
   instruction: z.string().describe("The detailed instruction for the specified type. For 'reason' and 'answer', this is the content itself."),
 });
@@ -30,23 +31,27 @@ export const ErrorResultSchema = z.object({
   error: z.string().describe("Description of the error that occurred during a step.")
 });
 
+// Union of all possible step results
+export const PlanStepResultSchema = z.union([
+  ReasonResultSchema,
+  BrowserResultSchema,
+  TerminalResultSchema,
+  AnswerResultSchema,
+  ErrorResultSchema
+]).describe("The result of executing a plan step.");
+
 export const PlanStepSchema = z.object({
   step: z.number().describe("The step number."),
-  instruction: StepInstructionSchema,
-  result: z.union([
-    ReasonResultSchema,
-    BrowserResultSchema,
-    TerminalResultSchema,
-    AnswerResultSchema,
-    ErrorResultSchema
-  ]).optional().describe("The result of executing the step's instruction. Can be omitted if the step hasn't executed yet or failed before producing a result."),
+  instruction: PlanStepInstructionSchema,
+  result: PlanStepResultSchema.optional().describe("The result of executing the step's instruction. Can be omitted if the step hasn't executed yet or failed before producing a result."),
 });
 
 // --- Types ---
-export type StepInstruction = z.infer<typeof StepInstructionSchema>;
+export type PlanStepInstruction = z.infer<typeof PlanStepInstructionSchema>;
 export type ReasonResult = z.infer<typeof ReasonResultSchema>;
 export type BrowserResult = z.infer<typeof BrowserResultSchema>;
 export type TerminalResult = z.infer<typeof TerminalResultSchema>;
 export type AnswerResult = z.infer<typeof AnswerResultSchema>;
 export type ErrorResult = z.infer<typeof ErrorResultSchema>;
+export type PlanStepResult = z.infer<typeof PlanStepResultSchema>;
 export type PlanStep = z.infer<typeof PlanStepSchema>; 
