@@ -4,13 +4,13 @@ import { useChat } from '@ai-sdk/react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useRef, useState, useEffect, useContext, useCallback } from 'react';
 import React from 'react';
-import MessageBubble from '@/components/message-bubble';
+import MessageBubble from '@/components/message-display/message-bubble';
 import Stage from '@/components/stage';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { Textarea } from '@/components/ui/textarea';
 import { ArrowUp, Hammer, Send, BrainCog, Power, PowerOff, Square } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import MultiSelect from '@/components/multi-select';
+import MultiSelect from '@/components/ui/multi-select';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Toggle } from "@/components/ui/toggle"

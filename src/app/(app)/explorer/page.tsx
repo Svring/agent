@@ -1,4 +1,4 @@
-import MiniExplorer from "@/components/mini-explorer";
+import MiniExplorer from "@/components/mini-kit/mini-explorer";
 
 export default function ExplorerPage() {
   return <MiniExplorer />;

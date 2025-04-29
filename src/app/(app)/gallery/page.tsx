@@ -19,15 +19,15 @@ export default function GalleryPage() {
     setLoading(true);
     setImgSrc(null);
     try {
-      console.log("Sending request to /api/image");
-      const res = await fetch("/api/image", {
+      console.log("Sending request to /api/gallery");
+      const res = await fetch("/api/gallery", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ prompt }),
       });
-      console.log("Received response from /api/image", res);
+      console.log("Received response from /api/gallery", res);
 
       if (!res.ok) {
         const errorText = await res.text();
@@ -46,7 +46,7 @@ export default function GalleryPage() {
         console.log("No base64Data found in response data.");
       }
     } catch (err) {
-      console.error("Caught error during image generation:", err);
+      console.error("Caught error during gallery generation:", err);
     } finally {
       console.log("Setting loading state to false.");
       setLoading(false);

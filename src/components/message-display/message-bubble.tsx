@@ -1,10 +1,10 @@
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Cat, Bot } from 'lucide-react';
 import React from 'react';
-import { MemoizedMarkdown } from '@/components/memoized-markdown';
+import { MemoizedMarkdown } from '@/components/message-display/memoized-markdown';
 import { JSONValue, type Message } from 'ai'; // Import JSONValue and Message types
-import { ToolInvocationCall } from '@/components/tool-invocation-call';
-import { ToolInvocationResult } from '@/components/tool-invocation-result';
+import { ToolInvocationCall } from '@/components/message-display/tool-invocation-call';
+import { ToolInvocationResult } from '@/components/message-display/tool-invocation-result';
 
 // Helper function to count lines in a text string
 const countLines = (text: string): number => {

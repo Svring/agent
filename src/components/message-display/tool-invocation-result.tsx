@@ -1,7 +1,7 @@
 import React from 'react';
 import { Hammer } from 'lucide-react';
-import { ImageResultDisplay } from '@/components/image-result-display';
-import { TextResultDisplay } from '@/components/text-result-display';
+import { ImageResultDisplay } from '@/components/message-display/image-result-display';
+import { TextResultDisplay } from '@/components/message-display/text-result-display';
 
 // Define a more specific type for ToolInvocation if possible
 // This is a placeholder based on observed usage

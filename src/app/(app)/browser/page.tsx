@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import MiniBrowser from '@/components/mini-browser';
+import MiniBrowser from '@/components/mini-kit/mini-browser';
 
 const PlaywrightTestPage = () => {
   // Removed all state variables: browserStatus, initProcessStatus, viewportWidth, etc.

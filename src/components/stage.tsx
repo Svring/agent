@@ -1,5 +1,5 @@
 import React from 'react';
-import MiniBrowser from './mini-browser';
+import MiniBrowser from './mini-kit/mini-browser';
 
 interface StageProps {
   className?: string;
