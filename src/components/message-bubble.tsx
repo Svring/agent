@@ -1,10 +1,10 @@
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Cat, Bot, Cog, Eye, EyeOff, Hammer } from 'lucide-react';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Button } from '@/components/ui/button';
+import { Cat, Bot } from 'lucide-react';
 import React from 'react';
 import { MemoizedMarkdown } from '@/components/memoized-markdown';
 import { JSONValue, type Message } from 'ai'; // Import JSONValue and Message types
+import { ToolInvocationCall } from '@/components/tool-invocation-call';
+import { ToolInvocationResult } from '@/components/tool-invocation-result';
 
 // Helper function to count lines in a text string
 const countLines = (text: string): number => {
@@ -30,7 +30,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ m, openStates, expandedRe
         <Avatar className="border">
           <AvatarFallback>{m.role === 'user' ? <Cat /> : <Bot />}</AvatarFallback>
         </Avatar>
-        <div className="space-y-1 break-words overflow-hidden">
+        <div className="space-y-1 break-words overflow-hidden w-full">
           {m.parts.map((part: any, partIndex: number) => {
             const partKey = `${m.id}-${partIndex}`;
             if (part.type === 'text') {
@@ -42,97 +42,34 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ m, openStates, expandedRe
             }
             if (part.type === 'tool-invocation') {
               const toolInvocation = part.toolInvocation;
-              const callId = toolInvocation.toolCallId;
-              const toolName = toolInvocation.toolName;
-              const actionName = (toolInvocation.args && 'action' in toolInvocation.args)
-                ? String(toolInvocation.args.action)
-                : 'unknown';
               const toolStyle = "border rounded-lg px-3 py-2 bg-muted/50 text-muted-foreground text-sm italic";
               if (toolInvocation.state === 'call') {
                 return (
-                  <div key={partKey} className={toolStyle}>
-                    <div className="flex items-center gap-2">
-                      <Cog className="h-4 w-4 animate-spin" />
-                      <span className="break-words">Calling {toolName} ({actionName})...</span>
-                    </div>
-                  </div>
+                  <ToolInvocationCall
+                    key={partKey}
+                    toolName={toolInvocation.toolName}
+                    args={toolInvocation.args}
+                    className={toolStyle}
+                  />
                 );
               }
               if (toolInvocation.state === 'result') {
-                let resultDisplay: React.ReactNode;
-                let isImageResult = false;
-                const resultData = toolInvocation.result;
-                if (resultData.type === 'image' && resultData.data.length > 0) {
-                  isImageResult = true;
-                  const mimeType = resultData.mimeType || 'image/png';
-                  const dataUri = `data:${mimeType};base64,${resultData.data}`;
-                  resultDisplay = <img src={dataUri} alt="Screenshot" className="max-w-full h-auto rounded border my-1" />;
-                } else {
-                  resultDisplay = <span className="whitespace-pre-wrap break-words">{typeof resultData === 'string' ? resultData : JSON.stringify(resultData)}</span>;
-                }
-                const label = (
-                  <p className="font-medium flex items-center text-foreground">
-                    <Hammer className="h-4 w-4 mr-1 flex-shrink-0" />
-                    <span className="break-words">Calling tool - {toolName}(action: {actionName}):</span>
-                  </p>
-                );
-                const resultText = typeof resultData === 'string'
-                  ? resultData
-                  : JSON.stringify(resultData, null, 2);
-                const lineCount = countLines(resultText);
-                const isLongResult = lineCount > 5;
-                const resultKey = `${partKey}-result`;
-                const isExpanded = expandedResults[resultKey] || false;
-                let previewResult = null;
-                if (isLongResult && !isImageResult && typeof resultText === 'string') {
-                  const previewLines = resultText.split('\n').slice(0, 5).join('\n');
-                  previewResult = <span className="whitespace-pre-wrap break-words">{previewLines}...</span>;
-                }
                 return (
-                  <div key={partKey} className={`${toolStyle} text-foreground space-y-1`}>
-                    {label}
-                    {isImageResult ? (
-                      <Collapsible open={openStates[partKey] !== undefined ? openStates[partKey] : true} onOpenChange={() => toggleOpen(partKey)}>
-                        <CollapsibleTrigger asChild>
-                          <Button variant="ghost" size="sm" className="flex items-center text-xs h-auto py-0.5 px-1.5">
-                            {openStates[partKey] ? <EyeOff className="h-3 w-3 mr-1" /> : <Eye className="h-3 w-3 mr-1" />}
-                            {openStates[partKey] ? 'Hide Screenshot' : 'Show Screenshot'}
-                          </Button>
-                        </CollapsibleTrigger>
-                        <CollapsibleContent className="pt-2">{resultDisplay}</CollapsibleContent>
-                      </Collapsible>
-                    ) : isLongResult ? (
-                      <div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="flex items-center text-xs h-auto py-0.5 mb-1"
-                          onClick={() => toggleExpandResult(resultKey)}
-                        >
-                          {isExpanded ? (
-                            <>
-                              <EyeOff className="h-3 w-3 mr-1" />
-                              Show Less
-                            </>
-                          ) : (
-                            <>
-                              <Eye className="h-3 w-3 mr-1" />
-                              Show Full Result ({lineCount} lines)
-                            </>
-                          )}
-                        </Button>
-                        {isExpanded ? (
-                          <div>{resultDisplay}</div>
-                        ) : (
-                          <div>{previewResult}</div>
-                        )}
-                      </div>
-                    ) : resultDisplay}
-                  </div>
+                  <ToolInvocationResult
+                    key={partKey}
+                    partKey={partKey}
+                    toolInvocation={toolInvocation}
+                    openStates={openStates}
+                    expandedResults={expandedResults}
+                    toggleOpen={toggleOpen}
+                    toggleExpandResult={toggleExpandResult}
+                    countLines={countLines}
+                    className={toolStyle}
+                  />
                 );
               }
               // default for tool-invocation
-              return <div key={partKey} className={`${toolStyle} text-xs italic break-words`}>Tool ({toolName}) - State: {toolInvocation.state}</div>;
+              return <div key={partKey} className={`${toolStyle} text-xs italic break-words`}>Tool ({toolInvocation.toolName}) - State: {toolInvocation.state}</div>;
             }
             if (part.type === 'step-start') {
               // show step boundaries as horizontal lines:
@@ -165,7 +102,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ m, openStates, expandedRe
           <p className="whitespace-pre-wrap text-sm">{m.content}</p>
         ) : (
           <p className="italic text-sm opacity-70">
-            {'Calling tool: ' + m?.toolInvocations?.[0]?.toolName}
+            {m?.toolInvocations?.[0]?.toolName ? `Processing tool: ${m.toolInvocations[0].toolName}` : 'Processing...'}
           </p>
         )}
       </div>
