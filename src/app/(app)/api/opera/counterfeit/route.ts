@@ -1,6 +1,5 @@
 import { castingManager, getPlaywrightTools, getPropsTools } from '@/backstage/casting-manager';
 import { streamText, streamObject, createDataStreamResponse, LanguageModel, Message, generateId, generateObject, generateText } from 'ai';
-// import { ToolInvocation } from '@ai-sdk/ui-utils'; // Import failed or type not directly usable here
 import {
   PlanStepInstructionSchema,
   PlanStepInstruction,

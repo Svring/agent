@@ -26,16 +26,16 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ m, openStates, expandedRe
   // --- Default Rendering Logic (Handles text, tool calls, etc.) ---
   if (Array.isArray(m?.parts)) {
     return (
-      <div className="flex items-start gap-2 w-full justify-start">
+      <div className="flex items-start gap-2 w-auto justify-start rounded-lg">
         <Avatar className="border">
           <AvatarFallback>{m.role === 'user' ? <Cat /> : <Bot />}</AvatarFallback>
         </Avatar>
-        <div className="space-y-1 break-words overflow-hidden w-full">
+        <div className="space-y-1 break-words overflow-hidden w-auto max-w-full">
           {m.parts.map((part: any, partIndex: number) => {
             const partKey = `${m.id}-${partIndex}`;
             if (part.type === 'text') {
               return (
-                <div key={partKey} className={`rounded-lg px-3 py-2 break-words ${m.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>
+                <div key={partKey} className={`rounded-lg px-3 py-2 w-full overflow-hidden break-words ${m.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>
                   <MemoizedMarkdown content={part.text} id={partKey} />
                 </div>
               );

@@ -1,6 +1,7 @@
 import React from 'react';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Eye, EyeOff } from 'lucide-react';
+import ReactJson from 'react-json-view'
 
 interface TextResultDisplayProps {
   partKey: string; // Included for potential future use or debugging context
@@ -18,20 +19,41 @@ export const TextResultDisplay: React.FC<TextResultDisplayProps> = ({
   toggleExpandResult,
   countLines
 }) => {
-  // Standardize handling of different resultData types
-  let resultText: string;
-  try {
-    if (typeof resultData === 'string') {
-      resultText = resultData;
-    } else if (resultData === null || resultData === undefined) {
-      resultText = '(empty result)'; // Handle null/undefined explicitly
-    } else {
-      // Attempt to pretty-print objects/arrays, fallback to default stringification
-      resultText = JSON.stringify(resultData, null, 2);
+  const isJsonObject = typeof resultData === 'object' && resultData !== null && !Array.isArray(resultData);
+  const isJsonArray = Array.isArray(resultData);
+  const isJsonData = isJsonObject || isJsonArray;
+
+  if (isJsonData) {
+    // Render JSON data using ReactJson
+    return (
+      <div className="text-xs font-mono bg-background p-2 rounded border overflow-x-auto">
+         <ReactJson
+            src={resultData}
+            name={false}
+            theme="shapeshifter"
+            collapsed={true} // Default collapse level
+            displayDataTypes={true}
+            enableClipboard={false} // Optional: disable clipboard copy
+            style={{ backgroundColor: 'transparent' }} // Match background
+        />
+      </div>
+    );
+  }
+
+  // Handle non-JSON data (strings, null, undefined, etc.)
+  let resultText: string = '';
+  if (typeof resultData === 'string') {
+    resultText = resultData;
+  } else if (resultData === null || resultData === undefined) {
+    resultText = '(empty result)';
+  } else {
+    // Fallback for other non-JSON types (e.g., numbers, booleans)
+    try {
+      resultText = String(resultData);
+    } catch (error) {
+      console.error("Error converting result data to string:", error);
+      resultText = "[Error displaying result]";
     }
-  } catch (error) {
-    console.error("Error stringifying result data:", error);
-    resultText = "[Error displaying result]";
   }
 
   const lineCount = countLines(resultText);
@@ -40,26 +62,27 @@ export const TextResultDisplay: React.FC<TextResultDisplayProps> = ({
   // Display using pre-wrap for formatting, break-words for overflow
   const fullResultDisplay = <pre className="whitespace-pre-wrap break-words text-xs font-mono bg-background p-2 rounded border">{resultText}</pre>;
 
-  // If not long, just show the full result directly
+  // If not a long string, just show the full result directly
   if (!isLongResult) {
     return fullResultDisplay;
   }
 
-  // Handle long results with preview
+  // Handle long *string* results with preview
   const previewLines = resultText.split('\n').slice(0, MAX_PREVIEW_LINES).join('\n');
   const previewResultDisplay = (
     <pre className="whitespace-pre-wrap break-words text-xs font-mono bg-background p-2 rounded border">
       {previewLines}
-      <span className="text-muted-foreground">... (see more)</span>
+      <span className="text-muted-foreground">... (see more: {lineCount} lines total)</span>
     </pre>
   );
 
   return (
     <div className="space-y-1">
+      {/* Only show expand/collapse button for long string results */}
       <Button
-        variant="ghost"
+        variant="link" // Use link variant for less emphasis
         size="sm"
-        className="flex items-center text-xs h-auto py-0.5 px-1.5 rounded" // Consistent styling
+        className={buttonVariants({ variant: "ghost", size: "sm", className: "flex items-center text-xs h-auto py-0.5 px-1 rounded"})} // Consistent styling, less padding
         onClick={toggleExpandResult}
       >
         {isExpanded ? (

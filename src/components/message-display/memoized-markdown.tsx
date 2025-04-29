@@ -19,24 +19,34 @@ const MemoizedMarkdownBlock = memo(
   ({ content }: { content: string }) => {
     // Define components object with type safety
     const components: Components = {
+      p: ({ node, ...props }) => (
+        <p
+          {...props}
+          className="break-words rounded w-auto"
+        />
+      ),
+      // Add back a pre component renderer for styling code blocks
       pre: ({ node, ...props }) => (
         <pre
           {...props}
-          className="whitespace-pre-wrap break-words bg-muted p-2 rounded text-muted-foreground my-1"
+          // Style for code block container: background, padding, rounded corners, overflow
+          className="bg-muted p-2 rounded my-1 text-sm text-muted-foreground overflow-x-auto w-full max-w-full"
         />
       ),
       code: ({ node, inline, className, children, ...props }: CodeComponentProps) => {
-        // Type assertion for props if necessary, or ensure CodeComponentProps matches expected props
         const match = /language-(\w+)/.exec(className || '');
-        // Render inline code differently from code blocks if needed
+        // Language is not used for styling now, but kept for potential future use
+        const language = match ? match[1] : 'plaintext';
+
         return !inline ? (
-          // For block code (often within <pre>), apply specific styles or rely on <pre> styling
-          <code {...props} className={className}>
+          // Render code blocks with a simple <code> tag inside the <pre>
+          // Styling is handled by the <pre> component above
+          <code {...props} className={`language-${language} font-mono`}>
             {children}
           </code>
         ) : (
-          // For inline code, apply wrapping styles
-          <code {...props} className={`${className || ''} whitespace-pre-wrap break-words bg-muted/50 px-1 rounded`}>
+          // Keep simplified styling for inline code
+          <code {...props} className={`${className || ''} bg-muted/50 px-1 rounded text-sm font-mono`}>
             {children}
           </code>
         );
@@ -44,7 +54,8 @@ const MemoizedMarkdownBlock = memo(
     };
 
     return (
-      <div className="text-sm">
+      // Remove overflow-hidden here, handled by pre now
+      <div className="text-sm w-full">
         <ReactMarkdown components={components}>
           {content}
         </ReactMarkdown>
