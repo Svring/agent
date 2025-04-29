@@ -1,4 +1,4 @@
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Cat, Bot } from 'lucide-react';
 import React from 'react';
 import { MemoizedMarkdown } from '@/components/message-display/memoized-markdown';
@@ -28,6 +28,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ m, openStates, expandedRe
     return (
       <div className="flex items-start gap-2 w-auto justify-start rounded-lg">
         <Avatar className="border">
+          <AvatarImage src={m.role === 'user' ? '/avatars/user_avatar.jpeg' : '/avatars/bot_avatar.jpeg'} />
           <AvatarFallback>{m.role === 'user' ? <Cat /> : <Bot />}</AvatarFallback>
         </Avatar>
         <div className="space-y-1 break-words overflow-hidden w-auto max-w-full">
