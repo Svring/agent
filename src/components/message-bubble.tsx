@@ -4,87 +4,27 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Button } from '@/components/ui/button';
 import React from 'react';
 import { MemoizedMarkdown } from '@/components/memoized-markdown';
-import { JSONValue } from 'ai'; // Import JSONValue type
+import { JSONValue, type Message } from 'ai'; // Import JSONValue and Message types
 
 // Helper function to count lines in a text string
 const countLines = (text: string): number => {
   return text ? text.split('\n').length : 0;
 };
 
-// Define types for the plan structure (based on counterfeit route schemas)
-// You might want to define these more centrally if used elsewhere
-interface PlanStep {
-  step: number;
-  instruction: {
-    type: 'reason' | 'browser' | 'terminal' | 'answer';
-    instruction: string;
-  };
-  result?: {
-    content?: string;
-    error?: string;
-    toolCalls?: any[];
-    toolResults?: any[];
-  };
-}
-
-interface CounterfeitData {
-  plan: PlanStep[];
-  finalMessages?: any[]; // Include if needed, otherwise optional
-}
-
 interface MessageBubbleProps {
-  m: any; // Consider using a more specific type like UIMessage
+  m: Message; // Use the imported Message type
   openStates: Record<string, boolean>;
   expandedResults: Record<string, boolean>;
   toggleOpen: (key: string) => void;
   toggleExpandResult: (key: string) => void;
-  data?: JSONValue[] | undefined; // Added data prop
+  data?: { plan: any[] } | JSONValue[] | undefined; // Updated type to accept plan object
   apiRoute?: string; // Added apiRoute prop
   isLastMessage?: boolean; // Added isLastMessage prop
 }
 
 const MessageBubble: React.FC<MessageBubbleProps> = ({ m, openStates, expandedResults, toggleOpen, toggleExpandResult, data, apiRoute, isLastMessage }) => {
-
-  // --- Counterfeit/Cruise Mode Plan Rendering Logic ---
-  if (apiRoute === '/api/opera/counterfeit' && isLastMessage && data && data.length > 0) {
-    const latestData = data[data.length - 1] as CounterfeitData | null;
-    if (latestData && latestData.plan) {
-      return (
-        <div className="flex items-start gap-2 w-full justify-start">
-          <Avatar className="border">
-            <AvatarFallback><Bot /></AvatarFallback>
-          </Avatar>
-          <div className="space-y-2 break-words overflow-hidden w-full bg-muted rounded-lg p-3">
-            <p className="font-semibold text-sm mb-2">Cruise Plan:</p>
-            {latestData.plan.map((step, index) => (
-              <div key={`${m.id}-plan-step-${index}`} className="border-l-2 pl-3 ml-1 mb-3 space-y-1 text-xs">
-                <p className="font-medium">
-                  Step {step.step}: <span className="font-mono bg-muted-foreground/10 px-1 py-0.5 rounded text-foreground capitalize">{step.instruction.type}</span>
-                </p>
-                <p><span className="font-semibold">Instruction:</span> {step.instruction.instruction}</p>
-                {step.result && (
-                  <div className="mt-1 pt-1 border-t border-dashed">
-                    {step.result.error ? (
-                      <p className="text-destructive"><span className="font-semibold">Error:</span> {step.result.error}</p>
-                    ) : (
-                      <p><span className="font-semibold">Result:</span> {step.result.content || 'No content provided'}</p>
-                      // Optionally render tool calls/results if needed
-                      // {step.result.toolCalls && <pre>Tool Calls: {JSON.stringify(step.result.toolCalls, null, 2)}</pre>}
-                      // {step.result.toolResults && <pre>Tool Results: {JSON.stringify(step.result.toolResults, null, 2)}</pre>}
-                    )}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      );
-    }
-  }
-  // --- End Counterfeit/Cruise Plan Rendering Logic ---
-
   // --- Default Rendering Logic (Handles text, tool calls, etc.) ---
-  if (Array.isArray(m.parts)) {
+  if (Array.isArray(m?.parts)) {
     return (
       <div className="flex items-start gap-2 w-full justify-start">
         <Avatar className="border">

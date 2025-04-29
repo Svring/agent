@@ -14,6 +14,8 @@ import MultiSelect from '@/components/multi-select';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Toggle } from "@/components/ui/toggle"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Bot } from "lucide-react";
 
 import useSWR from 'swr';
 
@@ -24,6 +26,8 @@ import {
 } from "@/components/ui/resizable"
 
 import { PlaywrightContext } from '@/context/PlaywrightContext';
+import { CounterMessagesSchema, PlanStep } from '../api/opera/counterfeit/schemas';
+import { generateId } from 'ai';
 
 // Define a generic fetcher function for useSWR
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
@@ -226,6 +230,19 @@ export default function Opera() {
     e.preventDefault();
     handleSubmit(e, {
       body: {
+        messages: [
+          {
+            id: generateId(),
+            role: 'user',
+            content: input,
+            parts: [
+              {
+                type: 'text',
+                text: input
+              }
+            ]
+          }
+        ],
         model: selectedModel,
         tools: selectedTools,
         customInfo: `The current active page is Context: ${activeContextId}, Page: ${activePageId || 'unknown'}.`
@@ -265,6 +282,26 @@ export default function Opera() {
     }
   };
 
+  // --- Calculate Counterfeit Plan/Error State Outside the Loop ---
+  const validatedData = React.useMemo(() => {
+    if (apiRoute === '/api/opera/counterfeit' && Array.isArray(data) && data.length > 0) {
+      const latestCounterfeitState = data[data.length - 1];
+      const validationResult = CounterMessagesSchema.safeParse(latestCounterfeitState);
+
+      if (validationResult.success) {
+        // Return the entire validated data object
+        // console.log("Opera Page: Valid counterfeit data received:", validationResult.data);
+        return { type: 'success' as const, data: validationResult.data };
+      } else {
+        console.error("Opera Page: Invalid counterfeit data received:", validationResult.error.flatten());
+        // Return an error object
+        return { type: 'error' as const, message: "Failed to process or display the latest plan due to invalid data." };
+      }
+    }
+    // Return null if not applicable
+    return null;
+  }, [data, apiRoute]); // Dependencies: run only when data or apiRoute changes
+
   return (
     <TooltipProvider>
       <style jsx>{`
@@ -297,19 +334,54 @@ export default function Opera() {
               <div className="flex-1 overflow-auto">
                 <ScrollArea className="h-full w-full px-3 pb-2">
                   <div className="space-y-2 h-full w-full">
-                    {messages.map((m, index) => (
-                      <MessageBubble
-                        key={m.id}
-                        m={m}
-                        openStates={openStates}
-                        expandedResults={expandedResults}
-                        toggleOpen={toggleOpen}
-                        toggleExpandResult={toggleExpandResult}
-                        data={data}
-                        apiRoute={apiRoute}
-                        isLastMessage={index === messages.length - 1}
-                      />
-                    ))}
+                    {messages.map((m, index) => {
+                      const isLastMessage = index === messages.length - 1;
+                      if (isLastMessage && validatedData) {
+                        if (validatedData.type === 'success') {
+                          // Render all finalMessages as replacement for the last message
+                          return validatedData.data.finalMessages.slice(1, validatedData.data.finalMessages.length).map((finalMsg, finalIndex) => (
+                            <MessageBubble
+                              key={finalMsg.id || `final-${finalIndex}`}
+                              m={finalMsg as any} // Cast to any to bypass potential type mismatches
+                              openStates={openStates}
+                              expandedResults={expandedResults}
+                              toggleOpen={toggleOpen}
+                              toggleExpandResult={toggleExpandResult}
+                              data={finalIndex === validatedData.data.finalMessages.length - 1 ? { plan: validatedData.data.plan } : undefined}
+                              apiRoute={apiRoute}
+                              isLastMessage={isLastMessage && finalIndex === validatedData.data.finalMessages.length - 1}
+                            />
+                          ));
+                        } else if (validatedData.type === 'error') {
+                          // Render error message for the last message
+                          return (
+                            <div key={`${m.id}-error`} className="flex items-start gap-2 w-full justify-start">
+                              <Avatar className="border">
+                                <AvatarFallback><Bot /></AvatarFallback>
+                              </Avatar>
+                              <div className="space-y-2 break-words overflow-hidden w-full bg-destructive/10 text-destructive rounded-lg p-3">
+                                <p className="font-semibold text-sm mb-2">Error:</p>
+                                <p className="text-xs">{validatedData.message}</p>
+                              </div>
+                            </div>
+                          );
+                        }
+                      }
+                      // Default rendering for all other messages or if no validatedData replacement
+                      return (
+                        <MessageBubble
+                          key={m.id}
+                          m={m}
+                          openStates={openStates}
+                          expandedResults={expandedResults}
+                          toggleOpen={toggleOpen}
+                          toggleExpandResult={toggleExpandResult}
+                          data={undefined} // Pass undefined for plan data in default case
+                          apiRoute={apiRoute}
+                          isLastMessage={isLastMessage}
+                        />
+                      );
+                    })}
                     <div ref={messagesEndRef} />
                   </div>
                 </ScrollArea>

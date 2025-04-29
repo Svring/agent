@@ -1,6 +1,6 @@
 import { castingManager, getPlaywrightTools, getPropsTools } from '@/backstage/casting-manager';
-import { createOpenAI } from '@ai-sdk/openai';
-import { generateObject, streamText, streamObject, createDataStreamResponse, LanguageModel, Message, generateId } from 'ai';
+import { streamText, streamObject, createDataStreamResponse, LanguageModel, Message, generateId, generateObject, generateText } from 'ai';
+// import { ToolInvocation } from '@ai-sdk/ui-utils'; // Import failed or type not directly usable here
 import {
   PlanStepInstructionSchema,
   PlanStepInstruction,
@@ -10,8 +10,12 @@ import {
   AnswerResult,
   ErrorResult,
   PlanStep,
-  PlanStepResult
+  PlanStepResult,
+  CounterMessagesSchema // Import the schema
 } from './schemas';
+
+// Define constants at the top level
+const MAX_ORCHESTRATION_STEPS = 20;
 
 // --- Worker System Prompts ---
 const BROWSER_AGENT_PROMPT = (customInfo?: string) => `You are an expert browser agent. You will receive a high-level task from an orchestrator.
@@ -103,36 +107,111 @@ export async function POST(req: Request) {
   console.log(`Selected Worker Model: ${selectedModelName}`);
 
   try {
-    const maxOrchestrationSteps = 20;
     // Use createDataStreamResponse to stream each step
     return createDataStreamResponse({
       async execute(dataStream) {
         const plan: PlanStep[] = [];
         const currentMessages = [...initialMessages];
+        let currentStepNumber = 0;
 
-        // Create the orchestrator model once
-        const orchestratorModel = createOpenAI({
-          baseURL: process.env.SEALOS_USW_BASE_URL,
-          apiKey: process.env.SEALOS_USW_API_KEY,
-        })('o3');
+        // Helper function to safely write validated data to the stream
+        const writeValidatedData = (step: number) => {
+          currentStepNumber = step;
+          const dataToWrite = {
+            plan: [...plan],
+            finalMessages: [...currentMessages] as Message[], // Assert type for validation
+            step: currentStepNumber
+          };
+          console.log("Writing validated data to stream:", JSON.stringify(dataToWrite, null, 2));
+          const validationResult = CounterMessagesSchema.safeParse(dataToWrite);
+          if (!validationResult.success) {
+            console.error("Counterfeit Stream Data Validation Error:", validationResult.error.flatten());
+            // Optionally, you could add error info to the stream or handle differently
+          }
+          // Send the original data regardless of validation for now
+          // Cast to any to satisfy dataStream.writeData's JSONValue expectation
+          dataStream.writeData(dataToWrite as any);
+        };
+
+        // --- Helper function to handle worker results --- 
+        function handleWorkerResult(workerResult: PlanStepResult, stepType: PlanStepInstruction['type']): boolean {
+          if ('error' in workerResult) {
+            console.error(`[Worker Error - ${stepType}] ${workerResult.error}`);
+            currentMessages.push(createAssistantMessage(`[Worker Error - ${stepType}] ${workerResult.error}`));
+            // Stream the current plan and messages
+            console.log("Streaming worker error data...");
+            writeValidatedData(plan[plan.length - 1]?.step ?? currentStepNumber); // Use helper
+            return true; // Indicate loop should terminate
+          } else {
+            // Create the base message with the worker's text summary
+            const workerResultMessage = createAssistantMessage(`[${stepType} Result] ${workerResult.content}`);
+            // Assert that parts is defined (guaranteed by createAssistantMessage)
+            const messageParts = workerResultMessage.parts!;
+
+            // Check for tool interactions and add them as structured parts
+            if ('toolCalls' in workerResult && workerResult.toolCalls && workerResult.toolCalls.length > 0 &&
+                'toolResults' in workerResult && workerResult.toolResults) {
+
+              console.log(`Structuring ${workerResult.toolCalls.length} tool calls/results into message parts.`);
+
+              // Map results by toolCallId for easy lookup
+              const resultsMap = new Map<string, any>();
+              workerResult.toolResults.forEach(result => {
+                if (result.toolCallId) {
+                  resultsMap.set(result.toolCallId, result);
+                }
+              });
+
+              // Add tool invocation parts to the message
+              workerResult.toolCalls.forEach(call => {
+                // Find the corresponding tool result
+                const result = resultsMap.get(call.toolCallId);
+                if (result) {
+                  // Add only the tool result part
+                  console.log(`Adding tool result part for call ID: ${call.toolCallId}`);
+                  messageParts.push({
+                    type: 'tool-invocation',
+                    // Cast to align with expected ToolInvocation structure for UI.
+                    // Ideally, import the specific type if available and stable.
+                    toolInvocation: { state: 'result', ...result } as any
+                  });
+                } else {
+                  // Optionally log if a result is missing for a call
+                  console.warn(`No corresponding result found for tool call ID: ${call.toolCallId}`);
+                }
+              });
+            }
+            // Add the potentially augmented message to the history
+            currentMessages.push(workerResultMessage);
+            return false; // Indicate loop should continue
+          }
+        }
+        // --- End Helper function --- 
+
+        // Create the orchestrator model via the casting manager
+        const orchestratorModelName = 'o3'; // Or potentially make this configurable
+        const orchestratorModel = castingManager.getModelByName(orchestratorModelName);
+
+        if (!orchestratorModel) {
+          console.error(`Failed to create orchestrator model: ${orchestratorModelName}`);
+          // Need to handle this error case appropriately for the stream
+          // For now, we'll throw an error which should be caught by the outer try/catch
+          throw new Error(`Orchestrator model '${orchestratorModelName}' could not be created.`);
+        }
         console.log("Orchestrator Model Created.");
 
-        for (let i = 0; i < maxOrchestrationSteps; i++) {
+        for (let i = 0; i < MAX_ORCHESTRATION_STEPS; i++) {
           console.log(`\n--- Orchestration Step ${i + 1} Start ---`);
           // 1) Decide the next step via orchestrator
           let stepInstruction: PlanStepInstruction;
           try {
             console.log("Calling Orchestrator with messages:", JSON.stringify(currentMessages, null, 2));
-            const { partialObjectStream, object } = await streamObject({
+            const { object } = await generateObject({
               model: orchestratorModel,
               schema: PlanStepInstructionSchema,
               system: ORCHESTRATOR_PROMPT(customInfo),
               messages: currentMessages as any,
             });
-            // Optional: Log partial objects if needed for fine-grained debugging
-            for await (const partialObject of partialObjectStream) {
-              // console.log('Orchestrator Partial Object:', partialObject);
-            }
             stepInstruction = await object;
             console.log("Orchestrator Decided Step Instruction:", JSON.stringify(stepInstruction, null, 2));
           } catch (decideErr) {
@@ -141,12 +220,12 @@ export async function POST(req: Request) {
             plan.push({
               step: i + 1,
               instruction: { type: 'reason', instruction: 'Error: Orchestrator failed to generate instruction.' },
-              result: { error: errorMessage } as PlanStepResult,
+              result: { error: errorMessage } as ErrorResult,
             });
             currentMessages.push(createAssistantMessage(`[Orchestrator Error] Failed to decide next step: ${errorMessage}`));
             // Stream the current plan and messages
             console.log("Streaming orchestrator error data...");
-            dataStream.writeData({ plan: [...plan], finalMessages: [...currentMessages], step: i + 1 });
+            writeValidatedData(i + 1); // Use helper
             break; // Exit loop on orchestrator error
           }
 
@@ -186,8 +265,8 @@ export async function POST(req: Request) {
                 // Construct a Message object for currentMessages (keeping parts here)
                 currentMessages.push(createAssistantMessage(stepInstruction.instruction));
                 // Stream the final plan and messages
-                dataStream.writeData({ plan: [...plan], finalMessages: [...currentMessages], step: i + 1 });
-                i = maxOrchestrationSteps; // End the loop
+                writeValidatedData(i + 1); // Use helper
+                i = MAX_ORCHESTRATION_STEPS; // End the loop
                 continue;
               case 'browser':
               case 'terminal':
@@ -196,54 +275,11 @@ export async function POST(req: Request) {
                 planStep.result = workerResult;
                 console.log(`Worker (${stepInstruction.type}) Result:`, JSON.stringify(workerResult, null, 2));
 
-                if ('error' in workerResult) {
-                  console.error(`[Worker Error - ${stepInstruction.type}] ${workerResult.error}`);
-                  currentMessages.push(createAssistantMessage(`[Worker Error - ${stepInstruction.type}] ${workerResult.error}`));
-                  // Stream the current plan and messages
-                  console.log("Streaming worker error data...");
-                  dataStream.writeData({ plan: [...plan], finalMessages: [...currentMessages], step: i + 1 });
-                  i = maxOrchestrationSteps; // End the loop on worker error
+                // Use helper function to process result and update messages
+                const shouldTerminate = handleWorkerResult(workerResult, stepInstruction.type);
+                if (shouldTerminate) {
+                  i = MAX_ORCHESTRATION_STEPS; // End the loop on worker error
                   continue;
-                } else {
-                  // Create the base message with the worker's text summary
-                  const workerResultMessage = createAssistantMessage(`[${stepInstruction.type} Result] ${workerResult.content}`);
-                  // Assert that parts is defined (guaranteed by createAssistantMessage)
-                  const messageParts = workerResultMessage.parts!;
-
-                  // Check for tool interactions and add them as structured parts
-                  if ('toolCalls' in workerResult && workerResult.toolCalls && workerResult.toolCalls.length > 0 &&
-                      'toolResults' in workerResult && workerResult.toolResults) {
-
-                    console.log(`Structuring ${workerResult.toolCalls.length} tool calls/results into message parts.`);
-
-                    // Map results by toolCallId for easy lookup
-                    const resultsMap = new Map<string, any>(); // Using any for ToolResult temporarily
-                    workerResult.toolResults.forEach(result => {
-                      if (result.toolCallId) {
-                        resultsMap.set(result.toolCallId, result);
-                      }
-                    });
-
-                    // Add tool invocation parts to the message
-                    workerResult.toolCalls.forEach(call => {
-                      // Find the corresponding tool result
-                      const result = resultsMap.get(call.toolCallId);
-                      if (result) {
-                        // Add only the tool result part
-                        console.log(`Adding tool result part for call ID: ${call.toolCallId}`);
-                        messageParts.push({
-                          type: 'tool-invocation',
-                          toolInvocation: { state: 'result', ...result } as any // Cast to ToolInvocation structure
-                        });
-                      } else {
-                        // Optionally log if a result is missing for a call
-                        console.warn(`No corresponding result found for tool call ID: ${call.toolCallId}`);
-                      }
-                    });
-                  }
-
-                  // Add the potentially augmented message to the history
-                  currentMessages.push(workerResultMessage);
                 }
                 break;
               default:
@@ -253,30 +289,30 @@ export async function POST(req: Request) {
           } catch (executionErr) {
             const errorMessage = executionErr instanceof Error ? executionErr.message : String(executionErr);
             console.error(`[Execution Error - ${stepInstruction.type}] ${errorMessage}`, executionErr);
-            planStep.result = { error: errorMessage };
+            planStep.result = { error: errorMessage } as ErrorResult;
             currentMessages.push(createAssistantMessage(`[Execution Error - ${stepInstruction.type}] ${errorMessage}`));
             // Stream the current plan and messages
             console.log("Streaming execution error data...");
-            dataStream.writeData({ plan: [...plan], finalMessages: [...currentMessages], step: i + 1 });
+            writeValidatedData(i + 1); // Use helper
             break; // Exit loop on execution error
           }
 
           // 4) Stream the current plan and messages after each step
           console.log(`Streaming data after step ${i + 1} completion.`);
-          dataStream.writeData({ plan: [...plan], finalMessages: [...currentMessages], step: i + 1 });
+          writeValidatedData(i + 1); // Use helper
 
           // 5) Safeguard against infinite loops
-          if (i === maxOrchestrationSteps - 1 && planStep.result && !('error' in planStep.result)) {
+          if (i === MAX_ORCHESTRATION_STEPS - 1 && planStep.result && !('error' in planStep.result)) {
             console.warn("Reached maximum orchestration steps.");
             const maxStepsError: ErrorResult = { error: 'Reached maximum orchestration steps.' };
             plan.push({
               step: i + 2,
               instruction: { type: 'reason', instruction: 'Max steps reached.' },
-              result: maxStepsError as PlanStepResult,
+              result: maxStepsError,
             });
             currentMessages.push(createAssistantMessage(maxStepsError.error));
             console.log("Streaming max steps reached data...");
-            dataStream.writeData({ plan: [...plan], finalMessages: [...currentMessages], step: i + 2 });
+            writeValidatedData(i + 2); // Use helper
           }
           console.log(`--- Orchestration Step ${i + 1} End ---`);
         }
@@ -329,16 +365,12 @@ async function executeWorkerStep(
     ] as any;
 
     // Use streamText which provides structured steps, tool calls, and results
-    const { steps, textStream } = await streamText({
+    const { steps } = await generateText({
       model: workerModel,
       messages: workerMessages,
       tools: workerTools,
       maxSteps: 5, // Adjust maxSteps as needed for multi-step tool use
     });
-
-    for await (const chunk of textStream) {
-      // This bloc feints the consumption of the textStream for unblocking the communication channel, do not remove it and wait for further optimizations.
-    }
 
     // Process the structured steps
     const workerSteps = await steps;
@@ -348,6 +380,7 @@ async function executeWorkerStep(
 
     // --- Extract final content, tool calls, and tool results from steps --- 
     let finalContent = "";
+    // Use any[] for aggregation as specific tool types vary
     const allToolCalls: any[] = [];
     const allToolResults: any[] = [];
 

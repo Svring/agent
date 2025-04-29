@@ -14,10 +14,11 @@ const MODEL_CONFIG = {
   AVAILABLE_MODELS: [
     'claude-3-5-sonnet-latest',
     'claude-3-7-sonnet-20250219',
+    'gemini-2.5-pro-preview-03-25',
     'gpt-4.1-nano',
     'grok-3-latest',
     'o3',
-    'gpt-4.1'
+    'gpt-4.1',
   ],
   CLAUDE_MODELS: [
     'claude-3-5-sonnet-latest',
@@ -50,6 +51,7 @@ const createModelViaProxy = (modelName: string): LanguageModel => {
   const openai = createOpenAI({ 
     baseURL, 
     apiKey: process.env.SEALOS_USW_API_KEY,
+    compatibility: 'compatible'
   }); 
   return openai(modelName);
 };
