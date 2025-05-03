@@ -8,6 +8,7 @@ import { fileURLToPath } from 'url'
 
 import { Users } from './db/collections/Users'
 import { Media } from './db/collections/Media'
+import { Projects } from './db/collections/Projects'
 
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
@@ -19,7 +20,7 @@ export default buildConfig({
       baseDir: path.resolve(dirname),
     },
   },
-  collections: [Users, Media],
+  collections: [Users, Media, Projects],
   editor: lexicalEditor(),
   secret: process.env.PAYLOAD_SECRET || '',
   typescript: {
@@ -29,6 +30,7 @@ export default buildConfig({
     pool: {
       connectionString: process.env.DATABASE_URI || '',
     },
+    tablesFilter: ['!pg_auth_mon', '!pg_stat_kcache', '!pg_stat_kcache_detail', '!pg_stat_statements', '!pg_stat_statements_info'],
   }),
   plugins: [
     payloadCloudPlugin(),

@@ -1,5 +1,15 @@
 import { Browser, BrowserContext, Page, chromium } from 'playwright';
 
+// Define the structure for the API response expected by the caller
+interface PlaywrightApiResponse {
+  success: boolean;
+  message?: string;
+  data?: string; // Base64 image data for screenshots
+  mimeType?: string; // Mime type for screenshots
+  viewport?: { width: number; height: number };
+  // Add other potential fields if needed based on API responses
+}
+
 /**
  * Singleton class to manage Playwright browser lifecycle
  * Ensures browser stays alive between operations from MCP servers
@@ -22,6 +32,40 @@ export class PlaywrightManager {
       PlaywrightManager.instance = new PlaywrightManager();
     }
     return PlaywrightManager.instance;
+  }
+
+  /**
+   * Static helper function to call the Playwright API route.
+   * This allows tools or other components to trigger actions via the API
+   * without needing direct access to the PlaywrightManager instance methods.
+   */
+  public static async executeApiAction(action: string, params: Record<string, any> = {}): Promise<PlaywrightApiResponse> {
+      const apiUrl = '/api/playwright'; // Assuming the route is hosted at this path relative to the app
+      try {
+        console.log(`Calling Playwright API via Manager: ${action}`, params);
+        const response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ action, ...params }),
+        });
+
+        const responseBody = await response.json();
+
+        if (!response.ok) {
+          throw new Error(`API request failed: ${response.status} ${response.statusText}. ${responseBody?.message || ''}`.trim());
+        }
+
+        console.log(`Playwright API Response for ${action}:`, responseBody.message || responseBody.success);
+        // Explicitly cast to ensure the return type matches the interface
+        return responseBody as PlaywrightApiResponse;
+
+      } catch (error: any) {
+        console.error(`Error calling Playwright API for action '${action}':`, error);
+        // Re-throw or return a standardized error format
+        throw new Error(`Failed to execute Playwright action '${action}' via API: ${error.message}`);
+      }
   }
 
   /**

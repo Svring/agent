@@ -4,6 +4,10 @@ import { createAnthropic } from '@ai-sdk/anthropic';
 import { experimental_createMCPClient, LanguageModel, streamText } from 'ai';
 import { Experimental_StdioMCPTransport } from 'ai/mcp-stdio';
 
+// Import the computer tool
+import { computerTool } from '@/tools/functions/computer';
+// import { textEditorTool } from '@/tools/legacy/text-editor';
+
 // Types
 type MCPClient = Awaited<ReturnType<typeof experimental_createMCPClient>>;
 type ToolRegistry = Record<string, { label: string; tool: any | null }>;
@@ -40,6 +44,7 @@ const toolRegistry: ToolRegistry = {
   // computer: { label: 'Computer Use', tool: computerUseTool },
   // bash: { label: 'Bash', tool: bashTool },
   // str_replace_editor: { label: 'Text Editor', tool: textEditorTool },
+  computer: { label: 'Computer Use', tool: computerTool },
 };
 
 // Model Creation Helpers
@@ -152,41 +157,48 @@ export class CastingManager {
   // Tool Management
   async loadSelectedTools(selectedToolKeys?: string[]): Promise<ToolCollection> {
     const loadedTools: ToolCollection = {};
-    this.dynamicClients = {};
+    this.dynamicClients = {}; // Reset dynamic clients
 
     if (!selectedToolKeys?.length) {
-      console.log('No tool keys provided or invalid format.');
+      console.log('No tool keys provided.');
       return loadedTools;
     }
 
-    // Load dynamic tools
+    console.log('Attempting to load tools for keys:', selectedToolKeys);
+
     for (const key of selectedToolKeys) {
+      // Try loading as a dynamic tool first
       const loader = DYNAMIC_TOOL_LOADERS[key];
       if (loader) {
         try {
+          console.log(`Loading dynamic tool: ${key}`);
           const { tools: dynamicTools, client } = await loader();
-          this.dynamicClients[key] = client;
-          Object.assign(loadedTools, dynamicTools);
-          console.log(`${key} tools loaded:`, Object.keys(dynamicTools));
+          this.dynamicClients[key] = client; // Store the client for later cleanup
+          Object.assign(loadedTools, dynamicTools); // Add loaded dynamic tools
+          console.log(`${key} dynamic tools loaded:`, Object.keys(dynamicTools));
         } catch (error) {
-          console.error(`Failed to load ${key} tools:`, error);
+          console.error(`Failed to load dynamic tool ${key}:`, error);
+          // Decide if you want to continue loading other tools or throw/return error
+        }
+      } else {
+        // If not dynamic, try loading as a static tool
+        const staticTool = this.getToolByKey(key);
+        if (staticTool) {
+          console.log(`Loading static tool: ${key}`);
+          // Use the key provided by the user for the tool in the collection
+          loadedTools[key] = staticTool;
+        } else if (key !== 'playwright' && key !== 'props') {
+          // Log a warning if the key isn't dynamic, static, or a known pseudo-tool
+           console.warn(`Tool key "${key}" not found in dynamic loaders or static registry (and is not 'playwright' or 'props').`);
+        } else {
+           // Acknowledge playwright/props keys even though they don't add tools directly here
+           console.log(`Acknowledged pseudo-tool key: ${key}`);
         }
       }
     }
 
-    // Load static tools
-    for (const key of selectedToolKeys.filter(k => !DYNAMIC_TOOL_KEYS.includes(k))) {
-      const tool = this.getToolByKey(key);
-      if (tool) {
-        loadedTools[key] = tool;
-        console.log(`Static tool added: ${key}`);
-      } else {
-        console.log(`Static tool not found or invalid: ${key}`);
-      }
-    }
-
     console.log('Final tools loaded:', Object.keys(loadedTools));
-    this.tools = loadedTools;
+    this.tools = loadedTools; // Update the manager's tools collection
     return loadedTools;
   }
 

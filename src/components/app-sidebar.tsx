@@ -3,7 +3,8 @@
 import {
   ChevronDown, Settings, Moon, Sun, MessageCircle,
   Globe, SquareChevronRight, File,
-  Terminal, Image, CheckCircle, XCircle
+  Terminal, Image, CheckCircle, XCircle,
+  User
 } from "lucide-react"
 import Link from "next/link"
 
@@ -41,6 +42,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { SettingSidebar } from "@/components/setting-sidebar"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 
 const workspaceChatItems = [
   {
@@ -85,6 +87,8 @@ export function AppSidebar() {
   const [modelEndpoint, setModelEndpoint] = useState('');
   const [modelSaveStatus, setModelSaveStatus] = useState<'idle' | 'success' | 'error'>("idle");
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [currentUser, setCurrentUser] = useState<{ email: string } | null>(null);
+  const [userLoading, setUserLoading] = useState(true);
 
   useEffect(() => {
     // Load initial credentials from API
@@ -103,6 +107,28 @@ export function AppSidebar() {
         }
       })
       .catch(error => console.error('Failed to load SSH credentials:', error));
+
+    // Fetch current user data
+    setUserLoading(true);
+    fetch('/api/users/me')
+      .then(res => {
+        if (!res.ok) {
+          throw new Error('Failed to fetch user');
+        }
+        return res.json();
+      })
+      .then(data => {
+        if (data.user) {
+          setCurrentUser(data.user);
+        }
+      })
+      .catch(error => {
+        console.error('Failed to load user data:', error);
+        setCurrentUser(null); // Ensure user is null on error
+      })
+      .finally(() => {
+        setUserLoading(false);
+      });
   }, []);
 
   const handleSaveCredentials = async () => {
@@ -265,7 +291,28 @@ export function AppSidebar() {
       </SidebarContent>
 
       <SidebarFooter>
-        <div className={`flex ${state === 'collapsed' ? 'flex-col' : 'flex-row justify-between'} w-full`}>
+        {/* User Info Section */}
+        {!userLoading && currentUser && (
+          <SidebarMenu className="mb-2">
+            <SidebarMenuItem>
+              <SidebarMenuButton disabled className="opacity-100 cursor-default">
+                <Avatar className="h-6 w-6 mr-2">
+                  <AvatarFallback className="text-xs">
+                    {currentUser.email?.[0]?.toUpperCase() || <User size={12} />}
+                  </AvatarFallback>
+                </Avatar>
+                {state !== 'collapsed' && (
+                  <span className="text-xs truncate" title={currentUser.email}>
+                    {currentUser.email}
+                  </span>
+                )}
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        )}
+        {/* End User Info Section */}
+
+        <div className={`flex ${state === 'collapsed' ? 'flex-col-reverse' : 'flex-row justify-between'} w-full`}>
           <Sheet open={sheetOpen} onOpenChange={handleSheetOpenChange}>
             <SheetTrigger asChild>
               <Button variant="ghost" size="icon" className="rounded-full">

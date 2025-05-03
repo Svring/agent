@@ -1,10 +1,20 @@
 "use client";
 
 import { useState, FormEvent } from "react";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import {
+  Carousel,
+  CarouselContent,
+  CarouselItem,
+  CarouselNext,
+  CarouselPrevious,
+} from "@/components/ui/carousel";
+import { Card, CardContent } from "@/components/ui/card";
 
 export default function GalleryPage() {
   const [prompt, setPrompt] = useState("");
-  const [imgSrc, setImgSrc] = useState<string | null>(null);
+  const [imgSrcs, setImgSrcs] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
@@ -17,7 +27,6 @@ export default function GalleryPage() {
 
     console.log("Setting loading state to true.");
     setLoading(true);
-    setImgSrc(null);
     try {
       console.log("Sending request to /api/gallery");
       const res = await fetch("/api/gallery", {
@@ -40,8 +49,9 @@ export default function GalleryPage() {
       console.log("API Response Data:", data);
 
       if (data?.image?.base64Data) {
-        console.log("Setting image source.");
-        setImgSrc(`data:image/png;base64,${data.image.base64Data}`);
+        const newImgSrc = `data:image/png;base64,${data.image.base64Data}`;
+        console.log("Adding new image source to the list.");
+        setImgSrcs((prevSrcs) => [...prevSrcs, newImgSrc]);
       } else {
         console.log("No base64Data found in response data.");
       }
@@ -54,30 +64,45 @@ export default function GalleryPage() {
   }
 
   return (
-    <main className="flex flex-col w-full h-full items-center gap-4 p-4">
+    <main className="flex flex-col w-full items-center gap-4 p-4">
       <form onSubmit={handleSubmit} className="flex w-full h-full max-w-xl gap-2">
-        <input
+        <Input
           type="text"
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
           placeholder="Describe an image..."
-          className="flex-1 rounded border px-3 py-2"
+          className="flex-1"
         />
-        <button
+        <Button
           type="submit"
           disabled={loading}
-          className="rounded bg-blue-600 px-4 py-2 text-white disabled:opacity-50"
         >
           {loading ? "Generating..." : "Generate"}
-        </button>
+        </Button>
       </form>
 
-      {imgSrc && (
-        <img
-          src={imgSrc}
-          alt={prompt}
-          className="max-w-full rounded shadow-lg"
-        />
+      {imgSrcs.length > 0 && (
+        <Carousel className="w-full max-w-xs sm:max-w-sm md:max-w-md lg:max-w-lg xl:max-w-xl">
+          <CarouselContent>
+            {imgSrcs.map((src, index) => (
+              <CarouselItem key={index}>
+                <div className="p-1">
+                  <Card>
+                    <CardContent className="flex aspect-square items-center justify-center p-6">
+                      <img
+                        src={src}
+                        alt={`Generated image ${index + 1}`}
+                        className="max-w-full max-h-full rounded object-contain"
+                      />
+                    </CardContent>
+                  </Card>
+                </div>
+              </CarouselItem>
+            ))}
+          </CarouselContent>
+          <CarouselPrevious />
+          <CarouselNext />
+        </Carousel>
       )}
     </main>
   );

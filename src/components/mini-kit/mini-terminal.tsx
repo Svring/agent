@@ -2,11 +2,8 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
-// @ts-ignore: Missing type declarations for xterm
 import { Terminal } from '@xterm/xterm';
-// @ts-ignore: Missing type declarations for xterm-addon-fit
 import { FitAddon } from '@xterm/addon-fit';
-import 'xterm/css/xterm.css';
 import useSWR from 'swr';
 import axios from 'axios';
 

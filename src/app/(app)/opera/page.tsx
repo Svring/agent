@@ -42,8 +42,8 @@ export default function Opera() {
   const [openStates, setOpenStates] = useState<Record<string, boolean>>({});
   const [expandedResults, setExpandedResults] = useState<Record<string, boolean>>({});
   const messagesEndRef = useRef(null);
-  const [selectedModel, setSelectedModel] = useState<string>('');
-  const [selectedTools, setSelectedTools] = useState<string[]>(['props', 'playwright']);
+  const [selectedModel, setSelectedModel] = useState<string>('claude-3-7-sonnet-20250219');
+  const [selectedTools, setSelectedTools] = useState<string[]>(['playwright', 'props']);
   const [availableModels, setAvailableModels] = useState<{ key: string, label: string }[]>([]);
   const [availableTools, setAvailableTools] = useState<{ key: string, label: string }[]>([]);
   // SSH state managed by SWR effect
@@ -131,6 +131,7 @@ export default function Opera() {
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Automatically connect to SSH if SWR indicates disconnected and not currently connecting
+  /*
   useEffect(() => {
     if (sshData && sshData.status === 'Disconnected' && !isConnecting) {
       const now = Date.now();
@@ -155,6 +156,7 @@ export default function Opera() {
       }
     };
   }, [sshData, isConnecting]);
+  */
 
   // Fetch browser status periodically (keeping useEffect for this one)
   const fetchBrowserStatus = useCallback(async () => {

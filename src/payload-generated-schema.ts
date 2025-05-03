@@ -12,18 +12,25 @@ import {
   uniqueIndex,
   foreignKey,
   serial,
-  timestamp,
   varchar,
-  numeric,
   integer,
+  timestamp,
+  numeric,
   jsonb,
+  pgEnum,
 } from "@payloadcms/db-postgres/drizzle/pg-core";
 import { sql, relations } from "@payloadcms/db-postgres/drizzle";
+export const enum_users_role = pgEnum("enum_users_role", ["admin", "user"]);
 
 export const users = pgTable(
   "users",
   {
     id: serial("id").primaryKey(),
+    username: varchar("username"),
+    avatar: integer("avatar_id").references(() => media.id, {
+      onDelete: "set null",
+    }),
+    role: enum_users_role("role"),
     updatedAt: timestamp("updated_at", {
       mode: "string",
       withTimezone: true,
@@ -55,9 +62,39 @@ export const users = pgTable(
     }),
   },
   (columns) => ({
+    users_avatar_idx: index("users_avatar_idx").on(columns.avatar),
     users_updated_at_idx: index("users_updated_at_idx").on(columns.updatedAt),
     users_created_at_idx: index("users_created_at_idx").on(columns.createdAt),
     users_email_idx: uniqueIndex("users_email_idx").on(columns.email),
+  }),
+);
+
+export const users_rels = pgTable(
+  "users_rels",
+  {
+    id: serial("id").primaryKey(),
+    order: integer("order"),
+    parent: integer("parent_id").notNull(),
+    path: varchar("path").notNull(),
+    projectsID: integer("projects_id"),
+  },
+  (columns) => ({
+    order: index("users_rels_order_idx").on(columns.order),
+    parentIdx: index("users_rels_parent_idx").on(columns.parent),
+    pathIdx: index("users_rels_path_idx").on(columns.path),
+    users_rels_projects_id_idx: index("users_rels_projects_id_idx").on(
+      columns.projectsID,
+    ),
+    parentFk: foreignKey({
+      columns: [columns["parent"]],
+      foreignColumns: [users.id],
+      name: "users_rels_parent_fk",
+    }).onDelete("cascade"),
+    projectsIdFk: foreignKey({
+      columns: [columns["projectsID"]],
+      foreignColumns: [projects.id],
+      name: "users_rels_projects_fk",
+    }).onDelete("cascade"),
   }),
 );
 
@@ -94,6 +131,61 @@ export const media = pgTable(
     media_updated_at_idx: index("media_updated_at_idx").on(columns.updatedAt),
     media_created_at_idx: index("media_created_at_idx").on(columns.createdAt),
     media_filename_idx: uniqueIndex("media_filename_idx").on(columns.filename),
+  }),
+);
+
+export const projects_dev_address = pgTable(
+  "projects_dev_address",
+  {
+    _order: integer("_order").notNull(),
+    _parentID: integer("_parent_id").notNull(),
+    id: varchar("id").primaryKey(),
+    address: varchar("address"),
+    port: numeric("port"),
+    username: varchar("username"),
+    password: varchar("password"),
+  },
+  (columns) => ({
+    _orderIdx: index("projects_dev_address_order_idx").on(columns._order),
+    _parentIDIdx: index("projects_dev_address_parent_id_idx").on(
+      columns._parentID,
+    ),
+    _parentIDFk: foreignKey({
+      columns: [columns["_parentID"]],
+      foreignColumns: [projects.id],
+      name: "projects_dev_address_parent_id_fk",
+    }).onDelete("cascade"),
+  }),
+);
+
+export const projects = pgTable(
+  "projects",
+  {
+    id: serial("id").primaryKey(),
+    name: varchar("name").notNull(),
+    production_address: varchar("production_address"),
+    updatedAt: timestamp("updated_at", {
+      mode: "string",
+      withTimezone: true,
+      precision: 3,
+    })
+      .defaultNow()
+      .notNull(),
+    createdAt: timestamp("created_at", {
+      mode: "string",
+      withTimezone: true,
+      precision: 3,
+    })
+      .defaultNow()
+      .notNull(),
+  },
+  (columns) => ({
+    projects_updated_at_idx: index("projects_updated_at_idx").on(
+      columns.updatedAt,
+    ),
+    projects_created_at_idx: index("projects_created_at_idx").on(
+      columns.createdAt,
+    ),
   }),
 );
 
@@ -139,6 +231,7 @@ export const payload_locked_documents_rels = pgTable(
     path: varchar("path").notNull(),
     usersID: integer("users_id"),
     mediaID: integer("media_id"),
+    projectsID: integer("projects_id"),
   },
   (columns) => ({
     order: index("payload_locked_documents_rels_order_idx").on(columns.order),
@@ -152,6 +245,9 @@ export const payload_locked_documents_rels = pgTable(
     payload_locked_documents_rels_media_id_idx: index(
       "payload_locked_documents_rels_media_id_idx",
     ).on(columns.mediaID),
+    payload_locked_documents_rels_projects_id_idx: index(
+      "payload_locked_documents_rels_projects_id_idx",
+    ).on(columns.projectsID),
     parentFk: foreignKey({
       columns: [columns["parent"]],
       foreignColumns: [payload_locked_documents.id],
@@ -166,6 +262,11 @@ export const payload_locked_documents_rels = pgTable(
       columns: [columns["mediaID"]],
       foreignColumns: [media.id],
       name: "payload_locked_documents_rels_media_fk",
+    }).onDelete("cascade"),
+    projectsIdFk: foreignKey({
+      columns: [columns["projectsID"]],
+      foreignColumns: [projects.id],
+      name: "payload_locked_documents_rels_projects_fk",
     }).onDelete("cascade"),
   }),
 );
@@ -264,8 +365,44 @@ export const payload_migrations = pgTable(
   }),
 );
 
-export const relations_users = relations(users, () => ({}));
+export const relations_users_rels = relations(users_rels, ({ one }) => ({
+  parent: one(users, {
+    fields: [users_rels.parent],
+    references: [users.id],
+    relationName: "_rels",
+  }),
+  projectsID: one(projects, {
+    fields: [users_rels.projectsID],
+    references: [projects.id],
+    relationName: "projects",
+  }),
+}));
+export const relations_users = relations(users, ({ one, many }) => ({
+  avatar: one(media, {
+    fields: [users.avatar],
+    references: [media.id],
+    relationName: "avatar",
+  }),
+  _rels: many(users_rels, {
+    relationName: "_rels",
+  }),
+}));
 export const relations_media = relations(media, () => ({}));
+export const relations_projects_dev_address = relations(
+  projects_dev_address,
+  ({ one }) => ({
+    _parentID: one(projects, {
+      fields: [projects_dev_address._parentID],
+      references: [projects.id],
+      relationName: "dev_address",
+    }),
+  }),
+);
+export const relations_projects = relations(projects, ({ many }) => ({
+  dev_address: many(projects_dev_address, {
+    relationName: "dev_address",
+  }),
+}));
 export const relations_payload_locked_documents_rels = relations(
   payload_locked_documents_rels,
   ({ one }) => ({
@@ -283,6 +420,11 @@ export const relations_payload_locked_documents_rels = relations(
       fields: [payload_locked_documents_rels.mediaID],
       references: [media.id],
       relationName: "media",
+    }),
+    projectsID: one(projects, {
+      fields: [payload_locked_documents_rels.projectsID],
+      references: [projects.id],
+      relationName: "projects",
     }),
   }),
 );
@@ -323,15 +465,22 @@ export const relations_payload_migrations = relations(
 );
 
 type DatabaseSchema = {
+  enum_users_role: typeof enum_users_role;
   users: typeof users;
+  users_rels: typeof users_rels;
   media: typeof media;
+  projects_dev_address: typeof projects_dev_address;
+  projects: typeof projects;
   payload_locked_documents: typeof payload_locked_documents;
   payload_locked_documents_rels: typeof payload_locked_documents_rels;
   payload_preferences: typeof payload_preferences;
   payload_preferences_rels: typeof payload_preferences_rels;
   payload_migrations: typeof payload_migrations;
+  relations_users_rels: typeof relations_users_rels;
   relations_users: typeof relations_users;
   relations_media: typeof relations_media;
+  relations_projects_dev_address: typeof relations_projects_dev_address;
+  relations_projects: typeof relations_projects;
   relations_payload_locked_documents_rels: typeof relations_payload_locked_documents_rels;
   relations_payload_locked_documents: typeof relations_payload_locked_documents;
   relations_payload_preferences_rels: typeof relations_payload_preferences_rels;
