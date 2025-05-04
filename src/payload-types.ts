@@ -70,6 +70,8 @@ export interface Config {
     users: User;
     media: Media;
     projects: Project;
+    sessions: Session;
+    messages: Message;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
     'payload-migrations': PayloadMigration;
@@ -79,6 +81,8 @@ export interface Config {
     users: UsersSelect<false> | UsersSelect<true>;
     media: MediaSelect<false> | MediaSelect<true>;
     projects: ProjectsSelect<false> | ProjectsSelect<true>;
+    sessions: SessionsSelect<false> | SessionsSelect<true>;
+    messages: MessagesSelect<false> | MessagesSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
     'payload-migrations': PayloadMigrationsSelect<false> | PayloadMigrationsSelect<true>;
@@ -172,8 +176,63 @@ export interface Project {
       }[]
     | null;
   production_address?: string | null;
+  sessions?: (number | Session)[] | null;
   updatedAt: string;
   createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "sessions".
+ */
+export interface Session {
+  id: number;
+  name?: string | null;
+  messages?: (number | Message)[] | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "messages".
+ */
+export interface Message {
+  id: number;
+  messageId: string;
+  createdAt: string;
+  content: string;
+  role: 'system' | 'user' | 'assistant' | 'data';
+  parts?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  annotations?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  session: number | Session;
+  /**
+   * The complete message data in JSON format
+   */
+  rawData?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  updatedAt: string;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -193,6 +252,14 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'projects';
         value: number | Project;
+      } | null)
+    | ({
+        relationTo: 'sessions';
+        value: number | Session;
+      } | null)
+    | ({
+        relationTo: 'messages';
+        value: number | Message;
       } | null);
   globalSlug?: string | null;
   user: {
@@ -289,8 +356,34 @@ export interface ProjectsSelect<T extends boolean = true> {
         id?: T;
       };
   production_address?: T;
+  sessions?: T;
   updatedAt?: T;
   createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "sessions_select".
+ */
+export interface SessionsSelect<T extends boolean = true> {
+  name?: T;
+  messages?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "messages_select".
+ */
+export interface MessagesSelect<T extends boolean = true> {
+  messageId?: T;
+  createdAt?: T;
+  content?: T;
+  role?: T;
+  parts?: T;
+  annotations?: T;
+  session?: T;
+  rawData?: T;
+  updatedAt?: T;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema

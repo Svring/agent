@@ -21,6 +21,12 @@ import {
 } from "@payloadcms/db-postgres/drizzle/pg-core";
 import { sql, relations } from "@payloadcms/db-postgres/drizzle";
 export const enum_users_role = pgEnum("enum_users_role", ["admin", "user"]);
+export const enum_messages_role = pgEnum("enum_messages_role", [
+  "system",
+  "user",
+  "assistant",
+  "data",
+]);
 
 export const users = pgTable(
   "users",
@@ -189,6 +195,135 @@ export const projects = pgTable(
   }),
 );
 
+export const projects_rels = pgTable(
+  "projects_rels",
+  {
+    id: serial("id").primaryKey(),
+    order: integer("order"),
+    parent: integer("parent_id").notNull(),
+    path: varchar("path").notNull(),
+    sessionsID: integer("sessions_id"),
+  },
+  (columns) => ({
+    order: index("projects_rels_order_idx").on(columns.order),
+    parentIdx: index("projects_rels_parent_idx").on(columns.parent),
+    pathIdx: index("projects_rels_path_idx").on(columns.path),
+    projects_rels_sessions_id_idx: index("projects_rels_sessions_id_idx").on(
+      columns.sessionsID,
+    ),
+    parentFk: foreignKey({
+      columns: [columns["parent"]],
+      foreignColumns: [projects.id],
+      name: "projects_rels_parent_fk",
+    }).onDelete("cascade"),
+    sessionsIdFk: foreignKey({
+      columns: [columns["sessionsID"]],
+      foreignColumns: [sessions.id],
+      name: "projects_rels_sessions_fk",
+    }).onDelete("cascade"),
+  }),
+);
+
+export const sessions = pgTable(
+  "sessions",
+  {
+    id: serial("id").primaryKey(),
+    name: varchar("name"),
+    updatedAt: timestamp("updated_at", {
+      mode: "string",
+      withTimezone: true,
+      precision: 3,
+    })
+      .defaultNow()
+      .notNull(),
+    createdAt: timestamp("created_at", {
+      mode: "string",
+      withTimezone: true,
+      precision: 3,
+    })
+      .defaultNow()
+      .notNull(),
+  },
+  (columns) => ({
+    sessions_updated_at_idx: index("sessions_updated_at_idx").on(
+      columns.updatedAt,
+    ),
+    sessions_created_at_idx: index("sessions_created_at_idx").on(
+      columns.createdAt,
+    ),
+  }),
+);
+
+export const sessions_rels = pgTable(
+  "sessions_rels",
+  {
+    id: serial("id").primaryKey(),
+    order: integer("order"),
+    parent: integer("parent_id").notNull(),
+    path: varchar("path").notNull(),
+    messagesID: integer("messages_id"),
+  },
+  (columns) => ({
+    order: index("sessions_rels_order_idx").on(columns.order),
+    parentIdx: index("sessions_rels_parent_idx").on(columns.parent),
+    pathIdx: index("sessions_rels_path_idx").on(columns.path),
+    sessions_rels_messages_id_idx: index("sessions_rels_messages_id_idx").on(
+      columns.messagesID,
+    ),
+    parentFk: foreignKey({
+      columns: [columns["parent"]],
+      foreignColumns: [sessions.id],
+      name: "sessions_rels_parent_fk",
+    }).onDelete("cascade"),
+    messagesIdFk: foreignKey({
+      columns: [columns["messagesID"]],
+      foreignColumns: [messages.id],
+      name: "sessions_rels_messages_fk",
+    }).onDelete("cascade"),
+  }),
+);
+
+export const messages = pgTable(
+  "messages",
+  {
+    id: serial("id").primaryKey(),
+    messageId: varchar("message_id").notNull(),
+    createdAt: timestamp("created_at", {
+      mode: "string",
+      withTimezone: true,
+      precision: 3,
+    })
+      .defaultNow()
+      .notNull(),
+    content: varchar("content").notNull(),
+    role: enum_messages_role("role").notNull(),
+    parts: jsonb("parts"),
+    annotations: jsonb("annotations"),
+    session: integer("session_id")
+      .notNull()
+      .references(() => sessions.id, {
+        onDelete: "set null",
+      }),
+    rawData: jsonb("raw_data"),
+    updatedAt: timestamp("updated_at", {
+      mode: "string",
+      withTimezone: true,
+      precision: 3,
+    })
+      .defaultNow()
+      .notNull(),
+  },
+  (columns) => ({
+    messages_message_id_idx: uniqueIndex("messages_message_id_idx").on(
+      columns.messageId,
+    ),
+    messages_session_idx: index("messages_session_idx").on(columns.session),
+    messages_updated_at_idx: index("messages_updated_at_idx").on(
+      columns.updatedAt,
+    ),
+  }),
+);
+
 export const payload_locked_documents = pgTable(
   "payload_locked_documents",
   {
@@ -232,6 +367,8 @@ export const payload_locked_documents_rels = pgTable(
     usersID: integer("users_id"),
     mediaID: integer("media_id"),
     projectsID: integer("projects_id"),
+    sessionsID: integer("sessions_id"),
+    messagesID: integer("messages_id"),
   },
   (columns) => ({
     order: index("payload_locked_documents_rels_order_idx").on(columns.order),
@@ -248,6 +385,12 @@ export const payload_locked_documents_rels = pgTable(
     payload_locked_documents_rels_projects_id_idx: index(
       "payload_locked_documents_rels_projects_id_idx",
     ).on(columns.projectsID),
+    payload_locked_documents_rels_sessions_id_idx: index(
+      "payload_locked_documents_rels_sessions_id_idx",
+    ).on(columns.sessionsID),
+    payload_locked_documents_rels_messages_id_idx: index(
+      "payload_locked_documents_rels_messages_id_idx",
+    ).on(columns.messagesID),
     parentFk: foreignKey({
       columns: [columns["parent"]],
       foreignColumns: [payload_locked_documents.id],
@@ -267,6 +410,16 @@ export const payload_locked_documents_rels = pgTable(
       columns: [columns["projectsID"]],
       foreignColumns: [projects.id],
       name: "payload_locked_documents_rels_projects_fk",
+    }).onDelete("cascade"),
+    sessionsIdFk: foreignKey({
+      columns: [columns["sessionsID"]],
+      foreignColumns: [sessions.id],
+      name: "payload_locked_documents_rels_sessions_fk",
+    }).onDelete("cascade"),
+    messagesIdFk: foreignKey({
+      columns: [columns["messagesID"]],
+      foreignColumns: [messages.id],
+      name: "payload_locked_documents_rels_messages_fk",
     }).onDelete("cascade"),
   }),
 );
@@ -398,9 +551,48 @@ export const relations_projects_dev_address = relations(
     }),
   }),
 );
+export const relations_projects_rels = relations(projects_rels, ({ one }) => ({
+  parent: one(projects, {
+    fields: [projects_rels.parent],
+    references: [projects.id],
+    relationName: "_rels",
+  }),
+  sessionsID: one(sessions, {
+    fields: [projects_rels.sessionsID],
+    references: [sessions.id],
+    relationName: "sessions",
+  }),
+}));
 export const relations_projects = relations(projects, ({ many }) => ({
   dev_address: many(projects_dev_address, {
     relationName: "dev_address",
+  }),
+  _rels: many(projects_rels, {
+    relationName: "_rels",
+  }),
+}));
+export const relations_sessions_rels = relations(sessions_rels, ({ one }) => ({
+  parent: one(sessions, {
+    fields: [sessions_rels.parent],
+    references: [sessions.id],
+    relationName: "_rels",
+  }),
+  messagesID: one(messages, {
+    fields: [sessions_rels.messagesID],
+    references: [messages.id],
+    relationName: "messages",
+  }),
+}));
+export const relations_sessions = relations(sessions, ({ many }) => ({
+  _rels: many(sessions_rels, {
+    relationName: "_rels",
+  }),
+}));
+export const relations_messages = relations(messages, ({ one }) => ({
+  session: one(sessions, {
+    fields: [messages.session],
+    references: [sessions.id],
+    relationName: "session",
   }),
 }));
 export const relations_payload_locked_documents_rels = relations(
@@ -425,6 +617,16 @@ export const relations_payload_locked_documents_rels = relations(
       fields: [payload_locked_documents_rels.projectsID],
       references: [projects.id],
       relationName: "projects",
+    }),
+    sessionsID: one(sessions, {
+      fields: [payload_locked_documents_rels.sessionsID],
+      references: [sessions.id],
+      relationName: "sessions",
+    }),
+    messagesID: one(messages, {
+      fields: [payload_locked_documents_rels.messagesID],
+      references: [messages.id],
+      relationName: "messages",
     }),
   }),
 );
@@ -466,11 +668,16 @@ export const relations_payload_migrations = relations(
 
 type DatabaseSchema = {
   enum_users_role: typeof enum_users_role;
+  enum_messages_role: typeof enum_messages_role;
   users: typeof users;
   users_rels: typeof users_rels;
   media: typeof media;
   projects_dev_address: typeof projects_dev_address;
   projects: typeof projects;
+  projects_rels: typeof projects_rels;
+  sessions: typeof sessions;
+  sessions_rels: typeof sessions_rels;
+  messages: typeof messages;
   payload_locked_documents: typeof payload_locked_documents;
   payload_locked_documents_rels: typeof payload_locked_documents_rels;
   payload_preferences: typeof payload_preferences;
@@ -480,7 +687,11 @@ type DatabaseSchema = {
   relations_users: typeof relations_users;
   relations_media: typeof relations_media;
   relations_projects_dev_address: typeof relations_projects_dev_address;
+  relations_projects_rels: typeof relations_projects_rels;
   relations_projects: typeof relations_projects;
+  relations_sessions_rels: typeof relations_sessions_rels;
+  relations_sessions: typeof relations_sessions;
+  relations_messages: typeof relations_messages;
   relations_payload_locked_documents_rels: typeof relations_payload_locked_documents_rels;
   relations_payload_locked_documents: typeof relations_payload_locked_documents;
   relations_payload_preferences_rels: typeof relations_payload_preferences_rels;

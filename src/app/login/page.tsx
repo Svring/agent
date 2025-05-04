@@ -74,22 +74,19 @@ export default function LoginPage() {
         {theme === 'dark' ? <Sun className="h-[1.2rem] w-[1.2rem]" /> : <Moon className="h-[1.2rem] w-[1.2rem]" />}
       </Button>
 
-      <Card className="w-full max-w-md">
+      <Card className="w-full max-w-md p-4">
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl font-bold text-center">Welcome back</CardTitle>
-          <CardDescription className="text-center">
-            Enter your credentials to sign in to your account
-          </CardDescription>
         </CardHeader>
         
         <CardContent>
-          {error && (
+          {/* {error && (
             <Alert variant="destructive" className="mb-4">
               <AlertDescription>
                 {error}
               </AlertDescription>
             </Alert>
-          )}
+          )} */}
           
           <form onSubmit={onSubmit} className="space-y-4">
             <div className="space-y-2">

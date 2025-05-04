@@ -34,17 +34,11 @@ export const Projects: CollectionConfig = {
       name: 'production_address',
       type: 'text',
     },
-    
-  ],
-  access: {
-    read: () => true,
-    create: ({ req: { user }, data }) => {
-      if (user?.email === 'dummy@cute.com') {
-        return true;
-      }
-      return false;
+    {
+      name: 'sessions',
+      type: 'relationship',
+      relationTo: 'sessions',
+      hasMany: true,
     },
-    update: ({ req: { user } }) => !!user,
-    delete: ({ req: { user } }) => !!user,
-  },
+  ]
 }
