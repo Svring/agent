@@ -6,7 +6,9 @@ import {
   Terminal, Image, CheckCircle, XCircle,
   User as UserIcon, LogOut, ChevronUp,
   KeyRound,
-  DatabaseZap
+  DatabaseZap,
+  FolderGit2,
+  Plus
 } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -40,8 +42,9 @@ import { Label } from "@/components/ui/label"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 
 // Import generated types and server actions
-import { User } from '@/payload-types'
+import { User, Project } from '@/payload-types'
 import { getCurrentUser, logoutUser } from '@/db/actions/users-actions'
+import { findProjects } from '@/db/actions/projects-actions'
 
 const workspaceChatItems = [
   {
@@ -51,22 +54,22 @@ const workspaceChatItems = [
   },
   {
     title: "Browser",
-    url: "trials/browser",
+    url: "/trials/browser",
     icon: Globe,
   },
   {
     title: "Explorer",
-    url: "trials/explorer",
+    url: "/trials/explorer",
     icon: File,
   },
   {
     title: "Terminal",
-    url: "trials/terminal",
+    url: "/trials/terminal",
     icon: Terminal,
   },
   {
     title: "Gallery",
-    url: "trials/gallery",
+    url: "/trials/gallery",
     icon: Image,
   },
 ]
@@ -75,12 +78,12 @@ const workspaceChatItems = [
 const settingsNavItems = [
   {
     title: "SSH Credentials",
-    url: "/settings/ssh", // Assuming this is the desired path
+    url: "/settings/ssh",
     icon: KeyRound,
   },
   {
     title: "Provider",
-    url: "/settings/provider", // Assuming this is the desired path
+    url: "/settings/provider",
     icon: DatabaseZap,
   },
 ];
@@ -93,24 +96,54 @@ export function AppSidebar() {
   
   // Use the imported User type for state
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [userProjects, setUserProjects] = useState<Project[]>([]);
   const [userLoading, setUserLoading] = useState(true);
+  const [projectsLoading, setProjectsLoading] = useState(false);
 
-  // Updated useEffect to use server action
+  // Ref for the chevron icon to differentiate clicks
+  const projectsChevronRef = useRef<SVGSVGElement>(null);
+  const addProjectButtonRef = useRef<HTMLButtonElement>(null);
+
+  // Updated useEffect to use server action and fetch projects
   useEffect(() => {
-    async function fetchUser() {
+    async function fetchUserAndProjects() {
       try {
         setUserLoading(true);
+        setProjectsLoading(true);
         const user = await getCurrentUser();
         setCurrentUser(user);
+
+        if (user && user.projects && user.projects.length > 0) {
+          const projectIds = user.projects
+            .map(proj => (typeof proj === 'string' || typeof proj === 'number' ? proj : proj?.id))
+            .filter(id => id !== undefined && id !== null) as (string | number)[];
+          
+          const firstProject = user.projects[0];
+          if (typeof firstProject === 'object' && firstProject?.id) {
+             setUserProjects(user.projects.filter((p): p is Project => typeof p === 'object' && p !== null));
+          } else if (projectIds.length > 0) {
+            const projectsData = await findProjects({ 
+              where: { id: { in: projectIds } },
+              limit: 100 
+            });
+            setUserProjects(projectsData?.docs || []);
+          } else {
+             setUserProjects([]);
+          }
+        } else {
+          setUserProjects([]);
+        }
       } catch (error) {
-        console.error('Failed to load user data:', error);
+        console.error('Failed to load user or project data:', error);
         setCurrentUser(null);
+        setUserProjects([]);
       } finally {
         setUserLoading(false);
+        setProjectsLoading(false);
       }
     }
 
-    fetchUser();
+    fetchUserAndProjects();
   }, []);
 
   // Updated logout handler using server action
@@ -136,15 +169,106 @@ export function AppSidebar() {
   // Get username from user data - use User type
   const username = currentUser ? 
     currentUser.username || 
-    // Remove firstName/lastName logic as they don't exist on the type
-    // (currentUser.firstName || currentUser.lastName) ? 
-    //  `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() : 
-      currentUser.email.split('@')[0] : 
+    currentUser.email.split('@')[0] : 
     '';
+
+  // Updated Click handler for the Projects label trigger
+  const handleProjectsLabelClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+    const target = event.target as Node;
+    // Ignore clicks on the chevron wrapper or the add button wrapper
+    if (
+      (projectsChevronRef.current && projectsChevronRef.current.closest('span')?.contains(target)) ||
+      (addProjectButtonRef.current && addProjectButtonRef.current.contains(target))
+    ) {
+      return; // Let default behavior (toggle or add button click) handle it
+    } else {
+      // Click was on the text part, prevent toggle and navigate
+      event.preventDefault(); 
+      event.stopPropagation(); 
+      router.push('/projects');
+    }
+  };
+
+  // Click handler for the add project button
+  const handleAddProjectClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+     event.stopPropagation(); // Prevent the label click handler
+     console.log("Add project clicked!");
+     // TODO: Implement navigation to create project page or open a modal
+     router.push('/projects/create');
+  };
 
   return (
     <Sidebar collapsible="icon" variant="inset" className="ml-1">
       <SidebarContent>
+
+        {/* Projects Collapsible Section (Moved Up) */}
+        {/* Always render Projects section if user is loaded */} 
+        {!userLoading && currentUser && (
+          <Collapsible defaultOpen className="group/collapsible">
+            <SidebarGroup>
+              <SidebarGroupLabel asChild>
+                <CollapsibleTrigger 
+                  onClick={handleProjectsLabelClick} 
+                  className="flex items-center justify-between w-full px-2 py-1.5 rounded-md text-sm font-medium hover:bg-muted/50 transition-colors cursor-pointer group/trigger"
+                >
+                  <span className="mr-auto">Projects</span>
+                  <div className="flex items-center ml-1 shrink-0">
+                    <Button 
+                      ref={addProjectButtonRef}
+                      variant="ghost"
+                      size="icon"
+                      className="h-5 w-5 p-0 opacity-0 group-hover/trigger:opacity-100 transition-opacity hover:bg-primary/10 mr-1"
+                      onClick={handleAddProjectClick}
+                      title="Create new project"
+                      aria-label="Create new project"
+                    >
+                       <Plus className="h-3 w-3" />
+                    </Button>
+                    <span className="p-1 -mr-1 rounded hover:ring-1 hover:ring-primary/10 cursor-pointer"> 
+                      <ChevronDown 
+                        ref={projectsChevronRef}
+                        className="h-4 w-4 transition-transform group-data-[state=open]/collapsible:rotate-180 cursor-default" 
+                      />
+                    </span>
+                  </div>
+                </CollapsibleTrigger>
+              </SidebarGroupLabel>
+              <CollapsibleContent>
+                <SidebarGroupContent className="list-none">
+                   {projectsLoading ? (
+                      <SidebarMenuItem className="list-none">
+                        <SidebarMenuButton disabled className="opacity-50 cursor-default">
+                          <span className="text-xs text-muted-foreground">Loading projects...</span>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                   ) : userProjects.length > 0 ? (
+                      <SidebarMenu className="list-none">
+                        {userProjects.map((project) => (
+                          <SidebarMenuItem key={project.id} className="list-none">
+                            <SidebarMenuButton asChild>
+                              <Link href={`/projects/${project.id}`}> {/* Adjust href if project page is different */}
+                                <FolderGit2 className="h-4 w-4" /> {/* Project Icon */}
+                                <span className="truncate" title={project.name}>{project.name || 'Untitled Project'}</span>
+                              </Link>
+                            </SidebarMenuButton>
+                          </SidebarMenuItem>
+                        ))}
+                      </SidebarMenu>
+                   ) : (
+                      <SidebarMenuItem className="list-none">
+                         <SidebarMenuButton disabled className="opacity-50 cursor-default">
+                            <span className="text-xs text-muted-foreground">No projects found.</span>
+                         </SidebarMenuButton>
+                      </SidebarMenuItem>
+                   )}
+                </SidebarGroupContent>
+              </CollapsibleContent>
+            </SidebarGroup>
+          </Collapsible>
+        )}
+        {/* End Projects Section */} 
+
+        {/* Workspace Collapsible Section (Now Below Projects) */}
         <Collapsible defaultOpen className="group/collapsible">
           <SidebarGroup>
             <SidebarGroupLabel asChild>
@@ -154,10 +278,10 @@ export function AppSidebar() {
               </CollapsibleTrigger>
             </SidebarGroupLabel>
             <CollapsibleContent>
-              <SidebarGroupContent>
-                <SidebarMenu>
+              <SidebarGroupContent className="list-none">
+                <SidebarMenu className="list-none">
                   {workspaceChatItems.map((item) => (
-                    <SidebarMenuItem key={item.title}>
+                    <SidebarMenuItem key={item.title} className="list-none">
                       <SidebarMenuButton asChild>
                         <Link href={item.url}>
                           <item.icon />
@@ -171,6 +295,8 @@ export function AppSidebar() {
             </CollapsibleContent>
           </SidebarGroup>
         </Collapsible>
+        {/* End Workspace Section */} 
+
       </SidebarContent>
 
       <SidebarFooter>

@@ -26,7 +26,44 @@ export async function getCurrentUser(): Promise<User | null> {
 }
 
 /**
- * Update user settings
+ * Update a user by ID - can be used for any user updates including project associations 
+ */
+export async function updateUser(
+  userId: string | number,
+  data: Partial<User>
+): Promise<User | null> {
+  try {
+    const headersList = await headers()
+    const payloadConfig = await config
+    const payload = await getPayload({ config: payloadConfig })
+    
+    // Authenticate to ensure we have permission to update
+    const { user } = await payload.auth({ headers: headersList })
+    
+    if (!user || (user.id !== userId && user.role !== 'admin')) {
+      console.error('Not authorized to update this user')
+      return null
+    }
+    
+    // Update the user
+    const updatedUser = await payload.update({
+      collection: 'users',
+      id: userId,
+      data,
+    })
+    
+    // Revalidate all pages to ensure data is refreshed
+    revalidatePath('/', 'layout')
+    
+    return updatedUser
+  } catch (error) {
+    console.error('Error updating user:', error)
+    return null
+  }
+}
+
+/**
+ * Update user settings - specifically for the settings page
  */
 export async function updateUserSettings(
   userId: number, 
