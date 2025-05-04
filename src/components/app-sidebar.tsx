@@ -8,10 +8,13 @@ import {
   KeyRound,
   DatabaseZap,
   FolderGit2,
-  Plus
+  Plus,
+  ArrowLeft,
+  FolderOpen,
+  Loader2
 } from "lucide-react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useRouter, usePathname } from "next/navigation"
 
 import {
   Sidebar,
@@ -33,7 +36,6 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
 
-
 import { Button } from "@/components/ui/button"
 import { useTheme } from "@/components/theme-provider"
 import { useEffect, useState, useRef, useCallback } from "react"
@@ -44,7 +46,9 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 // Import generated types and server actions
 import { User, Project } from '@/payload-types'
 import { getCurrentUser, logoutUser } from '@/db/actions/users-actions'
-import { findProjects } from '@/db/actions/projects-actions'
+import { findProjects, getProjectById } from '@/db/actions/projects-actions'
+import { createSessionForProject } from '@/db/actions/sessions-actions'
+import { toast } from 'sonner'
 
 const workspaceChatItems = [
   {
@@ -93,16 +97,64 @@ export function AppSidebar() {
   const { state } = useSidebar();
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const router = useRouter();
+  const pathname = usePathname();
   
   // Use the imported User type for state
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [userProjects, setUserProjects] = useState<Project[]>([]);
   const [userLoading, setUserLoading] = useState(true);
   const [projectsLoading, setProjectsLoading] = useState(false);
+  
+  // State for the current project detail view
+  const [currentProject, setCurrentProject] = useState<Project | null>(null);
+  const [projectSessions, setProjectSessions] = useState<any[]>([]);
+  const [isProjectDetailView, setIsProjectDetailView] = useState(false);
+  const [projectId, setProjectId] = useState<string | null>(null);
+  const [isCreatingSession, setIsCreatingSession] = useState(false);
 
-  // Ref for the chevron icon to differentiate clicks
+  // Refs for the chevron icon and add button to differentiate clicks
   const projectsChevronRef = useRef<SVGSVGElement>(null);
   const addProjectButtonRef = useRef<HTMLButtonElement>(null);
+  const addSessionButtonRef = useRef<HTMLButtonElement>(null);
+
+  // Check if we're on a project detail page
+  useEffect(() => {
+    if (pathname) {
+      // Match /projects/{project-id} but not /projects/create
+      const match = pathname.match(/^\/projects\/([^\/]+)(?:\/.*)?$/);
+      
+      if (match && match[1] !== 'create') {
+        setIsProjectDetailView(true);
+        setProjectId(match[1]);
+      } else {
+        setIsProjectDetailView(false);
+        setProjectId(null);
+        setCurrentProject(null);
+      }
+    }
+  }, [pathname]);
+
+  // Fetch project details if we're on a project detail page
+  useEffect(() => {
+    if (isProjectDetailView && projectId) {
+      const fetchProjectDetails = async () => {
+        try {
+          const project = await getProjectById(projectId);
+          if (project) {
+            setCurrentProject(project);
+            
+            // Extract sessions
+            const sessions = Array.isArray(project.sessions) ? project.sessions : [];
+            setProjectSessions(sessions);
+          }
+        } catch (error) {
+          console.error('Failed to load project details:', error);
+        }
+      };
+      
+      fetchProjectDetails();
+    }
+  }, [isProjectDetailView, projectId]);
 
   // Updated useEffect to use server action and fetch projects
   useEffect(() => {
@@ -192,115 +244,231 @@ export function AppSidebar() {
   // Click handler for the add project button
   const handleAddProjectClick = (event: React.MouseEvent<HTMLButtonElement>) => {
      event.stopPropagation(); // Prevent the label click handler
-     console.log("Add project clicked!");
-     // TODO: Implement navigation to create project page or open a modal
      router.push('/projects/create');
+  };
+
+  // Session Creation Handler
+  const handleCreateSession = async (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation(); // Prevent potential parent handlers
+    if (!projectId) return;
+
+    setIsCreatingSession(true);
+    try {
+      const newSession = await createSessionForProject(projectId);
+      if (newSession) {
+        toast.success('New session created!');
+        router.push(`/projects/${projectId}/${newSession.id}`);
+        // Manually update state to reflect the new session immediately
+        setProjectSessions(prev => [...prev, newSession]); 
+      } else {
+        toast.error('Failed to create session.');
+      }
+    } catch (error) {
+      console.error("Error creating session:", error);
+      toast.error('An error occurred while creating the session.');
+    } finally {
+      setIsCreatingSession(false);
+    }
   };
 
   return (
     <Sidebar collapsible="icon" variant="inset" className="ml-1">
       <SidebarContent>
-
-        {/* Projects Collapsible Section (Moved Up) */}
-        {/* Always render Projects section if user is loaded */} 
-        {!userLoading && currentUser && (
-          <Collapsible defaultOpen className="group/collapsible">
-            <SidebarGroup>
-              <SidebarGroupLabel asChild>
-                <CollapsibleTrigger 
-                  onClick={handleProjectsLabelClick} 
-                  className="flex items-center justify-between w-full px-2 py-1.5 rounded-md text-sm font-medium hover:bg-muted/50 transition-colors cursor-pointer group/trigger"
-                >
-                  <span className="mr-auto">Projects</span>
-                  <div className="flex items-center ml-1 shrink-0">
-                    <Button 
-                      ref={addProjectButtonRef}
-                      variant="ghost"
-                      size="icon"
-                      className="h-5 w-5 p-0 opacity-0 group-hover/trigger:opacity-100 transition-opacity hover:bg-primary/10 mr-1"
-                      onClick={handleAddProjectClick}
-                      title="Create new project"
-                      aria-label="Create new project"
-                    >
-                       <Plus className="h-3 w-3" />
-                    </Button>
-                    <span className="p-1 -mr-1 rounded hover:ring-1 hover:ring-primary/10 cursor-pointer"> 
-                      <ChevronDown 
-                        ref={projectsChevronRef}
-                        className="h-4 w-4 transition-transform group-data-[state=open]/collapsible:rotate-180 cursor-default" 
-                      />
-                    </span>
-                  </div>
-                </CollapsibleTrigger>
-              </SidebarGroupLabel>
-              <CollapsibleContent>
-                <SidebarGroupContent className="list-none">
-                   {projectsLoading ? (
+        {/* Special Back Nav + Project Detail View */}
+        {isProjectDetailView && currentProject && (
+          <>
+            {/* Back to Projects link */}
+            <div className="flex items-center py-1.5 px-2 mt-1 mx-2 hover:bg-muted/50 rounded-md transition-colors">
+              <Link href="/projects" className="flex items-center text-sm font-medium">
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Back to Projects
+              </Link>
+            </div>
+            
+            {/* Current Project Section */}
+            <Collapsible defaultOpen className="group/collapsible">
+              <SidebarGroup>
+                <SidebarGroupLabel asChild>
+                  <CollapsibleTrigger className="flex items-center justify-between w-full px-2 py-1.5 rounded-md text-sm font-medium hover:bg-muted/50 transition-colors">
+                    <div className="flex items-center space-x-2">
+                      <FolderGit2 className="h-4 w-4 text-primary" />
+                      <span className="truncate" title={currentProject.name}>
+                        {currentProject.name}
+                      </span>
+                    </div>
+                    <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-data-[state=open]/collapsible:rotate-180" />
+                  </CollapsibleTrigger>
+                </SidebarGroupLabel>
+                <CollapsibleContent>
+                  <SidebarGroupContent className="list-none">
+                    <SidebarMenu className="list-none">
+                      {/* Project Details */}
                       <SidebarMenuItem className="list-none">
-                        <SidebarMenuButton disabled className="opacity-50 cursor-default">
-                          <span className="text-xs text-muted-foreground">Loading projects...</span>
+                        <SidebarMenuButton asChild>
+                          <Link href={`/projects/${projectId}`} className={pathname === `/projects/${projectId}` ? "text-primary font-medium" : ""}>
+                            <span className="truncate">Overview</span>
+                          </Link>
                         </SidebarMenuButton>
                       </SidebarMenuItem>
-                   ) : userProjects.length > 0 ? (
-                      <SidebarMenu className="list-none">
-                        {userProjects.map((project) => (
-                          <SidebarMenuItem key={project.id} className="list-none">
-                            <SidebarMenuButton asChild>
-                              <Link href={`/projects/${project.id}`}> {/* Adjust href if project page is different */}
-                                <FolderGit2 className="h-4 w-4" /> {/* Project Icon */}
-                                <span className="truncate" title={project.name}>{project.name || 'Untitled Project'}</span>
-                              </Link>
-                            </SidebarMenuButton>
-                          </SidebarMenuItem>
-                        ))}
-                      </SidebarMenu>
-                   ) : (
-                      <SidebarMenuItem className="list-none">
-                         <SidebarMenuButton disabled className="opacity-50 cursor-default">
-                            <span className="text-xs text-muted-foreground">No projects found.</span>
-                         </SidebarMenuButton>
-                      </SidebarMenuItem>
-                   )}
-                </SidebarGroupContent>
-              </CollapsibleContent>
-            </SidebarGroup>
-          </Collapsible>
+                      
+                      {/* Sessions Header with Add Button */}
+                      <div className="flex items-center justify-between px-2 pt-2 pb-1 group/sessionsHeader">
+                        <p className="text-xs font-medium text-muted-foreground">Sessions</p>
+                        <Button 
+                          ref={addSessionButtonRef} 
+                          variant="ghost"
+                          size="icon"
+                          className="h-5 w-5 p-0 opacity-0 group-hover/sessionsHeader:opacity-100 transition-opacity hover:bg-primary/10"
+                          onClick={handleCreateSession}
+                          title="Create new session"
+                          aria-label="Create new session"
+                          disabled={isCreatingSession}
+                        >
+                          {isCreatingSession ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+                        </Button>
+                      </div>
+                      
+                      {/* Sessions List */}
+                      {projectSessions.length > 0 ? (
+                        projectSessions.map((session, index) => {
+                          const sessionName = typeof session === 'object' && session !== null && session.name
+                            ? session.name
+                            : `Session ${index + 1}`;
+                          const sessionId = typeof session === 'object' && session !== null && session.id
+                            ? session.id
+                            : session;
+                          
+                          const sessionPath = `/projects/${projectId}/${sessionId}`;
+                          const isActive = pathname === sessionPath;
+                          
+                          return (
+                            <SidebarMenuItem key={index} className="list-none">
+                              <SidebarMenuButton asChild>
+                                <Link href={sessionPath} className={isActive ? "text-primary font-medium" : ""}>
+                                  <FolderOpen className="h-4 w-4 mr-2 opacity-70" />
+                                  <span className="truncate" title={sessionName}>{sessionName}</span>
+                                </Link>
+                              </SidebarMenuButton>
+                            </SidebarMenuItem>
+                          );
+                        })
+                      ) : (
+                        <SidebarMenuItem className="list-none">
+                          <SidebarMenuButton onClick={handleCreateSession} disabled={isCreatingSession} className="w-full justify-start">
+                            {isCreatingSession ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Plus className="h-4 w-4 mr-2" />} 
+                            <span>{isCreatingSession ? 'Creating...' : 'Create Session'}</span>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                      )}
+                    </SidebarMenu>
+                  </SidebarGroupContent>
+                </CollapsibleContent>
+              </SidebarGroup>
+            </Collapsible>
+          </>
         )}
-        {/* End Projects Section */} 
+        
+        {/* Standard Navigation - only show when not in project detail view */}
+        {!isProjectDetailView && (
+          <>
+            {/* Projects Collapsible Section */}
+            {!userLoading && currentUser && (
+              <Collapsible defaultOpen className="group/collapsible">
+                <SidebarGroup>
+                  <SidebarGroupLabel asChild>
+                    <CollapsibleTrigger 
+                      onClick={handleProjectsLabelClick} 
+                      className="flex items-center justify-between w-full px-2 py-1.5 rounded-md text-sm font-medium hover:bg-muted/50 transition-colors cursor-pointer group/trigger"
+                    >
+                      <span className="mr-auto">Projects</span>
+                      <div className="flex items-center ml-1 shrink-0">
+                        <Button 
+                          ref={addProjectButtonRef}
+                          variant="ghost"
+                          size="icon"
+                          className="h-5 w-5 p-0 opacity-0 group-hover/trigger:opacity-100 transition-opacity hover:bg-primary/10 mr-1"
+                          onClick={handleAddProjectClick}
+                          title="Create new project"
+                          aria-label="Create new project"
+                        >
+                          <Plus className="h-3 w-3" />
+                        </Button>
+                        <span className="p-1 -mr-1 rounded hover:ring-1 hover:ring-primary/10 cursor-pointer"> 
+                          <ChevronDown 
+                            ref={projectsChevronRef}
+                            className="h-4 w-4 transition-transform group-data-[state=open]/collapsible:rotate-180 cursor-default" 
+                          />
+                        </span>
+                      </div>
+                    </CollapsibleTrigger>
+                  </SidebarGroupLabel>
+                  <CollapsibleContent>
+                    <SidebarGroupContent className="list-none">
+                      {projectsLoading ? (
+                        <SidebarMenuItem className="list-none">
+                          <SidebarMenuButton disabled className="opacity-50 cursor-default">
+                            <span className="text-xs text-muted-foreground">Loading projects...</span>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                      ) : userProjects.length > 0 ? (
+                        <SidebarMenu className="list-none">
+                          {userProjects.map((project) => (
+                            <SidebarMenuItem key={project.id} className="list-none">
+                              <SidebarMenuButton asChild>
+                                <Link href={`/projects/${project.id}`}>
+                                  <FolderGit2 className="h-4 w-4" />
+                                  <span className="truncate" title={project.name}>{project.name || 'Untitled Project'}</span>
+                                </Link>
+                              </SidebarMenuButton>
+                            </SidebarMenuItem>
+                          ))}
+                        </SidebarMenu>
+                      ) : (
+                        <SidebarMenuItem className="list-none">
+                          <SidebarMenuButton disabled className="opacity-50 cursor-default">
+                            <span className="text-xs text-muted-foreground">No projects found.</span>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                      )}
+                    </SidebarGroupContent>
+                  </CollapsibleContent>
+                </SidebarGroup>
+              </Collapsible>
+            )}
 
-        {/* Workspace Collapsible Section (Now Below Projects) */}
-        <Collapsible defaultOpen className="group/collapsible">
-          <SidebarGroup>
-            <SidebarGroupLabel asChild>
-              <CollapsibleTrigger>
-                Workspace
-                <ChevronDown className="ml-auto transition-transform group-data-[state=open]/collapsible:rotate-180" />
-              </CollapsibleTrigger>
-            </SidebarGroupLabel>
-            <CollapsibleContent>
-              <SidebarGroupContent className="list-none">
-                <SidebarMenu className="list-none">
-                  {workspaceChatItems.map((item) => (
-                    <SidebarMenuItem key={item.title} className="list-none">
-                      <SidebarMenuButton asChild>
-                        <Link href={item.url}>
-                          <item.icon />
-                          <span>{item.title}</span>
-                        </Link>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  ))}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </CollapsibleContent>
-          </SidebarGroup>
-        </Collapsible>
-        {/* End Workspace Section */} 
-
+            {/* Workspace Collapsible Section */}
+            <Collapsible defaultOpen className="group/collapsible">
+              <SidebarGroup>
+                <SidebarGroupLabel asChild>
+                  <CollapsibleTrigger>
+                    Workspace
+                    <ChevronDown className="ml-auto transition-transform group-data-[state=open]/collapsible:rotate-180" />
+                  </CollapsibleTrigger>
+                </SidebarGroupLabel>
+                <CollapsibleContent>
+                  <SidebarGroupContent className="list-none">
+                    <SidebarMenu className="list-none">
+                      {workspaceChatItems.map((item) => (
+                        <SidebarMenuItem key={item.title} className="list-none">
+                          <SidebarMenuButton asChild>
+                            <Link href={item.url}>
+                              <item.icon />
+                              <span>{item.title}</span>
+                            </Link>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                      ))}
+                    </SidebarMenu>
+                  </SidebarGroupContent>
+                </CollapsibleContent>
+              </SidebarGroup>
+            </Collapsible>
+          </>
+        )}
       </SidebarContent>
 
       <SidebarFooter>
-        {/* User Info Section wrapped in Collapsible */}
+        {/* User Info Section wrapped in Collapsible - always show this */}
         {!userLoading && currentUser && (
           <Collapsible 
             open={isUserMenuOpen} 
