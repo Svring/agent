@@ -576,36 +576,39 @@ export default function SessionDetailPage({ params }: SessionDetailPageProps) {
                   {/* Browser Status Bar */}
                    <div className="flex items-center h-auto px-2 text-xs text-muted-foreground mb-2 rounded">
                       <span
-                      className={`w-1.5 h-1.5 rounded-full mr-2 shrink-0 ${browserStatus.initialized ? 'bg-green-600 animate-glow' : 'bg-gray-400'}`}
-                      title={browserStatus.initialized ? 'Browser Initialized' : 'Browser Not Initialized'}
-                    />
-                    <span className="mr-1 shrink-0">Browser</span>
-                    <span className="mr-1 shrink-0">-</span>
-                    <span className="mr-1 shrink-0">{browserStatus.initialized ? 'Initialized' : 'Not Initialized'}</span>
-                    {browserStatus.initialized && browserStatus.viewport && (
-                      <>
-                        <span className="mr-1 shrink-0">-</span>
-                        <span className="truncate" title={`Viewport: ${browserStatus.viewport.width}x${browserStatus.viewport.height}`}>{browserStatus.viewport.width}×{browserStatus.viewport.height}</span>
-                      </>
-                    )}
-                    <div className="flex-grow"></div>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6 p-0 ml-2"
-                          onClick={browserStatus.initialized ? handleBrowserCleanup : handleBrowserInit}
-                          disabled={isBrowserLoading}
-                        >
-                          {isBrowserLoading ? (browserStatus.initialized ? 'Cleaning up...': 'Initializing...') : (browserStatus.initialized ? 'Cleanup Browser' : 'Initialize Browser')}
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        {isBrowserLoading ? (browserStatus.initialized ? 'Cleaning up...': 'Initializing...') : (browserStatus.initialized ? 'Cleanup Browser' : 'Initialize Browser')}
-                      </TooltipContent>
-                    </Tooltip>
-                  </div>
+                       className={`w-1.5 h-1.5 rounded-full mr-2 shrink-0 ${browserStatus.initialized ? 'bg-green-600 animate-glow' : 'bg-gray-400'}`}
+                       title={browserStatus.initialized ? 'Browser Initialized' : 'Browser Not Initialized'}
+                     />
+                     <span className="mr-1 shrink-0">Browser</span>
+                     <span className="mr-1 shrink-0">-</span>
+                     <span className="mr-1 shrink-0">{browserStatus.initialized ? 'Initialized' : 'Not Initialized'}</span>
+                     {browserStatus.initialized && browserStatus.viewport && (
+                       <>
+                         <span className="mr-1 shrink-0">-</span>
+                         <span className="truncate" title={`Viewport: ${browserStatus.viewport.width}x${browserStatus.viewport.height}`}>{browserStatus.viewport.width}×{browserStatus.viewport.height}</span>
+                       </>
+                     )}
+                     <div className="flex-grow"></div>
+                     <Tooltip>
+                       <TooltipTrigger asChild>
+                         <Button
+                           variant="ghost"
+                           size="icon"
+                           className="h-6 w-6 p-0 ml-2"
+                           onClick={browserStatus.initialized ? handleBrowserCleanup : handleBrowserInit}
+                           disabled={isBrowserLoading}
+                         >
+                           {browserStatus.initialized
+                             ? <PowerOff className="h-4 w-4" /> 
+                             : <Power className="h-4 w-4" />
+                           }
+                         </Button>
+                       </TooltipTrigger>
+                       <TooltipContent>
+                         {isBrowserLoading ? (browserStatus.initialized ? 'Cleaning up...': 'Initializing...') : (browserStatus.initialized ? 'Cleanup Browser' : 'Initialize Browser')}
+                       </TooltipContent>
+                     </Tooltip>
+                   </div>
                 </div>
               </footer>
             </div>

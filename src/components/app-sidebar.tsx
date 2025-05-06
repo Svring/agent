@@ -87,11 +87,6 @@ const workspaceChatItems = [
 // Define navigation items for settings
 const settingsNavItems = [
   {
-    title: "SSH Credentials",
-    url: "/settings/ssh",
-    icon: KeyRound,
-  },
-  {
     title: "Provider",
     url: "/settings/provider",
     icon: DatabaseZap,
@@ -535,7 +530,7 @@ export function AppSidebar() {
                                 </div>
                               ) : (
                                 <Link href={sessionPath} className="flex items-center w-full">
-                                  <FolderOpen className="h-4 w-4 mr-2 opacity-70 flex-shrink-0" />
+                                  <FolderOpen className="h-4 w-4 opacity-70 flex-shrink-0" />
                                   <span className="truncate" title={sessionName}>{sessionName}</span>
                                 </Link>
                               )}

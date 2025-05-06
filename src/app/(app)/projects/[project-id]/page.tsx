@@ -249,7 +249,16 @@ export default function ProjectDetailPage() {
               ) : (
                 production_address ? (
                   <div className="p-3 bg-muted/50 border rounded-md">
-                    <p className="font-mono text-sm truncate">{production_address}</p>
+                     {/* Make the address a clickable link */}
+                     <a 
+                       href={production_address.startsWith('http') ? production_address : `https://${production_address}`}
+                       target="_blank" 
+                       rel="noopener noreferrer"
+                       className="font-mono text-sm truncate text-primary hover:underline"
+                       title={`Open ${production_address} in new tab`}
+                     >
+                       {production_address}
+                     </a>
                   </div>
                 ) : (
                   <p className="text-sm text-muted-foreground italic">Not configured.</p>
