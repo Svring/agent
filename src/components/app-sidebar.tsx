@@ -47,8 +47,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 // Import generated types and server actions
 import { User, Project } from '@/payload-types'
 import { getCurrentUser, logoutUser } from '@/db/actions/users-actions'
-import { findProjects, getProjectById } from '@/db/actions/projects-actions'
-import { createSessionForProject } from '@/db/actions/sessions-actions'
+import { findProjects, getProjectById, updateProject } from '@/db/actions/projects-actions'
+import { createSessionForProject, updateSession } from '@/db/actions/sessions-actions'
 import { toast } from 'sonner'
 
 const workspaceChatItems = [
@@ -117,25 +117,35 @@ export function AppSidebar() {
   const [isProjectDetailView, setIsProjectDetailView] = useState(false);
   const [projectId, setProjectId] = useState<string | null>(null);
   const [isCreatingSession, setIsCreatingSession] = useState(false);
+  const [editingSessionId, setEditingSessionId] = useState<string | number | null>(null);
+  const [editingSessionName, setEditingSessionName] = useState<string>("");
+  const inputRef = useRef<HTMLInputElement>(null);
 
   // Refs for the chevron icon and add button to differentiate clicks
   const projectsChevronRef = useRef<SVGSVGElement>(null);
   const addProjectButtonRef = useRef<HTMLButtonElement>(null);
   const addSessionButtonRef = useRef<HTMLButtonElement>(null);
 
+  // NEW state for project renaming
+  const [editingProjectId, setEditingProjectId] = useState<string | number | null>(null);
+  const [editingProjectName, setEditingProjectName] = useState<string>("");
+  const projectInputRef = useRef<HTMLInputElement>(null); // Ref for project input
+
   // Check if we're on a project detail page
   useEffect(() => {
     if (pathname) {
-      // Match /projects/{project-id} but not /projects/create
-      const match = pathname.match(/^\/projects\/([^\/]+)(?:\/.*)?$/);
-      
+      const match = pathname.match(/^\/projects\/([^/]+)(?:\/.*)?$/);
       if (match && match[1] !== 'create') {
         setIsProjectDetailView(true);
         setProjectId(match[1]);
+        setEditingProjectId(null); 
+        setEditingSessionId(null); 
       } else {
         setIsProjectDetailView(false);
         setProjectId(null);
         setCurrentProject(null);
+        setEditingProjectId(null); 
+        setEditingSessionId(null);
       }
     }
   }, [pathname]);
@@ -152,9 +162,15 @@ export function AppSidebar() {
             // Extract sessions
             const sessions = Array.isArray(project.sessions) ? project.sessions : [];
             setProjectSessions(sessions);
+          } else {
+            // Handle project not found, maybe redirect?
+            setCurrentProject(null);
+            setProjectSessions([]);
           }
         } catch (error) {
           console.error('Failed to load project details:', error);
+          setCurrentProject(null);
+          setProjectSessions([]);
         }
       };
       
@@ -277,6 +293,144 @@ export function AppSidebar() {
     }
   };
 
+  // Function to initiate renaming
+  const handleSessionClick = (event: React.MouseEvent, session: any) => {
+    const sessionId = typeof session === 'object' && session !== null ? session.id : session;
+    const sessionName = typeof session === 'object' && session !== null && session.name ? session.name : '';
+    const sessionPath = `/projects/${projectId}/${sessionId}`;
+
+    if (pathname === sessionPath) {
+      event.preventDefault(); // Prevent navigation
+      setEditingProjectId(null); // Ensure project editing is off
+      setEditingSessionId(sessionId);
+      setEditingSessionName(sessionName || `Session ${projectSessions.findIndex(s => (typeof s === 'object' ? s.id : s) === sessionId) + 1}`);
+      // Focus the input field after state updates
+      setTimeout(() => inputRef.current?.focus(), 0);
+    } else {
+      // Allow navigation if it's not the active session
+      router.push(sessionPath);
+    }
+  };
+
+  // Function to save the renamed session
+  const handleRenameSession = async () => {
+    if (!editingSessionId || !editingSessionName.trim()) {
+      setEditingSessionId(null); // Cancel editing if name is empty
+      return;
+    }
+
+    try {
+      const updatedSession = await updateSession(editingSessionId, { name: editingSessionName.trim() });
+      if (updatedSession) {
+        toast.success('Session renamed successfully!');
+        // Update local state to reflect the change
+        setProjectSessions(prevSessions =>
+          prevSessions.map(session => {
+            const currentId = typeof session === 'object' && session !== null ? session.id : session;
+            if (currentId === editingSessionId) {
+              // Ensure we return the full object structure if needed, or update name
+              if (typeof session === 'object' && session !== null) {
+                return { ...session, name: updatedSession.name };
+              }
+              // This case might need adjustment based on how sessions are stored initially
+              return updatedSession; 
+            }
+            return session;
+          })
+        );
+        // Update current project state if its sessions list might include the renamed one
+        if (currentProject && String(currentProject.id) === projectId) {
+            // Check if sessions are populated objects in currentProject
+            if (Array.isArray(currentProject.sessions)) {
+                setCurrentProject(prev => prev ? {
+                     ...prev,
+                     sessions: prev.sessions?.map(s => {
+                         const sId = typeof s === 'object' && s !== null ? s.id : s;
+                         return sId === editingSessionId && typeof s === 'object' && s !== null
+                             ? { ...s, name: updatedSession.name }
+                             : s;
+                     })
+                } : null);
+            }
+        }
+      } else {
+        toast.error('Failed to rename session.');
+      }
+    } catch (error) {
+      console.error("Error renaming session:", error);
+      toast.error('An error occurred while renaming the session.');
+    } finally {
+      setEditingSessionId(null); // Exit editing mode
+    }
+  };
+
+  // Handle input changes
+  const handleInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setEditingSessionName(event.target.value);
+  };
+
+  // Handle Enter key press
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Enter') {
+      handleRenameSession();
+    } else if (event.key === 'Escape') {
+       setEditingSessionId(null); // Cancel editing on Escape
+    }
+  };
+
+  // --- Project Renaming Handlers ---
+  const handleProjectNameClick = (event: React.MouseEvent) => {
+     if (currentProject) {
+       event.preventDefault(); 
+       setEditingSessionId(null); // Ensure session editing is off
+       setEditingProjectId(currentProject.id);
+       setEditingProjectName(currentProject.name || "");
+       setTimeout(() => projectInputRef.current?.focus(), 0);
+     }
+  };
+
+  const handleRenameProject = async () => {
+    if (!editingProjectId || !editingProjectName.trim() || !currentProject) {
+      setEditingProjectId(null);
+      return;
+    }
+    if (editingProjectName.trim() === currentProject.name) {
+       setEditingProjectId(null);
+       return;
+    }
+
+    try {
+      const updatedProject = await updateProject(editingProjectId, { name: editingProjectName.trim() });
+      if (updatedProject) {
+        toast.success('Project renamed successfully!');
+        setCurrentProject(prev => prev ? { ...prev, name: updatedProject.name } : null);
+        setUserProjects(prevProjects => 
+            prevProjects.map(p => p.id === editingProjectId ? { ...p, name: updatedProject.name } : p)
+        );
+      } else {
+        toast.error('Failed to rename project.');
+      }
+    } catch (error) {
+      console.error("Error renaming project:", error);
+      toast.error('An error occurred while renaming the project.');
+    } finally {
+      setEditingProjectId(null);
+    }
+  };
+
+  const handleProjectInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+     setEditingProjectName(event.target.value);
+  };
+
+  const handleProjectKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Enter') {
+      handleRenameProject();
+    } else if (event.key === 'Escape') {
+       setEditingProjectId(null);
+    }
+  };
+  // --- End Project Renaming Handlers ---
+
   return (
     <Sidebar collapsible="icon" variant="inset" className="ml-1">
       <SidebarContent>
@@ -292,85 +446,115 @@ export function AppSidebar() {
             </div>
             
             {/* Current Project Section */}
-            <Collapsible defaultOpen className="group/collapsible">
-              <SidebarGroup>
-                <SidebarGroupLabel asChild>
-                  <CollapsibleTrigger className="flex items-center justify-between w-full px-2 py-1.5 rounded-md text-sm font-medium hover:bg-muted/50 transition-colors">
-                    <div className="flex items-center space-x-2">
-                      <FolderGit2 className="h-4 w-4 text-primary" />
-                      <span className="truncate" title={currentProject.name}>
-                        {currentProject.name}
-                      </span>
-                    </div>
-                    <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-data-[state=open]/collapsible:rotate-180" />
-                  </CollapsibleTrigger>
-                </SidebarGroupLabel>
-                <CollapsibleContent>
-                  <SidebarGroupContent className="list-none">
-                    <SidebarMenu className="list-none">
-                      {/* Project Details */}
-                      <SidebarMenuItem className="list-none">
-                        <SidebarMenuButton asChild>
-                          <Link href={`/projects/${projectId}`} className={pathname === `/projects/${projectId}` ? "text-primary font-medium" : ""}>
-                            <span className="truncate">Overview</span>
-                          </Link>
-                        </SidebarMenuButton>
-                      </SidebarMenuItem>
-                      
-                      {/* Sessions Header with Add Button */}
-                      <div className="flex items-center justify-between px-2 pt-2 pb-1 group/sessionsHeader">
-                        <p className="text-xs font-medium text-muted-foreground">Sessions</p>
-                        <Button 
-                          ref={addSessionButtonRef} 
-                          variant="ghost"
-                          size="icon"
-                          className="h-5 w-5 p-0 opacity-0 group-hover/sessionsHeader:opacity-100 transition-opacity hover:bg-primary/10"
-                          onClick={handleCreateSession}
-                          title="Create new session"
-                          aria-label="Create new session"
-                          disabled={isCreatingSession}
-                        >
-                          {isCreatingSession ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
-                        </Button>
-                      </div>
-                      
-                      {/* Sessions List */}
-                      {projectSessions.length > 0 ? (
-                        projectSessions.map((session, index) => {
-                          const sessionName = typeof session === 'object' && session !== null && session.name
-                            ? session.name
-                            : `Session ${index + 1}`;
-                          const sessionId = typeof session === 'object' && session !== null && session.id
-                            ? session.id
-                            : session;
-                          
-                          const sessionPath = `/projects/${projectId}/${sessionId}`;
-                          const isActive = pathname === sessionPath;
-                          
-                          return (
-                            <SidebarMenuItem key={index} className="list-none">
-                              <SidebarMenuButton asChild>
-                                <Link href={sessionPath} className={isActive ? "text-primary font-medium" : ""}>
-                                  <FolderOpen className="h-4 w-4 mr-2 opacity-70" />
+            <SidebarGroup className="mt-2">
+              {/* Project Header (Name or Input) */}
+              <div className="flex items-center space-x-2 px-2 py-1.5 rounded-md text-sm font-medium hover:bg-muted/50 transition-colors group/projName">
+                <FolderGit2 className="h-4 w-4 text-primary flex-shrink-0" />
+                {editingProjectId === currentProject.id ? (
+                   <Input
+                      ref={projectInputRef}
+                      type="text"
+                      value={editingProjectName}
+                      onChange={handleProjectInputChange}
+                      onKeyDown={handleProjectKeyDown}
+                      onBlur={handleRenameProject}
+                      className="h-6 px-1 py-0 text-sm rounded-sm flex-1 bg-background focus-visible:ring-1 focus-visible:ring-offset-0 focus-visible:ring-ring"
+                   />
+                ) : (
+                  <div 
+                    className="truncate flex-1 cursor-text" 
+                    title="Click to rename project" 
+                    onClick={handleProjectNameClick}
+                  >
+                    {currentProject.name}
+                  </div>
+                )}
+              </div>
+
+              {/* Project Menu Items */}
+              <SidebarGroupContent className="list-none mt-1">
+                <SidebarMenu className="list-none">
+                  {/* Project Overview Link */}
+                  <SidebarMenuItem className="list-none">
+                    <SidebarMenuButton asChild>
+                      <Link href={`/projects/${projectId}`} className={`${pathname === `/projects/${projectId}` ? "text-primary font-medium bg-accent" : "hover:bg-muted/50"}`}>
+                        <span className="truncate">Overview</span> 
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  
+                  {/* Sessions Header with Add Button */}
+                  <div className="flex items-center justify-between px-2 group/sessionsHeader">
+                    <p className="text-xs font-medium text-muted-foreground">Sessions</p> 
+                    <Button 
+                      ref={addSessionButtonRef} 
+                      variant="ghost"
+                      size="icon"
+                      className="h-5 w-5 p-0 opacity-0 group-hover/sessionsHeader:opacity-100 transition-opacity hover:bg-primary/10"
+                      onClick={handleCreateSession}
+                      title="Create new session"
+                      aria-label="Create new session"
+                      disabled={isCreatingSession}
+                    >
+                      {isCreatingSession ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />} 
+                    </Button>
+                  </div>
+                  
+                  {/* Sessions List */}
+                  {projectSessions.length > 0 ? (
+                    projectSessions.map((session, index) => {
+                      const sessionId = typeof session === 'object' && session !== null && session.id ? session.id : session;
+                      const sessionName = typeof session === 'object' && session !== null && session.name ? session.name : `Session ${index + 1}`;
+                      const sessionPath = `/projects/${projectId}/${sessionId}`;
+                      const isActive = pathname === sessionPath;
+                      const isEditingSession = editingSessionId === sessionId;
+
+                      return (
+                        <SidebarMenuItem key={sessionId || index} className="list-none"> 
+                          {isEditingSession ? (
+                             <Input
+                                ref={inputRef}
+                                type="text"
+                                value={editingSessionName}
+                                onChange={handleInputChange} 
+                                onKeyDown={handleKeyDown}    
+                                onBlur={handleRenameSession} 
+                                className="h-7 px-2 py-1 text-sm rounded-md bg-background focus-visible:ring-1 focus-visible:ring-offset-0 focus-visible:ring-ring"
+                              />
+                          ) : (
+                            <SidebarMenuButton 
+                              asChild={!isActive} 
+                              onClick={isActive ? (e) => handleSessionClick(e, session) : undefined}
+                              className={`${isActive ? "text-primary font-medium bg-accent" : ""} ${isActive ? "cursor-text hover:bg-accent" : "hover:bg-muted/50"}`}
+                              title={isActive ? "Click to rename" : sessionName}
+                            >
+                              {isActive ? (
+                                <div className="flex items-center w-full">
+                                  <FolderOpen className="h-4 w-4 mr-2 opacity-70 flex-shrink-0" />
+                                  <span className="truncate" title={sessionName}>{sessionName}</span>
+                                </div>
+                              ) : (
+                                <Link href={sessionPath} className="flex items-center w-full">
+                                  <FolderOpen className="h-4 w-4 mr-2 opacity-70 flex-shrink-0" />
                                   <span className="truncate" title={sessionName}>{sessionName}</span>
                                 </Link>
-                              </SidebarMenuButton>
-                            </SidebarMenuItem>
-                          );
-                        })
-                      ) : (
-                        <SidebarMenuItem className="list-none">
-                          <SidebarMenuButton onClick={handleCreateSession} disabled={isCreatingSession} className="w-full justify-start">
-                            {isCreatingSession ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Plus className="h-4 w-4 mr-2" />} 
-                            <span>{isCreatingSession ? 'Creating...' : 'Create Session'}</span>
-                          </SidebarMenuButton>
+                              )}
+                            </SidebarMenuButton>
+                          )}
                         </SidebarMenuItem>
-                      )}
-                    </SidebarMenu>
-                  </SidebarGroupContent>
-                </CollapsibleContent>
-              </SidebarGroup>
-            </Collapsible>
+                      );
+                    })
+                  ) : (
+                    <SidebarMenuItem className="list-none pl-6"> 
+                      <SidebarMenuButton onClick={handleCreateSession} disabled={isCreatingSession} className="w-full justify-start">
+                        {isCreatingSession ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Plus className="h-4 w-4 mr-2" />} 
+                        <span>{isCreatingSession ? 'Creating...' : 'Create Session'}</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  )}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
           </>
         )}
         

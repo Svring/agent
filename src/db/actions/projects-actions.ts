@@ -5,6 +5,7 @@ import configPromise from '@payload-config';
 import type { Project } from '@/payload-types'; // Assuming Project type is generated
 import { headers } from 'next/headers';
 import { revalidatePath } from 'next/cache';
+import type { User } from "@/payload-types";
 
 const getPayloadClient = async () => {
   const payload = await getPayload({
@@ -92,17 +93,30 @@ export const getProjectById = async (id: string | number): Promise<Project | nul
   }
 };
 
-export const updateProject = async (id: string | number, data: Partial<Omit<Project, 'id' | 'createdAt' | 'updatedAt'>>): Promise<Project | null> => {
+/**
+ * Update an existing project.
+ * @param projectId - The ID of the project to update.
+ * @param data - The partial data to update (e.g., { name: 'New Name' }).
+ * @returns The updated project or null if there's an error.
+ */
+export const updateProject = async (projectId: string | number, data: Partial<Omit<Project, 'id' | 'createdAt' | 'updatedAt'>>): Promise<Project | null> => {
   try {
     const payload = await getPayloadClient();
     const updatedProject = await payload.update({
       collection: 'projects',
-      id: id,
-      data: data as any,
+      id: projectId,
+      data: data as any, // Cast to any if needed for Payload compatibility
     });
+
+    if (updatedProject) {
+      // Revalidate the specific project page and the projects list page
+      revalidatePath(`/projects/${projectId}`);
+      revalidatePath('/projects');
+    }
+
     return updatedProject;
   } catch (error) {
-    console.error(`Error updating project with ID ${id}:`, error);
+    console.error(`Error updating project with ID ${projectId}:`, error);
     return null;
   }
 };

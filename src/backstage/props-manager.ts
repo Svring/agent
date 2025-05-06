@@ -1,4 +1,4 @@
-import { NodeSSH } from 'node-ssh';
+import { NodeSSH, SSHExecCommandOptions } from 'node-ssh';
 import fs from 'fs';
 import path from 'path';
 import dotenv from 'dotenv';
@@ -11,6 +11,14 @@ interface CommandLogEntry {
   stdout?: string;
   stderr?: string;
   success: boolean;
+}
+
+interface SSHCredentials {
+  host?: string;
+  port?: number;
+  username?: string;
+  password?: string; // Add password
+  privateKeyPath?: string; // Keep privateKeyPath for fallback/env loading
 }
 
 /**
@@ -26,6 +34,7 @@ export class PropsManager {
   private username: string = '';
   private port: number = 22;
   private commandLog: CommandLogEntry[] = []; // Array to store command logs
+  private currentPassword?: string; // Store password temporarily if used for connection
 
   public constructor() {
     this.ssh = new NodeSSH();
@@ -40,6 +49,7 @@ export class PropsManager {
     this.username = process.env.SSH_USERNAME || '';
     this.port = process.env.SSH_PORT ? parseInt(process.env.SSH_PORT, 10) : 22;
     this.privateKeyPath = process.env.SSH_PRIVATE_KEY_PATH || '';
+    this.currentPassword = undefined; // Reset password when loading from env
     console.log('SSH credentials loaded from .env');
   }
 
@@ -98,7 +108,7 @@ export class PropsManager {
       console.error('Failed to persist SSH credentials to .env:', err);
       return { success: false, message: 'Failed to persist SSH credentials to .env file.' };
     }
-    return { success: true, message: 'SSH credentials updated and persisted to .env file.' };
+    return { success: true, message: 'SSH credentials (excluding password) updated and persisted to .env file.' };
   }
 
   /**
@@ -114,66 +124,90 @@ export class PropsManager {
   }
 
   /**
-   * Initialize SSH connection
+   * Initialize SSH connection, optionally with specific credentials.
+   * If credentials are provided, they override .env settings for this connection attempt.
+   * Prioritizes password from credentials, falls back to privateKeyPath (either from credentials or .env).
    */
-  public async initializeSSH(): Promise<{ success: boolean; message: string; data?: any }> {
+  public async initializeSSH(credentials?: SSHCredentials): Promise<{ success: boolean; message: string; data?: any }> {
     if (this.isConnected && this.ssh.isConnected()) {
       console.log('SSH already connected.');
       return { success: true, message: 'Already connected' };
     }
-    // Reload credentials from .env before initializing connection
-    this.loadCredentialsFromEnv();
-    // Check if credentials are set
-    if (!this.host || !this.username || !this.privateKeyPath) {
-      const errorMsg = 'SSH credentials are not properly configured. Please check your .env file.';
+
+    // Determine connection details
+    const useCreds = credentials && credentials.host && credentials.username;
+    const host = useCreds ? credentials.host! : this.host;
+    const username = useCreds ? credentials.username! : this.username;
+    const port = useCreds ? credentials.port || 22 : this.port;
+    const password = useCreds ? credentials.password : undefined;
+    const privateKeyPath = useCreds
+       ? credentials.privateKeyPath || (password ? undefined : this.privateKeyPath)
+       : this.privateKeyPath;
+
+    console.log(`Initializing SSH with: host=${host}, port=${port}, username=${username}, usingPassword=${!!password}, privateKeyPath=${privateKeyPath || 'none'}`);
+
+    // Check if connection parameters are sufficient
+    if (!host || !username || (!password && !privateKeyPath)) {
+      const errorMsg = 'SSH connection details (host, username, and password/privateKeyPath) are missing or incomplete.';
       console.error(`❌ ${errorMsg}`);
       return { success: false, message: errorMsg };
     }
-    // Check if the key file exists
-    if (!fs.existsSync(this.privateKeyPath)) {
-      const errorMsg = `Private key file not found at: ${this.privateKeyPath}`;
-      console.error(`❌ ${errorMsg}`);
-      return { success: false, message: errorMsg };
+
+    let privateKeyContent: string | undefined = undefined;
+    if (!password && privateKeyPath) {
+       if (!fs.existsSync(privateKeyPath)) {
+         const errorMsg = `Private key file not found at: ${privateKeyPath}`;
+         console.error(`❌ ${errorMsg}`);
+         return { success: false, message: errorMsg };
+       }
+       try {
+         privateKeyContent = fs.readFileSync(privateKeyPath, 'utf8');
+       } catch (readErr) {
+         const errorMsg = `Failed to read private key file: ${privateKeyPath}`;
+         console.error(`❌ ${errorMsg}`, readErr);
+         return { success: false, message: `${errorMsg}: ${readErr instanceof Error ? readErr.message : String(readErr)}` };
+       }
+    } else if (!password && !privateKeyPath) {
+        return { success: false, message: 'No password or private key path available for authentication.' };
     }
-    // Read the private key content
-    let privateKeyContent: string;
+
     try {
-      privateKeyContent = fs.readFileSync(this.privateKeyPath, 'utf8');
-    } catch (readErr) {
-      const errorMsg = `Failed to read private key file: ${this.privateKeyPath}`;
-      console.error(`❌ ${errorMsg}`, readErr);
-      return { success: false, message: `${errorMsg}: ${readErr instanceof Error ? readErr.message : String(readErr)}` };
-    }
-    try {
-      console.log(`Attempting SSH connection to ${this.host}:${this.port}...`);
+      console.log(`Attempting SSH connection to ${host}:${port}...`);
       await this.ssh.connect({
-        host: this.host,
-        username: this.username,
-        port: this.port,
-        privateKey: privateKeyContent,
+        host: host,
+        username: username,
+        port: port,
+        ...(password ? { password: password } : { privateKey: privateKeyContent }), // Use password OR privateKey
       });
       this.isConnected = true;
+      // Store details used for this successful connection temporarily
+      this.host = host;
+      this.username = username;
+      this.port = port;
+      this.currentPassword = password;
+      this.privateKeyPath = password ? '' : privateKeyPath || ''; 
+
       console.log('✅ SSH Connected!');
+
       // Get initial working directory
       try {
         const pwdResult = await this.ssh.execCommand('pwd');
         if (pwdResult.stdout && !pwdResult.stderr) {
-          // Clean the stdout to ensure it's a single line path
           const cleanedCwd = pwdResult.stdout.split('\n').filter(line => line.trim().length > 0)[0]?.trim();
           this.currentWorkingDirectory = cleanedCwd || null;
           console.log(`Initial working directory set to: ${this.currentWorkingDirectory}`);
         } else {
           console.warn(`Could not determine initial working directory. stderr: ${pwdResult.stderr}`);
-          this.currentWorkingDirectory = null; // Indicate unknown CWD
+          this.currentWorkingDirectory = null;
         }
       } catch (pwdErr) {
         console.error('❌ Failed to get initial working directory:', pwdErr);
-        this.currentWorkingDirectory = null; // Indicate unknown CWD
+        this.currentWorkingDirectory = null;
       }
       return { success: true, message: 'SSH connection successful' };
     } catch (err) {
       this.isConnected = false;
-      this.currentWorkingDirectory = null; // Reset CWD on connection failure
+      this.currentWorkingDirectory = null;
       const errorMsg = `SSH Connection failed`;
       console.error(`❌ ${errorMsg}:`, err);
       return { success: false, message: `${errorMsg}: ${err instanceof Error ? err.message : String(err)}` };
@@ -195,7 +229,10 @@ export class PropsManager {
       console.log('Disconnecting SSH connection...');
       this.ssh.dispose();
       this.isConnected = false;
-      this.currentWorkingDirectory = null; // Reset CWD on disconnect
+      this.currentWorkingDirectory = null;
+      this.currentPassword = undefined; // Clear temp password on disconnect
+      // Optionally reload from .env here 
+      // this.loadCredentialsFromEnv(); 
     }
   }
 

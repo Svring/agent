@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Toggle } from "@/components/ui/toggle"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { toast } from 'sonner';
 
 import useSWR from 'swr';
 
@@ -28,6 +29,8 @@ import { PlaywrightContext } from '@/context/PlaywrightContext';
 import { CounterMessagesSchema, PlanStep } from '@/app/(app)/api/opera/counterfeit/schemas';
 import { generateId } from 'ai';
 import { getSessionMessagesForChat } from '@/db/actions/sessions-actions';
+import { Project } from '@/payload-types';
+import { getProjectById } from '@/db/actions/projects-actions';
 
 // Define a generic fetcher function for useSWR
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
@@ -49,7 +52,29 @@ export default function SessionDetailPage({ params }: SessionDetailPageProps) {
   const [apiRoute, setApiRoute] = useState<string>('/api/opera/chat'); // State for API route
   const [initialMessages, setInitialMessages] = useState<any[]>([]);
   const [isLoadingMessages, setIsLoadingMessages] = useState(true);
+  const [projectDetails, setProjectDetails] = useState<Project | null>(null);
+  const [isInitializingSSH, setIsInitializingSSH] = useState(false);
 
+  // Fetch project details on mount
+  useEffect(() => {
+    if (projectId) {
+      getProjectById(projectId)
+        .then(data => {
+          if (data) {
+            setProjectDetails(data);
+          } else {
+            console.error("Project details not found for ID:", projectId);
+            toast.error("Could not load project details for SSH configuration.");
+          }
+        })
+        .catch(err => {
+          console.error("Error fetching project details:", err);
+          toast.error("Error fetching project details.");
+        });
+    }
+  }, [projectId]);
+
+  // Load initial chat messages
   useEffect(() => {
     const loadMessages = async () => {
       setIsLoadingMessages(true);
@@ -100,7 +125,7 @@ export default function SessionDetailPage({ params }: SessionDetailPageProps) {
     tools: { key: string, label: string }[];
   }>('/api/casting', fetcher);
 
-  const { data: sshData, error: sshError } = useSWR<{
+  const { data: sshData, error: sshError, mutate: mutateSshStatus } = useSWR<{
     status: 'Connected' | 'Disconnected';
     cwd: string | null;
     credentials: any; 
@@ -149,15 +174,17 @@ export default function SessionDetailPage({ params }: SessionDetailPageProps) {
         cwd: sshData.cwd
       };
       if (newStatus.connected !== sshStatus.connected || newStatus.cwd !== sshStatus.cwd) {
+        console.log("SWR updating SSH status:", newStatus);
         setSshStatus(newStatus);
       }
     } else if (sshError) {
       console.error('Error fetching SSH status via SWR:', sshError);
       if (sshStatus.connected) {
+         console.log("SWR error, setting SSH status to disconnected.");
          setSshStatus({ connected: false, cwd: null });
       }
     }
-  }, [sshData, sshError, sshStatus]);
+  }, [sshData, sshError]);
 
     const fetchBrowserStatus = useCallback(async () => {
     try {
@@ -192,29 +219,76 @@ export default function SessionDetailPage({ params }: SessionDetailPageProps) {
     return () => clearInterval(intervalId);
   }, [fetchBrowserStatus, browserStatus.initialized, isBrowserLoading]); // Added handleBrowserInit to deps
 
+  // --- Initial SSH Connection Attempt --- 
+  useEffect(() => {
+    if (!sshStatus.connected && !isInitializingSSH && projectDetails) {
+       console.log("Attempting initial SSH connection with project details...");
+       handleSshToggle(true);
+    }
+  }, [projectDetails, sshStatus.connected]);
 
-  const handleSshToggle = async () => {
-    setIsConnecting(true);
-    const action = sshStatus.connected ? 'disconnect' : 'initialize';
+  const handleSshToggle = async (useProjectCredentials = false) => {
+    if (isConnecting || isInitializingSSH) return; 
+
+    const targetStateConnected = !sshStatus.connected; 
+    const action = targetStateConnected ? 'initialize' : 'disconnect';
+    
+    console.log(`handleSshToggle called: action=${action}, useProjectCredentials=${useProjectCredentials}`);
+    
+    if (action === 'initialize') {
+      setIsInitializingSSH(true);
+    } else {
+      setIsConnecting(true); 
+    }
+
     try {
+      let requestBody: { action: string; host?: string; port?: number; username?: string; password?: string } = { action };
+
+      if (action === 'initialize') {
+        if (useProjectCredentials && projectDetails?.dev_address && projectDetails.dev_address.length > 0) {
+          const devEnv = projectDetails.dev_address[0];
+          if (devEnv && devEnv.address && devEnv.username) {
+            console.log("Using project dev credentials for SSH init:", devEnv);
+            requestBody = {
+              ...requestBody,
+              host: devEnv.address,
+              port: devEnv.port ?? undefined,
+              username: devEnv.username,
+              password: devEnv.password ?? undefined,
+            };
+          } else {
+             console.warn("First dev environment details incomplete, falling back to default init.");
+          }
+        } else {
+           console.log("Initializing SSH with default .env credentials.");
+        }
+      }
+
       const response = await fetch('/api/props', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action })
+        body: JSON.stringify(requestBody)
       });
+
+      await mutateSshStatus(); 
+
       if (!response.ok) {
         const errorData = await response.json();
         console.error(`Failed to ${action} SSH:`, errorData.message);
+        toast.error(`SSH ${action} failed: ${errorData.message || 'Unknown error'}`);
       } else {
-        console.log(`SSH ${action} successful`);
-        // Manually update status after successful action or rely on SWR refetch
-        // Consider calling your SWR mutate function here if using one
-        // For now, we assume SWR will eventually catch up
+        const data = await response.json();
+        console.log(`SSH ${action} request successful: ${data.message}`);
+        toast.success(`SSH ${action} successful`);
       }
     } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
       console.error(`Error during SSH ${action}:`, error);
+      toast.error(`Error during SSH ${action}: ${errorMsg}`);
+       await mutateSshStatus(); 
     } finally {
-      setIsConnecting(false);
+       setIsInitializingSSH(false); 
+       setIsConnecting(false);
     }
   };
 
@@ -261,6 +335,10 @@ export default function SessionDetailPage({ params }: SessionDetailPageProps) {
         body: JSON.stringify({ action: 'init', width, height })
       });
       await fetchBrowserStatus();
+      toast.success("Browser initialized.");
+    } catch (error) {
+        toast.error("Failed to initialize browser.");
+        console.error(error);
     } finally {
       setIsBrowserLoading(false);
     }
@@ -275,6 +353,10 @@ export default function SessionDetailPage({ params }: SessionDetailPageProps) {
         body: JSON.stringify({ action: 'cleanup' })
       });
       await fetchBrowserStatus();
+      toast.info("Browser cleaned up.");
+    } catch(error) {
+        toast.error("Failed to cleanup browser.");
+        console.error(error);
     } finally {
       setIsBrowserLoading(false);
     }
@@ -329,54 +411,57 @@ export default function SessionDetailPage({ params }: SessionDetailPageProps) {
                <div className="flex-1 overflow-auto w-full">
                  <ScrollArea className="h-full w-full px-3 pb-2">
                    <div className="space-y-2 h-full w-full">
-                     {messages.map((m, index) => {
-                       const isLastMessage = index === messages.length - 1;
-                        if (isLastMessage && validatedData) {
-                          if (validatedData.type === 'success') {
-                            // Adjust index based on how finalMessages should be displayed
-                            return validatedData.data.finalMessages.slice(1).map((finalMsg, finalIndex) => (
-                              <MessageBubble
-                                key={finalMsg.id || `final-${finalIndex}`}
-                                m={finalMsg as any}
-                                openStates={openStates}
-                                expandedResults={expandedResults}
-                                toggleOpen={toggleOpen}
-                                toggleExpandResult={toggleExpandResult}
-                                // Potentially adjust index for data assignment
-                                data={finalIndex === validatedData.data.finalMessages.length - 2 ? { plan: validatedData.data.plan } : undefined} 
-                                apiRoute={apiRoute}
-                                // Potentially adjust index for last message check
-                                isLastMessage={isLastMessage && finalIndex === validatedData.data.finalMessages.length - 2} 
-                              />
-                            ));
-                          } else if (validatedData.type === 'error') {
-                            return (
-                              <div key={`${m.id}-error`} className="flex items-start gap-2 w-full justify-start">
-                                <Avatar className="border">
-                                  <AvatarFallback><Bot /></AvatarFallback>
-                                </Avatar>
-                                <div className="space-y-2 break-words overflow-hidden w-full bg-destructive/10 text-destructive rounded-lg p-3">
-                                  <p className="font-semibold text-sm mb-2">Error:</p>
-                                  <p className="text-xs">{validatedData.message}</p>
-                                </div>
-                              </div>
-                            );
-                          }
-                        }
-                        return (
-                          <MessageBubble
-                            key={m.id}
-                            m={m}
-                            openStates={openStates}
-                            expandedResults={expandedResults}
-                            toggleOpen={toggleOpen}
-                            toggleExpandResult={toggleExpandResult}
-                            data={undefined}
-                            apiRoute={apiRoute}
-                            isLastMessage={isLastMessage}
-                          />
-                        );
-                     })}
+                     {isLoadingMessages ? (
+                          <div className="flex justify-center items-center h-full">
+                              <p className="text-muted-foreground">Loading messages...</p>
+                          </div>
+                      ) : (
+                        messages.map((m, index) => {
+                          const isLastMessage = index === messages.length - 1;
+                           if (isLastMessage && validatedData) {
+                              if (validatedData.type === 'success') {
+                                return validatedData.data.finalMessages.slice(1).map((finalMsg, finalIndex) => (
+                                  <MessageBubble
+                                    key={finalMsg.id || `final-${finalIndex}`}
+                                    m={finalMsg as any}
+                                    openStates={openStates}
+                                    expandedResults={expandedResults}
+                                    toggleOpen={toggleOpen}
+                                    toggleExpandResult={toggleExpandResult}
+                                    data={finalIndex === validatedData.data.finalMessages.length - 2 ? { plan: validatedData.data.plan } : undefined} 
+                                    apiRoute={apiRoute}
+                                    isLastMessage={isLastMessage && finalIndex === validatedData.data.finalMessages.length - 2} 
+                                  />
+                                ));
+                              } else if (validatedData.type === 'error') {
+                                return (
+                                  <div key={`${m.id}-error`} className="flex items-start gap-2 w-full justify-start">
+                                    <Avatar className="border">
+                                      <AvatarFallback><Bot /></AvatarFallback>
+                                    </Avatar>
+                                    <div className="space-y-2 break-words overflow-hidden w-full bg-destructive/10 text-destructive rounded-lg p-3">
+                                      <p className="font-semibold text-sm mb-2">Error:</p>
+                                      <p className="text-xs">{validatedData.message}</p>
+                                    </div>
+                                  </div>
+                                );
+                              }
+                           }
+                           return (
+                             <MessageBubble
+                               key={m.id}
+                               m={m}
+                               openStates={openStates}
+                               expandedResults={expandedResults}
+                               toggleOpen={toggleOpen}
+                               toggleExpandResult={toggleExpandResult}
+                               data={undefined}
+                               apiRoute={apiRoute}
+                               isLastMessage={isLastMessage}
+                             />
+                           );
+                        })
+                      )}
                     <div ref={messagesEndRef} />
                   </div>
                 </ScrollArea>
@@ -421,13 +506,14 @@ export default function SessionDetailPage({ params }: SessionDetailPageProps) {
                       </div>
                        <div className="flex items-center">
                         <Tooltip>
-                          <TooltipTrigger>
+                          <TooltipTrigger asChild>
                             {status !== 'ready' ? (
                               <Button
                                 variant="ghost"
                                 size="icon"
                                 className="h-6 w-6"
                                 onClick={stop}
+                                aria-label="Stop generating"
                               >
                                 <Square />
                               </Button>
@@ -438,6 +524,7 @@ export default function SessionDetailPage({ params }: SessionDetailPageProps) {
                                 size="icon"
                                 className="h-6 w-6"
                                 disabled={!input.trim() || status !== 'ready'}
+                                aria-label="Send message"
                               >
                                 <Send />
                               </Button>
@@ -467,13 +554,13 @@ export default function SessionDetailPage({ params }: SessionDetailPageProps) {
                     )}
                     <div className="flex-grow"></div>
                     <Tooltip>
-                      <TooltipTrigger>
+                      <TooltipTrigger asChild>
                         <Button
                           variant="ghost"
                           size="icon"
                           className="h-6 w-6 p-0 ml-2"
-                          onClick={handleSshToggle}
-                          disabled={isConnecting}
+                          onClick={() => handleSshToggle()}
+                          disabled={isConnecting || isInitializingSSH}
                         >
                           {sshStatus.connected
                             ? <PowerOff />
@@ -482,7 +569,7 @@ export default function SessionDetailPage({ params }: SessionDetailPageProps) {
                         </Button>
                       </TooltipTrigger>
                       <TooltipContent>
-                        {sshStatus.connected ? 'Disconnect SSH' : 'Connect SSH'}
+                        {isInitializingSSH ? 'Initializing...' : isConnecting ? 'Disconnecting...' : sshStatus.connected ? 'Disconnect SSH' : 'Connect SSH'}
                       </TooltipContent>
                     </Tooltip>
                   </div>
@@ -503,7 +590,7 @@ export default function SessionDetailPage({ params }: SessionDetailPageProps) {
                     )}
                     <div className="flex-grow"></div>
                     <Tooltip>
-                      <TooltipTrigger>
+                      <TooltipTrigger asChild>
                         <Button
                           variant="ghost"
                           size="icon"
@@ -511,14 +598,11 @@ export default function SessionDetailPage({ params }: SessionDetailPageProps) {
                           onClick={browserStatus.initialized ? handleBrowserCleanup : handleBrowserInit}
                           disabled={isBrowserLoading}
                         >
-                          {browserStatus.initialized
-                            ? <PowerOff />
-                            : <Power />
-                          }
+                          {isBrowserLoading ? (browserStatus.initialized ? 'Cleaning up...': 'Initializing...') : (browserStatus.initialized ? 'Cleanup Browser' : 'Initialize Browser')}
                         </Button>
                       </TooltipTrigger>
                       <TooltipContent>
-                        {browserStatus.initialized ? 'Cleanup Browser' : 'Initialize Browser'}
+                        {isBrowserLoading ? (browserStatus.initialized ? 'Cleaning up...': 'Initializing...') : (browserStatus.initialized ? 'Cleanup Browser' : 'Initialize Browser')}
                       </TooltipContent>
                     </Tooltip>
                   </div>
