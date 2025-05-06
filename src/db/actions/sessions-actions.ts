@@ -192,19 +192,31 @@ export const getSessionMessagesForChat = async (sessionId: string | number): Pro
           role: msg.role || 'assistant',
           parts: msg.parts || [],
           annotations: msg.annotations || [],
-          createdAt: msg.createdAt ? new Date(msg.createdAt) : undefined,
+          // createdAt is now expected to always exist on msg from DB due to schema changes
+          createdAt: new Date(msg.createdAt), 
         };
 
         // Try to use rawData if available as it already might be properly formatted
         if (msg.rawData) {
           // If rawData exists and is already validated by the schema (during save)
-          return msg.rawData;
+          // Ensure rawData.createdAt is a Date object if it comes from JSON
+          if (typeof msg.rawData.createdAt === 'string') {
+            msg.rawData.createdAt = new Date(msg.rawData.createdAt);
+          }
+          // Validate rawData against MessageSchema to ensure it conforms, especially createdAt
+          const rawDataValidationResult = MessageSchema.safeParse(msg.rawData);
+          if (rawDataValidationResult.success) {
+            return rawDataValidationResult.data;
+          } else {
+            console.warn(`Message ${msg.id} (rawData) failed validation:`, rawDataValidationResult.error.flatten());
+            // Fallback to formattedMessage if rawData is invalid
+          }
         }
 
         // Validate against MessageSchema
         const validationResult = MessageSchema.safeParse(formattedMessage);
         if (!validationResult.success) {
-          console.warn(`Message ${msg.id} failed validation:`, validationResult.error);
+          console.warn(`Message ${msg.id} (formatted) failed validation:`, validationResult.error.flatten());
           return null; // Skip invalid messages
         }
 
@@ -260,8 +272,15 @@ export const saveSessionMessages = async (sessionId: string | number, messages: 
 
     // --- Process Each Message --- 
     for (const message of messages) {
-      const { session: _messageSession, ...messageWithoutSession } = message;
-      const validationResult = MessageSchema.safeParse(messageWithoutSession);
+      const { session: _messageSession, ...messageDataFromInput } = message;
+
+      // Ensure createdAt is a Date object before validation
+      let preProcessedMessageData = { ...messageDataFromInput };
+      if (preProcessedMessageData.createdAt && typeof preProcessedMessageData.createdAt === 'string') {
+        preProcessedMessageData.createdAt = new Date(preProcessedMessageData.createdAt);
+      }
+
+      const validationResult = MessageSchema.safeParse(preProcessedMessageData);
       if (!validationResult.success) {
         console.warn(`Skipping save for invalid message structure in session ${sessionId}:`, validationResult.error.flatten());
         continue; 

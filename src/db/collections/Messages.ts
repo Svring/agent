@@ -15,6 +15,13 @@ export const Messages: CollectionConfig = {
     {
       name: 'createdAt',
       type: 'date',
+      required: true,
+      admin: {
+        date: {
+          pickerAppearance: 'dayAndTime',
+        },
+        position: 'sidebar',
+      },
     },
     {
       name: 'content',
@@ -82,10 +89,17 @@ export const Messages: CollectionConfig = {
   ],
   hooks: {
     beforeChange: [
-      ({ data }) => {
+      ({ data, req, operation }) => {
         // Set messageId to the id field from MessageSchema if not already set
         if (data.rawData && data.rawData.id && !data.messageId) {
           data.messageId = data.rawData.id;
+        }
+        // Ensure createdAt is set, especially for new messages
+        if (operation === 'create' && !data.createdAt) {
+          data.createdAt = new Date().toISOString();
+        } else if (data.rawData && data.rawData.createdAt && !data.createdAt) {
+          // If rawData has createdAt and data.createdAt is not set (e.g. during an update where it wasn't provided)
+          data.createdAt = new Date(data.rawData.createdAt).toISOString();
         }
         return data;
       }

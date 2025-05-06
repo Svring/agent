@@ -66,7 +66,7 @@ const UIPartSchema = z.union([
 
 export const MessageSchema = z.object({
   id: z.string(),
-  createdAt: z.date().optional(),
+  createdAt: z.date(),
   content: z.string().describe("Fallback text content."),
   role: z.enum(['system', 'user', 'assistant', 'data']), // Keeping 'data' role as per original type
   annotations: z.array(z.any()).optional().describe("Server-added annotations."),

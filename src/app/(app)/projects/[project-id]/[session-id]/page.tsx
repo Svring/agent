@@ -1,6 +1,6 @@
 'use client';
 
-import { useChat } from '@ai-sdk/react';
+import { useChat, type Message } from '@ai-sdk/react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useRef, useState, useEffect, useCallback } from 'react';
 import React from 'react';
@@ -224,26 +224,27 @@ export default function SessionDetailPage({ params }: SessionDetailPageProps) {
 
   const customHandleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const userMessage: Message = { // Use Message from @ai-sdk/react or your defined type
+      id: generateId(),
+      role: 'user',
+      content: input,
+      parts: [
+        {
+          type: 'text',
+          text: input
+        }
+      ],
+      createdAt: new Date(),
+    };
+
     handleSubmit(e, {
       // Pass projectId and sessionId in the main body object
       body: {
-        messages: [
-          {
-            id: generateId(),
-            role: 'user',
-            content: input,
-            parts: [
-              {
-                type: 'text',
-                text: input
-              }
-            ]
-          }
-        ],
+        messages: [userMessage], // Pass the constructed userMessage
         model: selectedModel,
         tools: selectedTools,
-        projectId: projectId, // Pass projectId
-        sessionId: sessionId, // Pass sessionId
+        projectId: projectId,
+        sessionId: sessionId,
         customInfo: `The current active page is Context: ${activeContextId}, Page: ${activePageId || 'unknown'}.`
       }
     });

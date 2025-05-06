@@ -11,7 +11,8 @@ import {
   Plus,
   ArrowLeft,
   FolderOpen,
-  Loader2
+  Loader2,
+  Database
 } from "lucide-react"
 import Link from "next/link"
 import { useRouter, usePathname } from "next/navigation"
@@ -75,6 +76,11 @@ const workspaceChatItems = [
     title: "Gallery",
     url: "/trials/gallery",
     icon: Image,
+  },
+  {
+    title: "Indexer",
+    url: "/trials/indexer",
+    icon: Database,
   },
 ]
 
