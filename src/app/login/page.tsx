@@ -1,19 +1,20 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useId } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { 
-  Card, 
-  CardContent, 
-  CardDescription, 
-  CardFooter, 
-  CardHeader, 
-  CardTitle 
-} from '@/components/ui/card'
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { useTheme } from '@/components/theme-provider'
 import { Moon, Sun } from 'lucide-react'
@@ -26,6 +27,7 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(searchParams.get('error'))
   const [isLoading, setIsLoading] = useState(false)
   const { theme, setTheme } = useTheme()
+  const id = useId(); // For unique form element IDs
 
   const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -50,11 +52,9 @@ export default function LoginPage() {
         throw new Error(data.message || 'Login failed')
       }
 
-      // On successful login, Payload typically sets a cookie.
-      // Redirect the user. Check if there's a redirect param or default to account.
-      const redirectUrl = searchParams.get('redirect') || '/' // Default to home or account page
+      const redirectUrl = searchParams.get('redirect') || '/' 
       router.push(redirectUrl)
-      router.refresh() // Refresh server components
+      router.refresh()
     } catch (err: any) {
       console.error(err)
       setError(err.message || 'An unexpected error occurred.')
@@ -70,70 +70,100 @@ export default function LoginPage() {
         size="icon"
         className="absolute right-4 top-4 rounded-full"
         onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+        aria-label="Toggle theme"
       >
         {theme === 'dark' ? <Sun className="h-[1.2rem] w-[1.2rem]" /> : <Moon className="h-[1.2rem] w-[1.2rem]" />}
       </Button>
 
-      <Card className="w-full max-w-md p-4">
-        <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-bold text-center">Welcome back</CardTitle>
-        </CardHeader>
-        
-        <CardContent>
-          {/* {error && (
-            <Alert variant="destructive" className="mb-4">
+      <Dialog>
+        <DialogTrigger asChild>
+          <Button variant="outline">Sign in</Button>
+        </DialogTrigger>
+        <DialogContent className="sm:max-w-md">
+          <div className="flex flex-col items-center gap-2 pt-4">
+            <div
+              className="flex size-11 shrink-0 items-center justify-center rounded-full border border-border"
+              aria-hidden="true"
+            >
+              <svg
+                className="stroke-zinc-800 dark:stroke-zinc-100"
+                xmlns="http://www.w3.org/2000/svg"
+                width="20"
+                height="20"
+                viewBox="0 0 32 32"
+                aria-hidden="true"
+              >
+                <circle cx="16" cy="16" r="12" fill="none" strokeWidth="8" />
+              </svg>
+            </div>
+            <DialogHeader className="text-center">
+              <DialogTitle className="sm:text-center">Welcome back</DialogTitle>
+              <DialogDescription className="sm:text-center">
+                Enter your credentials to login to your account.
+              </DialogDescription>
+            </DialogHeader>
+          </div>
+
+          {error && (
+            <Alert variant="destructive" className="mt-4">
               <AlertDescription>
                 {error}
               </AlertDescription>
             </Alert>
-          )} */}
+          )}
           
-          <form onSubmit={onSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                placeholder="you@example.com"
-                disabled={isLoading}
-              />
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="password">Password</Label>
-                {/* Optional: Password reset link */}
-                {/* <Link href="/forgot-password" className="text-sm font-medium text-primary hover:underline">
-                  Forgot password?
-                </Link> */}
+          <form onSubmit={onSubmit} className="space-y-5 pt-2">
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor={`${id}-email`}>Email</Label>
+                <Input 
+                  id={`${id}-email`} 
+                  placeholder="hi@yourcompany.com" 
+                  type="email" 
+                  required 
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  disabled={isLoading}
+                />
               </div>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                placeholder="••••••••"
-                disabled={isLoading}
-              />
+              <div className="space-y-2">
+                <Label htmlFor={`${id}-password`}>Password</Label>
+                <Input
+                  id={`${id}-password`}
+                  placeholder="Enter your password"
+                  type="password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  disabled={isLoading}
+                />
+              </div>
+            </div>
+            <div className="flex justify-between gap-2 items-center">
+              <div className="flex items-center gap-2">
+                <Checkbox id={`${id}-remember`} disabled={isLoading} />
+                <Label htmlFor={`${id}-remember`} className="font-normal text-sm text-muted-foreground">
+                  Remember me
+                </Label>
+              </div>
+              <a className="text-sm underline hover:no-underline text-muted-foreground" href="#">
+                Forgot password?
+              </a>
             </div>
             <Button type="submit" className="w-full" disabled={isLoading}>
-              {/* {isLoading && (
-                <Icons.spinner className="mr-2 h-4 w-4 animate-spin" />
-              )} */}
-              Sign In
+              {isLoading ? 'Signing in...' : 'Sign in'}
             </Button>
           </form>
-        </CardContent>
-        
-        <CardFooter className="flex flex-col">
-          <p className="mt-2 text-center text-sm text-muted-foreground">
-            Manage and control your system from this admin interface
-          </p>
-        </CardFooter>
-      </Card>
+
+          <div className="flex items-center gap-3 py-2 before:h-px before:flex-1 before:bg-border after:h-px after:flex-1 after:bg-border">
+            <span className="text-xs text-muted-foreground">Or</span>
+          </div>
+
+          <Button variant="outline" className="w-full" disabled={isLoading}>
+            Login with Google
+          </Button>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 } 

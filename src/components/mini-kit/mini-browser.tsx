@@ -6,7 +6,7 @@ import { RefreshCw, ArrowRightCircle, Eye, EyeOff, ChevronLeft, ChevronRight, X,
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { PlaywrightContext } from '@/context/PlaywrightContext';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dotted-dialog';
 
 type BrowserStatus = 'not-initialized' | 'initializing' | 'ready' | 'error';
 

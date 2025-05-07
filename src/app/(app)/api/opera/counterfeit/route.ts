@@ -3,16 +3,12 @@ import { streamText, streamObject, createDataStreamResponse, LanguageModel, Mess
 import {
   PlanStepInstructionSchema,
   PlanStepInstruction,
-
   PlanStep,
-  PlanStepResult,
   CounterMessagesSchema,
   Message,
-  UIPart,
-  ToolInvocationSchema,
   MessageSchema,
   ToolInvocation
-} from './schemas';
+} from '@/models/chatSchemas';
 import { errorResponse } from '../utils';
 import { saveSessionMessages } from '@/db/actions/sessions-actions';
 import { addPlanToMessage } from '@/db/actions/messages-actions';

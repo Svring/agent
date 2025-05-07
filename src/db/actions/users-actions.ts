@@ -119,12 +119,28 @@ export async function updateUserSettings(
  */
 export async function logoutUser(): Promise<{ success: boolean; error?: string }> {
   try {
+    // First check if there's a logged-in user
+    const currentUser = await getCurrentUser()
+
+    console.log('currentUser', JSON.stringify(currentUser, null, 2))
+    
+    // If no user is logged in, we can consider the logout "successful" since there's no user to log out
+    if (!currentUser) {
+      console.log('No user is currently logged in')
+      return { success: true }
+    }
+    
     const payloadConfig = await config
     const payload = await getPayload({ config: payloadConfig })
     
-    // Call the REST API endpoint to logout instead of directly using payload.logout()
-    // This is needed because Payload doesn't expose logout() in the node API
-    const res = await fetch(`${process.env.NEXT_PUBLIC_SERVER_URL}/api/users/logout`, {
+    // Get headers to determine origin
+    const headersList = await headers()
+    const host = headersList.get('host') || 'localhost:3000'
+    const protocol = headersList.get('x-forwarded-proto') || 'http'
+    const baseUrl = `${protocol}://${host}`
+    
+    // Use the dynamically determined base URL
+    const res = await fetch(`${baseUrl}/api/users/logout`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

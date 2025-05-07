@@ -69,12 +69,12 @@ export const PlanStepInstructionSchema = z.object({
   instruction: z.string().describe("The detailed instruction for the specified type. For 'reason' and 'answer', this is the content itself."),
 });
 
-export const PlanStepResultSchema = z.string().describe("The textual report of executing a plan step. This can be a summary, an answer, or an error message.");
+export const PlanStepReportSchema = z.string().describe("The textual report of executing a plan step. This can be a summary, an answer, or an error message.");
 
 export const PlanStepSchema = z.object({
   step: z.number().describe("The step number."),
   instruction: PlanStepInstructionSchema,
-  report: PlanStepResultSchema.describe("The textual report of executing the step's instruction."),
+  report: PlanStepReportSchema.describe("The textual report of executing the step's instruction."),
   invocations: z.array(ToolInvocationSchema).optional().describe("An array of tool invocations made during this step."),
 });
 
@@ -113,6 +113,6 @@ export type UIPart = z.infer<typeof UIPartSchema>;
 export type Message = z.infer<typeof MessageSchema>;
 
 export type PlanStepInstruction = z.infer<typeof PlanStepInstructionSchema>;
-export type PlanStepResult = z.infer<typeof PlanStepResultSchema>;
+export type PlanStepReport = z.infer<typeof PlanStepReportSchema>;
 export type PlanStep = z.infer<typeof PlanStepSchema>;
 export type CounterMessages = z.infer<typeof CounterMessagesSchema>; 

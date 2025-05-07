@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/resizable"
 
 import { PlaywrightContext } from '@/context/PlaywrightContext';
-import { CounterMessagesSchema, PlanStep } from '../api/opera/counterfeit/schemas';
+import { CounterMessagesSchema, PlanStep } from '../../../models/chatSchemas';
 import { generateId } from 'ai';
 
 // Define a generic fetcher function for useSWR

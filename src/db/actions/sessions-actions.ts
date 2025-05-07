@@ -4,7 +4,7 @@ import { getPayload, type Where, type PaginatedDocs } from 'payload';
 import configPromise from '@payload-config';
 import type { Session, Project } from '@/payload-types'; // Import Project type
 import { revalidatePath } from 'next/cache';
-import { MessageSchema } from '@/app/(app)/api/opera/counterfeit/schemas';
+import { MessageSchema } from '@/models/chatSchemas';
 
 const getPayloadClient = async () => {
   const payload = await getPayload({

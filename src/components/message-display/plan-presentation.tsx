@@ -4,13 +4,7 @@ import React from 'react';
 import {
   PlanStep,
   PlanStepInstruction,
-  // ReasonResult, // Removed
-  // BrowserResult, // Removed
-  // TerminalResult, // Removed
-  // AnswerResult, // Removed
-  // ErrorResult, // Removed
-  ToolInvocation,
-} from '@/app/(app)/api/opera/counterfeit/schemas';
+} from '@/models/chatSchemas';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { AlertCircle, CheckCircle2, ChevronRight, Code, HardDrive, Info, Search, MessageSquare, Zap, Eye } from 'lucide-react';

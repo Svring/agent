@@ -8,7 +8,7 @@ import { ToolInvocationResult } from '@/components/message-display/tool-invocati
 import { Button } from '@/components/ui/button';
 import { useDebug } from '@/context/DebugContext'; // Import useDebug
 import { PlanPresentation } from './plan-presentation'; // Import PlanPresentation
-import type { PlanStep } from '@/app/(app)/api/opera/counterfeit/schemas'; // Import PlanStep for typing
+import type { PlanStep } from '@/models/chatSchemas'; // Import PlanStep for typing
 
 // Define our application-specific Message type that includes the plan
 interface AppMessage extends AIMessage {

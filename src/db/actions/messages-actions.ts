@@ -3,7 +3,7 @@
 import { getPayload, type Where, type PaginatedDocs } from 'payload';
 import configPromise from '@payload-config';
 import type { Message } from '@/payload-types'; // Assuming Message type is generated
-import type { PlanStep } from '@/app/(app)/api/opera/counterfeit/schemas';
+import type { PlanStep } from '@/models/chatSchemas';
 
 const getPayloadClient = async () => {
   const payload = await getPayload({

@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/resizable"
 
 import { PlaywrightContext } from '@/context/PlaywrightContext';
-import { CounterMessagesSchema, PlanStep } from '@/app/(app)/api/opera/counterfeit/schemas';
+import { CounterMessagesSchema, PlanStep } from '@/models/chatSchemas';
 import { generateId } from 'ai';
 import { getSessionMessagesForChat } from '@/db/actions/sessions-actions';
 import { Project } from '@/payload-types';

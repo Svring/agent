@@ -1,6 +1,6 @@
 import { castingManager } from '@/backstage/casting-manager';
 import { saveSessionMessages } from '@/db/actions/sessions-actions';
-import { MessageSchema, type Message, type UIPart } from '@/app/(app)/api/opera/counterfeit/schemas';
+import { MessageSchema, type Message, type UIPart } from '@/models/chatSchemas';
 
 // --- Helpers ---
 function errorResponse(message: string, status = 400) {

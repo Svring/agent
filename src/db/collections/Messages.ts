@@ -1,5 +1,5 @@
 import { CollectionConfig } from "payload";
-import { MessageSchema, PlanStepSchema } from "../../app/(app)/api/opera/counterfeit/schemas";
+import { MessageSchema, PlanStepSchema } from "../../models/chatSchemas";
 import { z } from 'zod';
 
 export const Messages: CollectionConfig = {
