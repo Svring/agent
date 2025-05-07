@@ -62,20 +62,7 @@ const UIPartSchema = z.union([
   StepStartUIPartSchema,
 ]).describe("Union schema for all possible message parts.");
 
-// --- Main Message Schema --- 
-
-export const MessageSchema = z.object({
-  id: z.string(),
-  createdAt: z.date(),
-  content: z.string().describe("Fallback text content."),
-  role: z.enum(['system', 'user', 'assistant', 'data']), // Keeping 'data' role as per original type
-  annotations: z.array(z.any()).optional().describe("Server-added annotations."),
-  parts: z.array(UIPartSchema).optional().describe("Structured parts of the message."),
-  experimental_attachments: z.array(AttachmentSchema).optional(),
-  // Omitting deprecated fields like reasoning, data, toolInvocations unless needed
-}).describe("Schema representing a message with structured parts.");
-
-// --- Existing Schemas (Plan, Results, etc.) --- 
+// --- Schemas for Plan Steps (Moved Before MessageSchema) ---
 
 export const PlanStepInstructionSchema = z.object({
   type: z.enum(['reason', 'browser', 'terminal', 'answer']).describe("The type of step to perform: reasoning, browser action, terminal action, or final answer."),
@@ -106,7 +93,6 @@ export const ErrorResultSchema = z.object({
   error: z.string().describe("Description of the error that occurred during a step.")
 });
 
-// Union of all possible step results
 export const PlanStepResultSchema = z.union([
   ReasonResultSchema,
   BrowserResultSchema,
@@ -120,6 +106,22 @@ export const PlanStepSchema = z.object({
   instruction: PlanStepInstructionSchema,
   result: PlanStepResultSchema.optional().describe("The result of executing the step's instruction. Can be omitted if the step hasn't executed yet or failed before producing a result."),
 });
+
+// --- Main Message Schema --- 
+
+export const MessageSchema = z.object({
+  id: z.string(),
+  createdAt: z.date(),
+  content: z.string().describe("Fallback text content."),
+  role: z.enum(['system', 'user', 'assistant', 'data']), // Keeping 'data' role as per original type
+  annotations: z.array(z.any()).optional().describe("Server-added annotations."),
+  parts: z.array(UIPartSchema).optional().describe("Structured parts of the message."),
+  experimental_attachments: z.array(AttachmentSchema).optional(),
+  plan: z.array(PlanStepSchema).optional().describe("The plan associated with this message, if any (typically for summary messages)."),
+  // Omitting deprecated fields like reasoning, data, toolInvocations unless needed
+}).describe("Schema representing a message with structured parts.");
+
+// --- Counter Messages Schema (depends on PlanStepSchema and MessageSchema) ---
 
 export const CounterMessagesSchema = z.object({
   plan: z.array(PlanStepSchema).describe("The sequence of steps planned and executed."),

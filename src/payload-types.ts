@@ -219,6 +219,18 @@ export interface Message {
     | number
     | boolean
     | null;
+  /**
+   * The sequence of steps planned and executed for this message, if applicable. Array of PlanStep objects.
+   */
+  plan?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
   session: number | Session;
   /**
    * The complete message data in JSON format
@@ -381,6 +393,7 @@ export interface MessagesSelect<T extends boolean = true> {
   role?: T;
   parts?: T;
   annotations?: T;
+  plan?: T;
   session?: T;
   rawData?: T;
   updatedAt?: T;

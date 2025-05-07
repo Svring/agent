@@ -3,6 +3,7 @@
 import { getPayload, type Where, type PaginatedDocs } from 'payload';
 import configPromise from '@payload-config';
 import type { Message } from '@/payload-types'; // Assuming Message type is generated
+import type { PlanStep } from '@/app/(app)/api/opera/counterfeit/schemas';
 
 const getPayloadClient = async () => {
   const payload = await getPayload({
@@ -65,6 +66,23 @@ export const deleteMessage = async (id: string | number): Promise<boolean> => {
   } catch (error) {
     console.error(`Error deleting message with ID ${id}:`, error);
     return false;
+  }
+};
+
+export const addPlanToMessage = async (messageId: string | number, plan: PlanStep[]): Promise<Message | null> => {
+  try {
+    const payload = await getPayloadClient();
+    const updatedMessage = await payload.update({
+      collection: 'messages',
+      id: messageId,
+      data: { 
+        plan: plan as any, // Cast to any if PlanStep[] isn't directly assignable to the expected type by payload
+      },
+    });
+    return updatedMessage;
+  } catch (error) {
+    console.error(`Error adding plan to message with ID ${messageId}:`, error);
+    return null;
   }
 };
 

@@ -13,7 +13,8 @@ import {
   FolderOpen,
   Loader2,
   Database,
-  Bug
+  Bug,
+  Trash2
 } from "lucide-react"
 import Link from "next/link"
 import { useRouter, usePathname } from "next/navigation"
@@ -51,7 +52,7 @@ import { useDebug } from '@/context/DebugContext'
 import { User, Project } from '@/payload-types'
 import { getCurrentUser, logoutUser } from '@/db/actions/users-actions'
 import { findProjects, getProjectById, updateProject } from '@/db/actions/projects-actions'
-import { createSessionForProject, updateSession } from '@/db/actions/sessions-actions'
+import { createSessionForProject, updateSession, deleteSession } from '@/db/actions/sessions-actions'
 import { toast } from 'sonner'
 
 const workspaceChatItems = [
@@ -129,6 +130,9 @@ export function AppSidebar() {
   const [editingProjectId, setEditingProjectId] = useState<string | number | null>(null);
   const [editingProjectName, setEditingProjectName] = useState<string>("");
   const projectInputRef = useRef<HTMLInputElement>(null); // Ref for project input
+
+  // Added new state for deleting a session
+  const [deletingSessionId, setDeletingSessionId] = useState<string | number | null>(null);
 
   // Check if we're on a project detail page
   useEffect(() => {
@@ -430,6 +434,34 @@ export function AppSidebar() {
   };
   // --- End Project Renaming Handlers ---
 
+  // Handler for deleting a session
+  const handleDeleteSession = async (sessionIdToDelete: string | number, sessionName: string) => {
+    if (deletingSessionId === sessionIdToDelete) return;
+
+    setDeletingSessionId(sessionIdToDelete);
+    try {
+      const success = await deleteSession(sessionIdToDelete); // Expects boolean return
+      if (success) {
+        toast.success(`Session "${sessionName}" deleted successfully!`);
+        setProjectSessions(prevSessions => prevSessions.filter(s => (typeof s === 'object' && s !== null ? s.id : s) !== sessionIdToDelete));
+        
+        if (pathname === `/projects/${projectId}/${sessionIdToDelete}`) {
+          router.push(`/projects/${projectId}`);
+        }
+      } else {
+        // If deleteSession returns false, it implies a failure but not an exception.
+        toast.error(`Failed to delete session "${sessionName}".`); 
+      }
+    } catch (error: any) { // Catch block can specify error type
+      console.error("Error deleting session:", error);
+      // Attempt to get a message from the error object, otherwise generic message
+      const errorMessage = error?.message || 'An unknown error occurred while deleting the session.';
+      toast.error(errorMessage); 
+    } finally {
+      setDeletingSessionId(null);
+    }
+  };
+
   return (
     <Sidebar collapsible="icon" variant="inset" className="ml-1">
       <SidebarContent>
@@ -499,17 +531,19 @@ export function AppSidebar() {
                     </Button>
                   </div>
                   
-                  {/* Sessions List */}
+                  {/* Sessions List - Corrected Hover Logic Here */}
                   {projectSessions.length > 0 ? (
                     projectSessions.map((session, index) => {
-                      const sessionId = typeof session === 'object' && session !== null && session.id ? session.id : session;
-                      const sessionName = typeof session === 'object' && session !== null && session.name ? session.name : `Session ${index + 1}`;
-                      const sessionPath = `/projects/${projectId}/${sessionId}`;
+                      const sessionIdVal = typeof session === 'object' && session !== null && session.id ? session.id : session;
+                      const sessionNameVal = typeof session === 'object' && session !== null && session.name ? session.name : `Session ${index + 1}`;
+                      const sessionPath = `/projects/${projectId}/${sessionIdVal}`;
                       const isActive = pathname === sessionPath;
-                      const isEditingSession = editingSessionId === sessionId;
+                      const isEditingSession = editingSessionId === sessionIdVal;
+                      const isDeletingThisSession = deletingSessionId === sessionIdVal;
 
                       return (
-                        <SidebarMenuItem key={sessionId || index} className="list-none"> 
+                        // Ensure `group` class is on THIS SidebarMenuItem for individual hover
+                        <SidebarMenuItem key={sessionIdVal || index} className="list-none group/session relative">
                           {isEditingSession ? (
                              <Input
                                 ref={inputRef}
@@ -524,21 +558,38 @@ export function AppSidebar() {
                             <SidebarMenuButton 
                               asChild={!isActive} 
                               onClick={isActive ? (e) => handleSessionClick(e, session) : undefined}
-                              className={`${isActive ? "text-primary font-medium bg-accent" : ""} ${isActive ? "cursor-text hover:bg-accent" : "hover:bg-muted/50"}`}
-                              title={isActive ? "Click to rename" : sessionName}
+                              // The pr-8 (padding-right) on the button makes space for the delete icon
+                              className={`${isActive ? "text-primary font-medium bg-accent" : ""} ${isActive ? "cursor-text hover:bg-accent" : "hover:bg-muted/50"} w-full justify-start pr-8`}
+                              title={isActive ? "Click to rename" : sessionNameVal}
                             >
                               {isActive ? (
                                 <div className="flex items-center w-full">
                                   <FolderOpen className="h-4 w-4 mr-2 opacity-70 flex-shrink-0" />
-                                  <span className="truncate" title={sessionName}>{sessionName}</span>
+                                  <span className="truncate" title={sessionNameVal}>{sessionNameVal}</span>
                                 </div>
                               ) : (
                                 <Link href={sessionPath} className="flex items-center w-full">
-                                  <FolderOpen className="h-4 w-4 opacity-70 flex-shrink-0" />
-                                  <span className="truncate" title={sessionName}>{sessionName}</span>
+                                  <FolderOpen className="h-4 w-4 mr-2 opacity-70 flex-shrink-0" />
+                                  <span className="truncate" title={sessionNameVal}>{sessionNameVal}</span>
                                 </Link>
                               )}
                             </SidebarMenuButton>
+                          )}
+                          {/* Delete Button - appears on hover of its parent SidebarMenuItem */}
+                          {!isEditingSession && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              // Positioned absolutely within the relative parent (SidebarMenuItem)
+                              // Translates to center itself vertically, and sits on the right
+                              // opacity-0 by default, group-hover:opacity-100 makes it appear on parent hover
+                              className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6 p-0 opacity-0 group-hover/session:opacity-100 focus-visible:opacity-100 hover:bg-destructive/10 text-destructive/70 hover:text-destructive transition-opacity"
+                              onClick={() => handleDeleteSession(sessionIdVal, sessionNameVal)}
+                              disabled={isDeletingThisSession}
+                              title={`Delete session "${sessionNameVal}"`}
+                            >
+                              {isDeletingThisSession ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+                            </Button>
                           )}
                         </SidebarMenuItem>
                       );

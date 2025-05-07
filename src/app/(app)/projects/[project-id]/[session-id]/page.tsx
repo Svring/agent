@@ -8,7 +8,7 @@ import MessageBubble from '@/components/message-display/message-bubble';
 import Stage from '@/components/stage';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { Textarea } from '@/components/ui/textarea';
-import { ArrowUp, Hammer, Send, BrainCog, Power, PowerOff, Square, Bot, Eye } from 'lucide-react';
+import { ArrowUp, Hammer, Send, BrainCog, Power, PowerOff, Square, Bot, Eye, ClipboardCopy } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import MultiSelect from '@/components/ui/multi-select';
 import { Button } from '@/components/ui/button';
@@ -77,38 +77,66 @@ export default function SessionDetailPage({ params }: SessionDetailPageProps) {
   }, [projectId]);
 
   // Initial loading of messages - only when component first mounts or sessionId changes
-  useEffect(() => {
-    const loadMessages = async () => {
-      if (!sessionId) return;
+  // The actual reloadMessagesFromDb function is defined after setMessages is available
 
-      setIsLoadingMessages(true);
-      try {
-        console.log(`Initial load of messages for session ${sessionId}`);
-        const messagesFromDb = await getSessionMessagesForChat(sessionId);
-        if (messagesFromDb && messagesFromDb.length > 0) {
-          setInitialMessages(messagesFromDb as Message[]);
-        } else {
-          setInitialMessages([]);
-        }
-      } catch (error) {
-        console.error('Error loading initial messages:', error);
-        setInitialMessages([]);
-      } finally {
-        setIsLoadingMessages(false);
-      }
-    };
-    loadMessages();
-  }, [sessionId]); // Remove apiRoute from dependencies - handled separately
-
-  const { messages, data, input, handleInputChange, handleSubmit, stop, status, setMessages } = useChat({
+  const { messages, data, input, handleInputChange, handleSubmit, stop, status, setMessages, reload } = useChat({
     maxSteps: 3,
     api: apiRoute,
-    initialMessages: initialMessages,
+    initialMessages: initialMessages, // initialMessages is still used for the very first load
     body: {
         projectId: projectId,
         sessionId: sessionId
+    },
+    onFinish: async () => { // Make onFinish async
+      if (apiRoute === '/api/opera/counterfeit') {
+        if (Array.isArray(data) && data.length > 0) {
+          const latestCounterfeitState = data[data.length - 1];
+          const validationResult = CounterMessagesSchema.safeParse(latestCounterfeitState);
+          if (validationResult.success) {
+            console.log("[onFinish] Counterfeit API call finished. Setting messages to finalMessages from stream first.");
+            setMessages(validationResult.data.finalMessages as Message[]); // Update UI immediately
+            
+            console.log("[onFinish] Now, reloading messages from DB after counterfeit call.");
+            await reloadMessagesFromDb(); // Then reload from DB
+          } else {
+            console.error("[onFinish] Counterfeit API call finished, but failed to parse finalMessages from the latest data chunk:", validationResult.error.flatten());
+            await reloadMessagesFromDb();
+          }
+        } else {
+          console.error("[onFinish] Counterfeit API call finished, but the 'data' array (from useChat) is empty or not an array. Reloading from DB as a fallback.");
+          await reloadMessagesFromDb(); 
+        }
+      }
     }
   });
+
+  // Function to load/reload messages from the DB
+  // Defined here after setMessages and setIsLoadingMessages are available
+  const reloadMessagesFromDb = useCallback(async () => {
+    if (!sessionId) return;
+    console.log(`Reloading messages from DB for session ${sessionId}`);
+    setIsLoadingMessages(true);
+    try {
+      const messagesFromDb = await getSessionMessagesForChat(sessionId);
+      if (messagesFromDb && messagesFromDb.length > 0) {
+        setMessages(messagesFromDb as Message[]);
+      } else {
+        setMessages([]);
+      }
+    } catch (error) {
+      console.error('Error reloading messages from DB:', error);
+      toast.error("Failed to reload messages from database.");
+    } finally {
+      setIsLoadingMessages(false);
+    }
+  }, [sessionId, setMessages, setIsLoadingMessages]);
+
+  useEffect(() => {
+    // Initial load calls reloadMessagesFromDb
+    if (sessionId) { // Ensure sessionId is available before calling
+        reloadMessagesFromDb();
+    }
+  }, [sessionId, reloadMessagesFromDb]);
 
   const [openStates, setOpenStates] = useState<Record<string, boolean>>({});
   const [expandedResults, setExpandedResults] = useState<Record<string, boolean>>({});
@@ -420,6 +448,33 @@ export default function SessionDetailPage({ params }: SessionDetailPageProps) {
        return null;
   }, [data, apiRoute]);
 
+  // Helper function for copying to clipboard
+  const copyToClipboard = (text: string, type: string) => {
+    navigator.clipboard.writeText(text)
+      .then(() => {
+        toast.success(`${type} copied to clipboard!`);
+      })
+      .catch(err => {
+        toast.error(`Failed to copy ${type}.`);
+        console.error('Failed to copy to clipboard:', err);
+      });
+  };
+
+  // Determine which set of messages to render
+  const messagesToRender = React.useMemo(() => {
+    if (apiRoute === '/api/opera/counterfeit' && validatedData && validatedData.type === 'success') {
+      // For counterfeit, finalMessages are in the last data chunk. 
+      // We need to ensure user-initiated messages are also present, so we'll merge.
+      // The first message in validatedData.data.finalMessages is often the initial user message.
+      console.log("[Counterfeit Render] Using validatedData.data.finalMessages");
+      return validatedData.data.finalMessages as Message[];
+    } else {
+      // For chat route, or if counterfeit data is not yet ready/valid, use messages from useChat directly.
+      console.log("[Chat Render/Fallback] Using messages from useChat hook");
+      return messages;
+    }
+  }, [apiRoute, validatedData, messages]);
+
   // Render the Opera UI
   return (
      <TooltipProvider>
@@ -476,48 +531,32 @@ export default function SessionDetailPage({ params }: SessionDetailPageProps) {
                               <p className="text-muted-foreground">Loading messages...</p>
                           </div>
                       ) : (
-                        messages.map((m, index) => {
-                          const isLastMessage = index === messages.length - 1;
-                           if (isLastMessage && validatedData) {
-                              if (validatedData.type === 'success') {
-                                return validatedData.data.finalMessages.slice(1).map((finalMsg, finalIndex) => (
-                                  <MessageBubble
-                                    key={finalMsg.id || `final-${finalIndex}`}
-                                    m={finalMsg as any}
-                                    openStates={openStates}
-                                    expandedResults={expandedResults}
-                                    toggleOpen={toggleOpen}
-                                    toggleExpandResult={toggleExpandResult}
-                                    data={finalIndex === validatedData.data.finalMessages.length - 2 ? { plan: validatedData.data.plan } : undefined} 
-                                    apiRoute={apiRoute}
-                                    isLastMessage={isLastMessage && finalIndex === validatedData.data.finalMessages.length - 2} 
-                                  />
-                                ));
-                              } else if (validatedData.type === 'error') {
-                                return (
-                                  <div key={`${m.id}-error`} className="flex items-start gap-2 w-full justify-start">
-                                    <Avatar className="border">
-                                      <AvatarFallback><Bot /></AvatarFallback>
-                                    </Avatar>
-                                    <div className="space-y-2 break-words overflow-hidden w-full bg-destructive/10 text-destructive rounded-lg p-3">
-                                      <p className="font-semibold text-sm mb-2">Error:</p>
-                                      <p className="text-xs">{validatedData.message}</p>
-                                    </div>
-                                  </div>
-                                );
-                              }
-                           }
-                           return (
+                        messagesToRender.map((m, index) => {
+                          const isLastMessage = index === messagesToRender.length - 1;
+                          // The complex logic for extracting from validatedData for the *last* message bubble
+                          // is removed. We now pass the message `m` from `messagesToRender` directly.
+                          // If data prop is needed for the last message bubble specifically for plan display,
+                          // we can still pass it if `m` is the last message from `validatedData.data.finalMessages`
+                          let messageSpecificData: { plan: any[] } | undefined = undefined;
+                          if (apiRoute === '/api/opera/counterfeit' && 
+                              validatedData && 
+                              validatedData.type === 'success' && 
+                              isLastMessage && 
+                              m.id === validatedData.data.finalMessages[validatedData.data.finalMessages.length -1]?.id ) {
+                                messageSpecificData = { plan: validatedData.data.plan };
+                          }
+
+                          return (
                              <MessageBubble
-                               key={m.id}
+                               key={m.id || `msg-${index}`}
                                m={m}
                                openStates={openStates}
                                expandedResults={expandedResults}
                                toggleOpen={toggleOpen}
                                toggleExpandResult={toggleExpandResult}
-                               data={undefined}
+                               data={messageSpecificData} // Pass plan data if applicable
                                apiRoute={apiRoute}
-                               isLastMessage={isLastMessage}
+                               isLastMessage={isLastMessage} 
                              />
                            );
                         })
@@ -687,7 +726,7 @@ export default function SessionDetailPage({ params }: SessionDetailPageProps) {
 
       {/* Sheet for All Messages Debug Data */}
       <Sheet open={showAllMessagesSheet} onOpenChange={setShowAllMessagesSheet}>
-        <SheetContent className="w-full sm:max-w-2xl md:max-w-3xl lg:max-w-4xl xl:max-w-5xl flex flex-col" side="right">
+        <SheetContent className="w-full p-4 sm:max-w-2xl md:max-w-3xl lg:max-w-4xl xl:max-w-5xl flex flex-col overflow-auto" side="right">
           <SheetHeader>
             <SheetTitle>All Messages Raw Data</SheetTitle>
             <SheetDescription>
@@ -695,25 +734,66 @@ export default function SessionDetailPage({ params }: SessionDetailPageProps) {
             </SheetDescription>
           </SheetHeader>
           <ScrollArea className="flex-1 pr-4">
-            <div className="space-y-4 py-4">
+            <div className="space-y-6 py-4">
               <div>
-                <h3 className="text-lg font-semibold mb-2">Messages Array ({messages.length} items):</h3>
-                <pre className="bg-muted p-3 rounded-md text-xs overflow-auto max-h-[60vh]">
+                <div className="flex justify-between items-center mb-2">
+                  <h3 className="text-lg font-semibold">Messages Array ({messages.length} items):</h3>
+                  <Button 
+                    variant="outline"
+                    size="sm"
+                    onClick={() => copyToClipboard(JSON.stringify(messages, null, 2), 'Messages JSON')}
+                    className="h-7 px-2 text-xs flex items-center gap-1"
+                  >
+                    <ClipboardCopy size={12} /> Copy JSON
+                  </Button>
+                </div>
+                <pre 
+                  className="bg-muted p-3 rounded-md text-xs overflow-auto max-h-[60vh]"
+                  style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}
+                >
                   {JSON.stringify(messages, null, 2)}
                 </pre>
               </div>
+
               {(apiRoute === '/api/opera/counterfeit' && data && Array.isArray(data) && data.length > 0) && (
                 <div>
-                  <h3 className="text-lg font-semibold mb-2">Latest `data` prop (Counterfeit Plan):</h3>
-                  <pre className="bg-muted p-3 rounded-md text-xs overflow-auto max-h-[60vh]">
+                  <div className="flex justify-between items-center mb-2">
+                    <h3 className="text-lg font-semibold">Latest `data` prop (Counterfeit Plan):</h3>
+                    <Button 
+                      variant="outline"
+                      size="sm"
+                      onClick={() => copyToClipboard(JSON.stringify(data[data.length - 1], null, 2), 'Counterfeit Data JSON')}
+                      className="h-7 px-2 text-xs flex items-center gap-1"
+                    >
+                      <ClipboardCopy size={12} /> Copy JSON
+                    </Button>
+                  </div>
+                  <pre 
+                    className="bg-muted p-3 rounded-md text-xs overflow-auto max-h-[60vh]"
+                    style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}
+                  >
                     {JSON.stringify(data[data.length - 1], null, 2)}
                   </pre>
                 </div>
               )}
+
               {(apiRoute !== '/api/opera/counterfeit' && data) && (
                  <div>
-                  <h3 className="text-lg font-semibold mb-2">`data` prop (Non-Counterfeit):</h3>
-                  <pre className="bg-muted p-3 rounded-md text-xs overflow-auto max-h-[60vh]">
+                  <div className="flex justify-between items-center mb-2">
+                    <h3 className="text-lg font-semibold">`data` prop (Non-Counterfeit):</h3>
+                    <Button 
+                      variant="outline"
+                      size="sm"
+                      onClick={() => copyToClipboard(JSON.stringify(data, null, 2), 'Data JSON')}
+                      className="h-7 px-2 text-xs flex items-center gap-1"
+                    >
+                      <ClipboardCopy size={12} /> Copy JSON
+                    </Button>
+                  </div>
+                  <pre 
+                    className="bg-muted p-3 rounded-md text-xs overflow-auto max-h-[60vh]"
+                    style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}
+                  >
                     {JSON.stringify(data, null, 2)}
                   </pre>
                 </div>

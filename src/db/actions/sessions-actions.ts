@@ -194,6 +194,7 @@ export const getSessionMessagesForChat = async (sessionId: string | number): Pro
           annotations: msg.annotations || [],
           // createdAt is now expected to always exist on msg from DB due to schema changes
           createdAt: new Date(msg.createdAt), 
+          plan: msg.plan || undefined,
         };
 
         // Try to use rawData if available as it already might be properly formatted
@@ -294,6 +295,7 @@ export const saveSessionMessages = async (sessionId: string | number, messages: 
         annotations: validMessage.annotations,
         createdAt: validMessage.createdAt,
         session: numericSessionId,
+        plan: validMessage.plan,
         rawData: validMessage,
       };
 

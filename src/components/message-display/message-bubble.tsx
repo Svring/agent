@@ -2,11 +2,18 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Cat, Bot, Bug } from 'lucide-react';
 import React, { useState } from 'react';
 import { MemoizedMarkdown } from '@/components/message-display/memoized-markdown';
-import { JSONValue, type Message } from 'ai'; // Import JSONValue and Message types
+import { JSONValue, type Message as AIMessage } from 'ai'; // Import JSONValue and Message types, alias base Message
 import { ToolInvocationCall } from '@/components/message-display/tool-invocation-call';
 import { ToolInvocationResult } from '@/components/message-display/tool-invocation-result';
 import { Button } from '@/components/ui/button';
 import { useDebug } from '@/context/DebugContext'; // Import useDebug
+import { PlanPresentation } from './plan-presentation'; // Import PlanPresentation
+import type { PlanStep } from '@/app/(app)/api/opera/counterfeit/schemas'; // Import PlanStep for typing
+
+// Define our application-specific Message type that includes the plan
+interface AppMessage extends AIMessage {
+  plan?: PlanStep[];
+}
 
 // Helper function to count lines in a text string
 const countLines = (text: string): number => {
@@ -14,7 +21,7 @@ const countLines = (text: string): number => {
 };
 
 interface MessageBubbleProps {
-  m: Message; // Use the imported Message type
+  m: AppMessage; // Use the application-specific Message type
   openStates: Record<string, boolean>;
   expandedResults: Record<string, boolean>;
   toggleOpen: (key: string) => void;
@@ -77,6 +84,13 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ m, openStates, expandedRe
                   <code className="bg-black/5 dark:bg-white/5 p-2 rounded">{apiRoute || 'not specified'}</code>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* Render PlanPresentation if m.plan exists and has items */}
+          {m.plan && Array.isArray(m.plan) && m.plan.length > 0 && (
+            <div className="w-full">
+              <PlanPresentation plan={m.plan} />
             </div>
           )}
 
@@ -185,6 +199,13 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ m, openStates, expandedRe
               </div>
             </div>
           </div>
+        )}
+
+        {/* Render PlanPresentation if m.plan exists for fallback content as well */}
+        {m.plan && Array.isArray(m.plan) && m.plan.length > 0 && (
+            <div className="mb-2 w-full">
+              <PlanPresentation plan={m.plan} />
+            </div>
         )}
 
         {m.content && m.content.length > 0 ? (

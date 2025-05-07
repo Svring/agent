@@ -1,5 +1,6 @@
 import { CollectionConfig } from "payload";
-import { MessageSchema } from "../../app/(app)/api/opera/counterfeit/schemas";
+import { MessageSchema, PlanStepSchema } from "../../app/(app)/api/opera/counterfeit/schemas";
+import { z } from 'zod';
 
 export const Messages: CollectionConfig = {
   slug: 'messages',
@@ -59,6 +60,29 @@ export const Messages: CollectionConfig = {
     {
       name: 'annotations',
       type: 'json',
+    },
+    {
+      name: 'plan',
+      type: 'json',
+      admin: {
+        description: 'The sequence of steps planned and executed for this message, if applicable. Array of PlanStep objects.',
+      },
+      validate: (value) => {
+        if (value === null || value === undefined) { // Optional field
+          return true;
+        }
+        try {
+          const arraySchema = z.array(PlanStepSchema);
+          const result = arraySchema.safeParse(value);
+          if (!result.success) {
+            const issues = result.error.issues.map(issue => `Path: ${issue.path.join('.')} - ${issue.message}`).join('; ');
+            return `Invalid plan structure: ${issues}`;
+          }
+          return true;
+        } catch (error) {
+          return 'Invalid plan structure due to an unexpected error during validation.';
+        }
+      },
     },
     {
       name: 'session',

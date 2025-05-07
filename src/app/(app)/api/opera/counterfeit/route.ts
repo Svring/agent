@@ -18,6 +18,13 @@ import {
 } from './schemas';
 import { errorResponse } from '../utils';
 import { saveSessionMessages } from '@/db/actions/sessions-actions';
+import { addPlanToMessage } from '@/db/actions/messages-actions';
+
+// Define a type for AI library message format (different from our app's Message type)
+type AILibraryMessage = {
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+};
 
 // Define constants at the top level
 const MAX_ORCHESTRATION_STEPS = 20;
@@ -62,7 +69,7 @@ Available Tools:
 
 ${customInfo}`;
 
-// --- Orchestrator System Prompt ---
+// --- Orchestrator System Prompts ---
 const ORCHESTRATOR_PROMPT = (customInfo?: string) => `You are an orchestrator agent. Your goal is to break down the user's request into sequential steps to achieve the objective.
 Based on the conversation history (including previous steps, results, and errors), decide the *next single step's high-level goal*.
 
@@ -80,6 +87,21 @@ Provide only the chosen step type and the corresponding high-level instruction/t
 
 ${customInfo}`;
 
+// Final summary prompt
+const SUMMARY_PROMPT = (customInfo?: string) => `You are presenting a final summary of a multi-step AI task execution process.
+Review the completed plan steps and provide a comprehensive but concise summary of what was done and what was achieved.
+
+Your summary should:
+1. Briefly state the original goal/task
+2. Highlight the key steps that were taken
+3. Summarize what was learned or accomplished
+4. Note any important outcomes or findings
+5. Mention any significant challenges or errors encountered (if any)
+
+Present this summary in a clear, direct way that gives the user a complete understanding of what happened during the execution.
+
+${customInfo}`;
+
 // --- Helpers ---
 function createAssistantMessage(content: string): Message {
   return {
@@ -91,6 +113,9 @@ function createAssistantMessage(content: string): Message {
     annotations: [],
   };
 }
+
+// Add an extended Message type that includes plan
+type MessageWithPlan = Message & { plan?: PlanStep[] };
 
 export async function POST(req: Request) {
   console.log("--- Counterfeit API Request Start ---");
@@ -113,7 +138,8 @@ export async function POST(req: Request) {
     return createDataStreamResponse({
       async execute(dataStream) {
         const plan: PlanStep[] = [];
-        const currentMessages: Message[] = [...initialMessages.map((m: any) => ({
+        // Keep track of user messages for history context, but don't add intermediate assistant messages
+        const conversationHistory: Message[] = [...initialMessages.map((m: any) => ({
           id: m.id || generateId(),
           role: m.role || 'user',
           content: m.content || '',
@@ -121,13 +147,15 @@ export async function POST(req: Request) {
           createdAt: m.createdAt ? new Date(m.createdAt) : new Date(),
           annotations: m.annotations || [],
         }))];
+        // This will only contain the final summary message from the orchestrator
+        const finalMessages: MessageWithPlan[] = [...conversationHistory as MessageWithPlan[]];
         let currentStepNumber = 0;
 
         const writeValidatedData = (step: number) => {
           currentStepNumber = step;
           const dataToWrite = {
             plan: [...plan],
-            finalMessages: [...currentMessages],
+            finalMessages,
             step: currentStepNumber
           };
           console.log("Writing validated data to stream:", JSON.stringify(dataToWrite, null, 2));
@@ -138,54 +166,35 @@ export async function POST(req: Request) {
           dataStream.writeData(dataToWrite as any);
         };
 
-        function handleWorkerResult(workerResult: PlanStepResult, stepType: PlanStepInstruction['type']): boolean {
+        // Handler function for worker step results, now focused on extracting tool calls
+        function extractToolDataFromWorkerResult(workerResult: PlanStepResult, stepType: PlanStepInstruction['type']): PlanStepResult {
           if ('error' in workerResult) {
             console.error(`[Worker Error - ${stepType}] ${workerResult.error}`);
-            currentMessages.push(createAssistantMessage(`[Worker Error - ${stepType}] ${workerResult.error}`));
-            writeValidatedData(plan[plan.length - 1]?.step ?? currentStepNumber);
-            return true;
-          } else {
-            const workerResultMessage = createAssistantMessage(workerResult.content);
-            const messageParts: UIPart[] = workerResultMessage.parts!;
-
-            if ('toolCalls' in workerResult && workerResult.toolCalls && workerResult.toolCalls.length > 0 &&
-                'toolResults' in workerResult && workerResult.toolResults) {
-              console.log(`Structuring ${workerResult.toolCalls.length} tool calls/results into message parts.`);
-              const resultsMap = new Map<string, any>();
-              workerResult.toolResults.forEach(result => {
-                if (result.toolCallId) {
-                  resultsMap.set(result.toolCallId, result);
-                }
-              });
-
-              workerResult.toolCalls.forEach(call => {
-                const matchingResult = resultsMap.get(call.toolCallId);
-                if (matchingResult) {
-                  console.log(`Adding tool result part for call ID: ${call.toolCallId}`);
-                  const toolInvocationPart: UIPart = {
-                    type: 'tool-invocation',
-                    toolInvocation: {
-                      toolCallId: call.toolCallId,
-                      toolName: call.toolName || matchingResult.toolName,
-                      args: call.args || {},
-                      state: 'result',
-                      result: matchingResult.result,
-                    }
-                  };
-                  const toolPartValidation = ToolInvocationSchema.safeParse(toolInvocationPart.toolInvocation);
-                  if (toolPartValidation.success) {
-                    messageParts.push(toolInvocationPart);
-                  } else {
-                    console.warn(`[Counterfeit] Tool Invocation Part Validation Error for ${call.toolCallId}:`, toolPartValidation.error.flatten());
-                  }
-                } else {
-                  console.warn(`No corresponding result found for tool call ID: ${call.toolCallId}`);
-                }
-              });
+            return workerResult;
+          } else if (stepType === 'browser' || stepType === 'terminal') {
+            // For browser and terminal, focus on tool calls but keep text content
+            const content = workerResult.content || '';
+            const toolCalls = ('toolCalls' in workerResult && workerResult.toolCalls) ? workerResult.toolCalls : [];
+            const toolResults = ('toolResults' in workerResult && workerResult.toolResults) ? workerResult.toolResults : [];
+            
+            console.log(`Extracted ${toolCalls.length} tool calls from worker (${stepType})`);
+            
+            if (stepType === 'browser') {
+              return {
+                content,
+                toolCalls,
+                toolResults,
+              } as BrowserResult;
+            } else {
+              return {
+                content,
+                toolCalls,
+                toolResults,
+              } as TerminalResult;
             }
-            workerResultMessage.parts = messageParts;
-            currentMessages.push(workerResultMessage);
-            return false;
+          } else {
+            // For other step types (reason, answer), just return as is
+            return workerResult;
           }
         }
 
@@ -197,16 +206,27 @@ export async function POST(req: Request) {
           dataStream.writeData({ error: `Orchestrator model '${orchestratorModelName}' could not be created.` } as any);
         } else {
           console.log("Orchestrator Model Created.");
+          
+          // PHASE 1: Build the plan step by step
+          console.log("\n--- PHASE 1: Building Plan ---");
+          
+          // Collect orchestrator context messages (without adding to finalMessages)
+          const orchestratorContextMessages: AILibraryMessage[] = 
+            conversationHistory.map(m => ({
+              role: m.role as 'user' | 'assistant' | 'system',
+              content: m.content
+            }));
+          
           for (let i = 0; i < MAX_ORCHESTRATION_STEPS; i++) {
             console.log(`\n--- Orchestration Step ${i + 1} Start ---`);
             let stepInstruction: PlanStepInstruction;
             try {
-              console.log("Calling Orchestrator with messages:", JSON.stringify(currentMessages.map(m => ({role: m.role, content: m.content})), null, 2));
+              console.log("Calling Orchestrator with context messages");
               const { object } = await generateObject({
                 model: orchestratorModel,
                 schema: PlanStepInstructionSchema,
                 system: ORCHESTRATOR_PROMPT(customInfo),
-                messages: currentMessages.map(m => ({role: m.role, content: m.content})) as AIMessage[],
+                messages: orchestratorContextMessages,
               });
               stepInstruction = await object;
               console.log("Orchestrator Decided Step Instruction:", JSON.stringify(stepInstruction, null, 2));
@@ -218,17 +238,30 @@ export async function POST(req: Request) {
                 instruction: { type: 'reason', instruction: 'Error: Orchestrator failed to generate instruction.' },
                 result: { error: errorMessage } as ErrorResult,
               });
-              currentMessages.push(createAssistantMessage(`[Orchestrator Error] Failed to decide next step: ${errorMessage}`));
               writeValidatedData(i + 1);
               break;
             }
 
+            // Create the plan step
             const planStep: PlanStep = {
               step: i + 1,
               instruction: stepInstruction,
             };
             plan.push(planStep);
             console.log(`Added step ${planStep.step} to plan (Result pending).`);
+
+            // If this is an "answer" type step, we're done - this is the final summary
+            if (stepInstruction.type === 'answer') {
+              planStep.result = { content: stepInstruction.instruction } as AnswerResult;
+              // Add this answer to orchestrator context so it's considered in the final summary
+              const answerMsg: AILibraryMessage = {
+                role: 'assistant',
+                content: `Final Answer: ${stepInstruction.instruction}`
+              };
+              orchestratorContextMessages.push(answerMsg);
+              writeValidatedData(i + 1);
+              break;
+            }
 
             console.log(`Executing Step Type: ${stepInstruction.type}`);
             try {
@@ -239,35 +272,53 @@ export async function POST(req: Request) {
                     content: stepInstruction.instruction,
                   };
                   planStep.result = reasonResult;
-                  currentMessages.push(createAssistantMessage(stepInstruction.instruction));
-                  break;
-                case 'answer':
-                  console.log("Executing Answer Step.");
-                  const answerResult: AnswerResult = {
-                    content: stepInstruction.instruction,
+                  // Add the reasoning to orchestrator context but NOT to finalMessages
+                  const reasoningMsg: AILibraryMessage = {
+                    role: 'assistant',
+                    content: `Reasoning: ${stepInstruction.instruction}`
                   };
-                  planStep.result = answerResult;
-                  currentMessages.push(createAssistantMessage(stepInstruction.instruction));
-                  writeValidatedData(i + 1);
-                  i = MAX_ORCHESTRATION_STEPS;
-                  continue;
+                  orchestratorContextMessages.push(reasoningMsg);
+                  break;
                 case 'browser':
                 case 'terminal':
                   console.log(`Executing Worker Step: ${stepInstruction.type}`);
                   const workerResult = await executeWorkerStep(stepInstruction, workerModel);
-                  planStep.result = workerResult;
-                  console.log(`Worker (${stepInstruction.type}) Result:`, JSON.stringify(workerResult, null, 2));
-                  const shouldTerminate = handleWorkerResult(workerResult, stepInstruction.type);
-                  if (shouldTerminate) {
-                    i = MAX_ORCHESTRATION_STEPS;
-                    continue;
+                  
+                  // Process the result to focus on tool invocations
+                  planStep.result = extractToolDataFromWorkerResult(workerResult, stepInstruction.type);
+                  
+                  // Add a summary to orchestrator context but NOT to finalMessages
+                  if (!('error' in workerResult)) {
+                    let summary = `${stepInstruction.type.charAt(0).toUpperCase() + stepInstruction.type.slice(1)} Agent: `;
+                    if (workerResult.content) {
+                      summary += workerResult.content;
+                    } else if ('toolCalls' in workerResult && workerResult.toolCalls && workerResult.toolCalls.length > 0) {
+                      summary += `Used ${workerResult.toolCalls.length} tools to accomplish the task.`;
+                    } else {
+                      summary += "Task completed, but no specific output provided.";
+                    }
+                    const successMsg: AILibraryMessage = {
+                      role: 'assistant',
+                      content: summary
+                    };
+                    orchestratorContextMessages.push(successMsg);
+                  } else {
+                    const errorMsg: AILibraryMessage = {
+                      role: 'assistant',
+                      content: `Error in ${stepInstruction.type} step: ${workerResult.error}`
+                    };
+                    orchestratorContextMessages.push(errorMsg);
                   }
                   break;
                 default:
                   const unknownStepType = (stepInstruction as any).type;
                   console.error(`Unknown step type encountered: ${unknownStepType}`);
-                  currentMessages.push(createAssistantMessage(`Error: Unknown step type: ${unknownStepType}`));
                   planStep.result = { error: `Unknown step type: ${unknownStepType}` } as ErrorResult;
+                  const unknownTypeMsg: AILibraryMessage = {
+                    role: 'assistant',
+                    content: `Error: Unknown step type: ${unknownStepType}`
+                  };
+                  orchestratorContextMessages.push(unknownTypeMsg);
                   i = MAX_ORCHESTRATION_STEPS;
                   continue;
               }
@@ -275,12 +326,18 @@ export async function POST(req: Request) {
               const errorMessage = executionErr instanceof Error ? executionErr.message : String(executionErr);
               console.error(`[Execution Error - ${stepInstruction.type}] ${errorMessage}`, executionErr);
               planStep.result = { error: errorMessage } as ErrorResult;
-              currentMessages.push(createAssistantMessage(`[Execution Error - ${stepInstruction.type}] ${errorMessage}`));
+              const execErrorMsg: AILibraryMessage = {
+                role: 'assistant',
+                content: `Error executing ${stepInstruction.type} step: ${errorMessage}`
+              };
+              orchestratorContextMessages.push(execErrorMsg);
               writeValidatedData(i + 1);
               break;
             }
             writeValidatedData(i + 1);
-            if (i === MAX_ORCHESTRATION_STEPS - 1 && planStep.result && !('error' in planStep.result)) {
+            
+            // Check if we've hit max steps
+            if (i === MAX_ORCHESTRATION_STEPS - 1) {
               console.warn("Reached maximum orchestration steps.");
               const maxStepsError: ErrorResult = { error: 'Reached maximum orchestration steps.' };
               plan.push({
@@ -288,57 +345,53 @@ export async function POST(req: Request) {
                 instruction: { type: 'reason', instruction: 'Max steps reached.' },
                 result: maxStepsError,
               });
-              currentMessages.push(createAssistantMessage(maxStepsError.error));
+              const maxStepsMsg: AILibraryMessage = {
+                role: 'assistant',
+                content: "Warning: Reached maximum number of steps without completion."
+              };
+              orchestratorContextMessages.push(maxStepsMsg);
               writeValidatedData(i + 2);
             }
             console.log(`--- Orchestration Step ${i + 1} End ---`);
+          }
+          
+          // PHASE 2: Generate final summary
+          console.log("\n--- PHASE 2: Generating Final Summary ---");
+          
+          try {
+            const { text } = await generateText({
+              model: orchestratorModel,
+              system: SUMMARY_PROMPT(customInfo),
+              messages: orchestratorContextMessages,
+            });
+            
+            const summaryContent = await text;
+            console.log("Generated Summary:", summaryContent);
+            
+            // Create the final summary message and add plan to it
+            const summaryMessage = createAssistantMessage(summaryContent) as MessageWithPlan;
+            summaryMessage.plan = plan;
+            
+            finalMessages.length = conversationHistory.length; // Reset to just user messages
+            finalMessages.push(summaryMessage); // Add only the final summary
+            
+            // Write final data to the stream
+            writeValidatedData(plan.length);
+          } catch (summaryErr) {
+            console.error("Error generating final summary:", summaryErr);
+            const errorMessage = summaryErr instanceof Error ? summaryErr.message : String(summaryErr);
+            const errorSummary = createAssistantMessage(`I encountered an error while generating the final summary: ${errorMessage}`);
+            finalMessages.length = conversationHistory.length;
+            finalMessages.push(errorSummary);
+            writeValidatedData(plan.length);
           }
         }
 
         console.log("--- Orchestration Loop Finished ---");
 
-        // --- Task 2: Merge consecutive assistant messages ---
-        let finalMessagesToSave: Message[] = [];
-        if (currentMessages.length > 0) {
-          // Initialize with the first message, ensuring parts is an array
-          let mergedMessage = { 
-            ...currentMessages[0],
-            parts: [...(currentMessages[0].parts || [])] 
-          };
-
-          for (let i = 1; i < currentMessages.length; i++) {
-            const nextMessage = currentMessages[i];
-            // If current merged and next message are both from assistant, merge them
-            if (mergedMessage.role === 'assistant' && nextMessage.role === 'assistant') {
-              console.log(`[Counterfeit] Merging assistant message ${nextMessage.id} into ${mergedMessage.id}`);
-              mergedMessage.parts.push({ type: 'step-start' });
-              mergedMessage.parts.push(...(nextMessage.parts || []));
-              // Concatenate content, ensuring undefined/null content doesn't break it
-              const nextContent = nextMessage.content || '';
-              if (nextContent) {
-                 mergedMessage.content = (mergedMessage.content || '') + '\n' + nextContent;
-              }
-              // Optionally, update createdAt to the latest, or keep the first one.
-              // mergedMessage.createdAt = nextMessage.createdAt;
-            } else {
-              // Roles differ or current merged is not assistant, push current merged and start new
-              finalMessagesToSave.push(mergedMessage);
-              mergedMessage = { 
-                ...nextMessage,
-                parts: [...(nextMessage.parts || [])]
-              }; 
-            }
-          }
-          // Push the last processed/merged message
-          finalMessagesToSave.push(mergedMessage);
-        } else {
-          finalMessagesToSave = [...currentMessages]; // Handle empty or single message case
-        }
-        // --- End Task 2 ---
-
         try {
-          console.log(`[Counterfeit] Preparing to save ${finalMessagesToSave.length} messages for session ${sessionId}`);
-          const messagesWithSession = finalMessagesToSave.map(msg => ({
+          console.log(`[Counterfeit] Preparing to save ${finalMessages.length} messages for session ${sessionId}`);
+          const messagesWithSession = finalMessages.map(msg => ({
             ...msg,
             session: sessionId,
             annotations: msg.annotations || [],
@@ -407,10 +460,10 @@ async function executeWorkerStep(
     }
 
     console.log(`executeWorkerStep: Calling worker (${stepInstruction.type}) with instruction: ${stepInstruction.instruction}`);
-    const workerMessagesForAI = [
+    const workerMessagesForAI: AILibraryMessage[] = [
       { role: 'system', content: workerSystemPrompt },
       { role: 'user', content: stepInstruction.instruction }
-    ] as AIMessage[];
+    ];
 
     const { steps } = await generateText({
       model: workerModel,
