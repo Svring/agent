@@ -13,7 +13,9 @@ import {
 } from '@/app/(app)/api/opera/counterfeit/schemas';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { AlertCircle, CheckCircle2, ChevronRight, Code, HardDrive, Info, Search, MessageSquare, Zap } from 'lucide-react';
+import { AlertCircle, CheckCircle2, ChevronRight, Code, HardDrive, Info, Search, MessageSquare, Zap, Eye } from 'lucide-react';
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dotted-dialog";
 
 interface PlanPresentationProps {
   plan: PlanStep[];
@@ -120,38 +122,68 @@ export const PlanPresentation: React.FC<PlanPresentationProps> = ({ plan }) => {
     return <p className="text-sm text-muted-foreground">No plan steps to display.</p>;
   }
 
+  const totalSteps = plan.length;
+  const successfulSteps = plan.filter(step => step.result && !('error' in step.result)).length;
+  const erroredSteps = plan.filter(step => step.result && ('error' in step.result)).length;
+
   return (
-    <div className="space-y-2">
-      {plan.map((step, index) => (
-        <Card key={step.step || index} className="overflow-hidden">
-          <CardHeader className="p-3 bg-muted/30 border-b">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base flex items-center">
-                {getIconForInstructionType(step.instruction.type)}
-                Step {step.step}: <span className="ml-1.5 font-normal capitalize">{step.instruction.type}</span>
-              </CardTitle>
-              {step.result && !('error' in step.result) && (
-                <CheckCircle2 className="h-5 w-5 text-green-600" />
-              )}
-              {step.result && ('error' in step.result) && (
-                <AlertCircle className="h-5 w-5 text-red-600" />
-              )}
+    <div className="p-2 bg-muted/20 rounded-lg">
+      <div className="flex items-center justify-between">
+        <div className="text-sm">
+          <p className="font-medium">Executed Plan Summary:</p>
+          <p className="text-xs text-muted-foreground">
+            {totalSteps} step(s) executed. {successfulSteps} successful, {erroredSteps} errored.
+          </p>
+        </div>
+        <Dialog>
+          <DialogTrigger asChild>
+            <Button variant="outline" size="sm" className="ml-auto text-xs h-7 px-2">
+              <Eye className="h-3.5 w-3.5 mr-1.5" /> View Details
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto p-0">
+            <DialogHeader className="p-4 border-b sticky top-0 bg-background z-10">
+              <DialogTitle>Detailed Plan Execution</DialogTitle>
+              <DialogDescription>
+                Review each step of the executed plan below.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 p-4">
+              {plan.map((step, index) => (
+                <Card key={step.step || index} className="overflow-hidden shadow-sm">
+                  <CardHeader className="p-3 bg-muted/30 border-b">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-base flex items-center">
+                        {getIconForInstructionType(step.instruction.type)}
+                        Step {step.step}: <span className="ml-1.5 font-normal capitalize">{step.instruction.type}</span>
+                      </CardTitle>
+                      {step.result && !('error' in step.result) && (
+                        <CheckCircle2 className="h-5 w-5 text-green-600" />
+                      )}
+                      {step.result && ('error' in step.result) && (
+                        <AlertCircle className="h-5 w-5 text-red-600" />
+                      )}
+                    </div>
+                  </CardHeader>
+                  <CardContent className="p-3 space-y-2">
+                    <div>
+                      <h3 className="text-sm font-semibold mb-1">Instruction:</h3>
+                      <p className="text-sm p-2 bg-muted/50 rounded-md whitespace-pre-wrap">
+                        {step.instruction.instruction}
+                      </p>
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-semibold mb-1">Result:</h3>
+                      {renderResult(step.result, step.instruction.type)}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
             </div>
-          </CardHeader>
-          <CardContent className="p-3 space-y-2">
-            <div>
-              <h3 className="text-sm font-semibold mb-1">Instruction:</h3>
-              <p className="text-sm p-2 bg-muted/50 rounded-md whitespace-pre-wrap">
-                {step.instruction.instruction}
-              </p>
-            </div>
-            <div>
-              <h3 className="text-sm font-semibold mb-1">Result:</h3>
-              {renderResult(step.result, step.instruction.type)}
-            </div>
-          </CardContent>
-        </Card>
-      ))}
+            {/* Optional: DialogFooter if needed */}
+          </DialogContent>
+        </Dialog>
+      </div>
     </div>
   );
 };
