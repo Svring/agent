@@ -3,18 +3,15 @@ import { streamText, streamObject, createDataStreamResponse, LanguageModel, Mess
 import {
   PlanStepInstructionSchema,
   PlanStepInstruction,
-  ReasonResult,
-  BrowserResult,
-  TerminalResult,
-  AnswerResult,
-  ErrorResult,
+
   PlanStep,
   PlanStepResult,
   CounterMessagesSchema,
   Message,
   UIPart,
   ToolInvocationSchema,
-  MessageSchema
+  MessageSchema,
+  ToolInvocation
 } from './schemas';
 import { errorResponse } from '../utils';
 import { saveSessionMessages } from '@/db/actions/sessions-actions';
@@ -75,7 +72,7 @@ Based on the conversation history (including previous steps, results, and errors
 
 You have access to specialized agents:
 - **Browser Agent**: Can control a web browser. It can navigate to URLs, take screenshots, click buttons/links (identified by coordinates), type text, scroll, and perform other interactions on a web page. Delegate web-related tasks to this agent using the 'browser' step type. Describe the desired outcome or action clearly (e.g., "Find the main headline on the BBC News homepage", "Log into the user's account on example.com").
-- **Terminal Agent**: Can execute commands on the user's file system. Delegate file system operations or command-line tasks to this agent using the 'terminal' step type. Describe the task clearly (e.g., "List the files in the project's source directory").
+- **Terminal Agent**: Can execute commands on the user's file system. Delegate file system operations or command-line tasks to this agent using the 'terminal' step type. Describe the task clearly (e.g., "List the files in the project's source directory"). Do *not* specify the exact commands (like 'mkdir').
 
 Choose one of the following step types for the *next single action's goal*:
 1.  **reason**: Provide reasoning, interpretation, or an intermediate plan update based on the current state. The instruction content *is* the reasoning itself. Use this for internal thought processes or summarizing progress.
@@ -166,38 +163,6 @@ export async function POST(req: Request) {
           dataStream.writeData(dataToWrite as any);
         };
 
-        // Handler function for worker step results, now focused on extracting tool calls
-        function extractToolDataFromWorkerResult(workerResult: PlanStepResult, stepType: PlanStepInstruction['type']): PlanStepResult {
-          if ('error' in workerResult) {
-            console.error(`[Worker Error - ${stepType}] ${workerResult.error}`);
-            return workerResult;
-          } else if (stepType === 'browser' || stepType === 'terminal') {
-            // For browser and terminal, focus on tool calls but keep text content
-            const content = workerResult.content || '';
-            const toolCalls = ('toolCalls' in workerResult && workerResult.toolCalls) ? workerResult.toolCalls : [];
-            const toolResults = ('toolResults' in workerResult && workerResult.toolResults) ? workerResult.toolResults : [];
-            
-            console.log(`Extracted ${toolCalls.length} tool calls from worker (${stepType})`);
-            
-            if (stepType === 'browser') {
-              return {
-                content,
-                toolCalls,
-                toolResults,
-              } as BrowserResult;
-            } else {
-              return {
-                content,
-                toolCalls,
-                toolResults,
-              } as TerminalResult;
-            }
-          } else {
-            // For other step types (reason, answer), just return as is
-            return workerResult;
-          }
-        }
-
         const orchestratorModelName = 'o3';
         const orchestratorModel = castingManager.getModelByName(orchestratorModelName);
 
@@ -236,7 +201,8 @@ export async function POST(req: Request) {
               plan.push({
                 step: i + 1,
                 instruction: { type: 'reason', instruction: 'Error: Orchestrator failed to generate instruction.' },
-                result: { error: errorMessage } as ErrorResult,
+                report: `Error: Orchestrator failed to decide next step: ${errorMessage}`,
+                invocations: []
               });
               writeValidatedData(i + 1);
               break;
@@ -246,13 +212,15 @@ export async function POST(req: Request) {
             const planStep: PlanStep = {
               step: i + 1,
               instruction: stepInstruction,
+              report: "",
+              invocations: []
             };
             plan.push(planStep);
-            console.log(`Added step ${planStep.step} to plan (Result pending).`);
+            console.log(`Added step ${planStep.step} to plan (Report pending).`);
 
             // If this is an "answer" type step, we're done - this is the final summary
             if (stepInstruction.type === 'answer') {
-              planStep.result = { content: stepInstruction.instruction } as AnswerResult;
+              planStep.report = stepInstruction.instruction;
               // Add this answer to orchestrator context so it's considered in the final summary
               const answerMsg: AILibraryMessage = {
                 role: 'assistant',
@@ -268,10 +236,7 @@ export async function POST(req: Request) {
               switch (stepInstruction.type) {
                 case 'reason':
                   console.log("Executing Reason Step.");
-                  const reasonResult: ReasonResult = {
-                    content: stepInstruction.instruction,
-                  };
-                  planStep.result = reasonResult;
+                  planStep.report = stepInstruction.instruction;
                   // Add the reasoning to orchestrator context but NOT to finalMessages
                   const reasoningMsg: AILibraryMessage = {
                     role: 'assistant',
@@ -282,30 +247,30 @@ export async function POST(req: Request) {
                 case 'browser':
                 case 'terminal':
                   console.log(`Executing Worker Step: ${stepInstruction.type}`);
-                  const workerResult = await executeWorkerStep(stepInstruction, workerModel);
+                  const workerOutput = await executeWorkerStep(stepInstruction, workerModel);
                   
-                  // Process the result to focus on tool invocations
-                  planStep.result = extractToolDataFromWorkerResult(workerResult, stepInstruction.type);
+                  planStep.report = workerOutput.report;
+                  if (workerOutput.invocations && workerOutput.invocations.length > 0) {
+                    planStep.invocations = workerOutput.invocations;
+                  }
                   
                   // Add a summary to orchestrator context but NOT to finalMessages
-                  if (!('error' in workerResult)) {
+                  const isError = planStep.report.toLowerCase().startsWith("error:");
+
+                  if (!isError) {
                     let summary = `${stepInstruction.type.charAt(0).toUpperCase() + stepInstruction.type.slice(1)} Agent: `;
-                    if (workerResult.content) {
-                      summary += workerResult.content;
-                    } else if ('toolCalls' in workerResult && workerResult.toolCalls && workerResult.toolCalls.length > 0) {
-                      summary += `Used ${workerResult.toolCalls.length} tools to accomplish the task.`;
-                    } else {
-                      summary += "Task completed, but no specific output provided.";
-                    }
+                    // The report string itself is the content/summary from the worker
+                    summary += planStep.report;
                     const successMsg: AILibraryMessage = {
                       role: 'assistant',
                       content: summary
                     };
                     orchestratorContextMessages.push(successMsg);
                   } else {
+                    // The report string already contains the error message
                     const errorMsg: AILibraryMessage = {
                       role: 'assistant',
-                      content: `Error in ${stepInstruction.type} step: ${workerResult.error}`
+                      content: planStep.report 
                     };
                     orchestratorContextMessages.push(errorMsg);
                   }
@@ -313,7 +278,7 @@ export async function POST(req: Request) {
                 default:
                   const unknownStepType = (stepInstruction as any).type;
                   console.error(`Unknown step type encountered: ${unknownStepType}`);
-                  planStep.result = { error: `Unknown step type: ${unknownStepType}` } as ErrorResult;
+                  planStep.report = `Error: Unknown step type '${unknownStepType}' encountered.`;
                   const unknownTypeMsg: AILibraryMessage = {
                     role: 'assistant',
                     content: `Error: Unknown step type: ${unknownStepType}`
@@ -325,7 +290,7 @@ export async function POST(req: Request) {
             } catch (executionErr) {
               const errorMessage = executionErr instanceof Error ? executionErr.message : String(executionErr);
               console.error(`[Execution Error - ${stepInstruction.type}] ${errorMessage}`, executionErr);
-              planStep.result = { error: errorMessage } as ErrorResult;
+              planStep.report = `Error: During ${stepInstruction.type} execution - ${errorMessage}`;
               const execErrorMsg: AILibraryMessage = {
                 role: 'assistant',
                 content: `Error executing ${stepInstruction.type} step: ${errorMessage}`
@@ -339,11 +304,12 @@ export async function POST(req: Request) {
             // Check if we've hit max steps
             if (i === MAX_ORCHESTRATION_STEPS - 1) {
               console.warn("Reached maximum orchestration steps.");
-              const maxStepsError: ErrorResult = { error: 'Reached maximum orchestration steps.' };
+              const maxStepsReport = 'Error: Reached maximum orchestration steps.';
               plan.push({
                 step: i + 2,
                 instruction: { type: 'reason', instruction: 'Max steps reached.' },
-                result: maxStepsError,
+                report: maxStepsReport,
+                invocations: []
               });
               const maxStepsMsg: AILibraryMessage = {
                 role: 'assistant',
@@ -432,7 +398,7 @@ export async function POST(req: Request) {
 async function executeWorkerStep(
   stepInstruction: PlanStepInstruction,
   workerModel: LanguageModel
-): Promise<PlanStepResult> {
+): Promise<{ report: string; invocations: ToolInvocation[] }> {
   let workerTools: Record<string, any> = {};
   let workerSystemPrompt: string = '';
   let clientToClose: any = null;
@@ -474,52 +440,80 @@ async function executeWorkerStep(
 
     const workerSteps = await steps;
     let finalContent = "";
-    const allToolCalls: any[] = [];
-    const allToolResults: any[] = [];
+    const allToolCallsAggregated: any[] = [];
+    const allToolResultsAggregated: any[] = [];
+    const finalInvocations: ToolInvocation[] = [];
+    const toolCallMapForInvocations = new Map<string, ToolInvocation>();
 
     for (const step of workerSteps) {
       if (step.text) {
         finalContent = step.text;
       }
       if (step.toolCalls) {
-        allToolCalls.push(...step.toolCalls);
+        allToolCallsAggregated.push(...step.toolCalls);
+        for (const call of step.toolCalls) {
+          const invocation: ToolInvocation = {
+            toolCallId: call.toolCallId,
+            toolName: call.toolName,
+            args: call.args,
+            state: 'call',
+          };
+          // Add to finalInvocations and map, only if not already added (based on toolCallId)
+          if (!toolCallMapForInvocations.has(call.toolCallId)) {
+            finalInvocations.push(invocation);
+            toolCallMapForInvocations.set(call.toolCallId, invocation);
+          }
+        }
       }
       if (step.toolResults) {
-        allToolResults.push(...step.toolResults);
+        allToolResultsAggregated.push(...step.toolResults);
+        for (const res of step.toolResults) {
+          const existingInvocation = toolCallMapForInvocations.get(res.toolCallId);
+          if (existingInvocation) {
+            existingInvocation.result = res.result;
+            existingInvocation.state = 'result'; 
+          } else {
+            // Result without a call, create a new one
+            const invocation: ToolInvocation = {
+              toolCallId: res.toolCallId,
+              toolName: res.toolName, // Vercel SDK toolResult includes toolName
+              args: {}, // Args might not be available here
+              state: 'result',
+              result: res.result,
+            };
+            finalInvocations.push(invocation);
+            // Optionally add to map if it could be updated further, though unlikely for a result
+            toolCallMapForInvocations.set(res.toolCallId, invocation); 
+          }
+        }
       }
     }
 
     if (!finalContent && workerSteps.length > 0) {
       finalContent = `Worker finished after ${workerSteps.length} steps.`;
-      if (allToolCalls.length > 0) finalContent += ` Made ${allToolCalls.length} tool call(s).`;
+      if (allToolCallsAggregated.length > 0) finalContent += ` Made ${allToolCallsAggregated.length} tool call(s).`;
     }
     
     console.log(`executeWorkerStep: Worker (${stepInstruction.type}) finished. Extracted content length: ${finalContent.length}`);
-    if (allToolCalls.length > 0) console.log(`executeWorkerStep: Worker (${stepInstruction.type}) aggregated tool calls: ${allToolCalls.length}`);
-    if (allToolResults.length > 0) console.log(`executeWorkerStep: Worker (${stepInstruction.type}) aggregated tool results: ${allToolResults.length}`);
+    if (finalInvocations.length > 0) console.log(`executeWorkerStep: Worker (${stepInstruction.type}) constructed ${finalInvocations.length} ToolInvocation objects.`);
 
-    let result: PlanStepResult;
-    if (stepInstruction.type === 'browser') {
-      result = {
-        content: finalContent,
-        toolCalls: allToolCalls,
-        toolResults: allToolResults,
-      } as BrowserResult;
-    } else if (stepInstruction.type === 'terminal') {
-      result = {
-        content: finalContent,
-        toolCalls: allToolCalls,
-        toolResults: allToolResults,
-      } as TerminalResult;
+    let finalReportString: string;
+    if (finalContent) {
+      finalReportString = finalContent;
+    } else if (finalInvocations.length > 0) {
+      finalReportString = `${stepInstruction.type.charAt(0).toUpperCase() + stepInstruction.type.slice(1)} agent completed task using ${finalInvocations.length} tool invocation(s).`;
     } else {
-      console.error(`Unexpected step type in executeWorkerStep: ${stepInstruction.type}`);
-      result = { error: `Unexpected step type encountered: ${stepInstruction.type}` } as ErrorResult;
+      finalReportString = `${stepInstruction.type.charAt(0).toUpperCase() + stepInstruction.type.slice(1)} agent completed task with no specific textual output.`;
     }
-    return result;
+
+    return { report: finalReportString, invocations: finalInvocations };
   } catch (error) {
     const errorMessage = (error instanceof Error) ? error.message : String(error);
     console.error(`Error during worker execution (${stepInstruction.type}):`, errorMessage, error);
-    return { error: errorMessage } as PlanStepResult;
+    return { 
+      report: `Error: During ${stepInstruction.type} worker execution - ${errorMessage}`, 
+      invocations: [] 
+    };
   } finally {
     if (clientToClose) {
       try {

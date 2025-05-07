@@ -4,11 +4,11 @@ import React from 'react';
 import {
   PlanStep,
   PlanStepInstruction,
-  ReasonResult,
-  BrowserResult,
-  TerminalResult,
-  AnswerResult,
-  ErrorResult,
+  // ReasonResult, // Removed
+  // BrowserResult, // Removed
+  // TerminalResult, // Removed
+  // AnswerResult, // Removed
+  // ErrorResult, // Removed
   ToolInvocation,
 } from '@/app/(app)/api/opera/counterfeit/schemas';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -36,84 +36,21 @@ const getIconForInstructionType = (type: PlanStepInstruction['type']) => {
   }
 };
 
-const renderResult = (result: PlanStep['result'], instructionType: PlanStepInstruction['type']) => {
-  if (!result) {
-    return <p className="text-sm text-muted-foreground">No result yet.</p>;
-  }
+const renderReportContent = (report: string, instructionType: PlanStepInstruction['type']) => {
+  // The report is now just a string. We can check if it starts with "Error:" for basic error styling.
+  const isError = report.toLowerCase().startsWith("error:");
 
-  if ('error' in result) {
+  if (isError) {
     return (
       <div className="text-red-500 text-sm flex items-start">
         <AlertCircle className="h-4 w-4 mr-2 mt-0.5 flex-shrink-0" />
-        <div>
-          <p className="font-semibold">Error:</p>
-          <p className="whitespace-pre-wrap">{ (result as ErrorResult).error }</p>
-        </div>
+        <p className="whitespace-pre-wrap">{report}</p>
       </div>
     );
   }
 
-  let content: string | React.ReactNode = '';
-  let toolCalls: ToolInvocation[] | undefined | any[] = undefined; // Use any[] to match schema for now
-  let toolResults: any[] | undefined = undefined;
-
-  switch (instructionType) {
-    case 'reason':
-      content = (result as ReasonResult).content;
-      break;
-    case 'answer':
-      content = (result as AnswerResult).content;
-      break;
-    case 'browser':
-      const browserRes = result as BrowserResult;
-      content = browserRes.content;
-      toolCalls = browserRes.toolCalls;
-      toolResults = browserRes.toolResults;
-      break;
-    case 'terminal':
-      const terminalRes = result as TerminalResult;
-      content = terminalRes.content;
-      toolCalls = terminalRes.toolCalls;
-      toolResults = terminalRes.toolResults;
-      break;
-    default:
-      content = 'Unknown result type';
-  }
-
   return (
-    <div>
-      {typeof content === 'string' ? (
-        <p className="text-sm whitespace-pre-wrap">{content || "(No textual content)"}</p>
-      ) : (
-        content
-      )}
-      {toolCalls && toolCalls.length > 0 && (
-        <div className="mt-2">
-          <h4 className="text-xs font-semibold text-muted-foreground flex items-center">
-            <Zap className="h-3 w-3 mr-1.5" />
-            Tool Calls ({toolCalls.length}):
-          </h4>
-          <ul className="list-none pl-0 mt-1 space-y-1">
-            {toolCalls.map((call, index) => (
-              <li key={call.toolCallId || index} className="text-xs p-1.5 bg-muted/50 rounded-md">
-                <span className="font-medium">{call.toolName || 'N/A'}</span>
-                {call.args && Object.keys(call.args).length > 0 && (
-                   <pre className="text-xs whitespace-pre-wrap bg-background p-1 rounded-sm mt-0.5">
-                    {JSON.stringify(call.args, null, 2)}
-                  </pre>
-                )}
-                {/* Basic display for corresponding result if available */}
-                {toolResults && toolResults.find(res => res.toolCallId === call.toolCallId) && (
-                  <div className="mt-0.5 text-xs text-muted-foreground border-l-2 border-primary/30 pl-1.5">
-                    <span className="font-semibold">Result:</span> {JSON.stringify(toolResults.find(res => res.toolCallId === call.toolCallId)?.result, null, 2).substring(0, 100) + '...'}
-                  </div>
-                )}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </div>
+    <p className="text-sm whitespace-pre-wrap">{report || "(No textual content in report)"}</p>
   );
 };
 
@@ -123,8 +60,9 @@ export const PlanPresentation: React.FC<PlanPresentationProps> = ({ plan }) => {
   }
 
   const totalSteps = plan.length;
-  const successfulSteps = plan.filter(step => step.result && !('error' in step.result)).length;
-  const erroredSteps = plan.filter(step => step.result && ('error' in step.result)).length;
+  // A step is considered errored if its report string starts with "Error:", case-insensitive.
+  const erroredSteps = plan.filter(step => step.report.toLowerCase().startsWith("error:")).length;
+  const successfulSteps = totalSteps - erroredSteps;
 
   return (
     <div className="p-2 bg-muted/20 rounded-lg">
@@ -157,15 +95,15 @@ export const PlanPresentation: React.FC<PlanPresentationProps> = ({ plan }) => {
                         {getIconForInstructionType(step.instruction.type)}
                         Step {step.step}: <span className="ml-1.5 font-normal capitalize">{step.instruction.type}</span>
                       </CardTitle>
-                      {step.result && !('error' in step.result) && (
-                        <CheckCircle2 className="h-5 w-5 text-green-600" />
-                      )}
-                      {step.result && ('error' in step.result) && (
+                      {/* Determine icon based on whether the report string indicates an error */}
+                      {step.report.toLowerCase().startsWith("error:") ? (
                         <AlertCircle className="h-5 w-5 text-red-600" />
+                      ) : (
+                        <CheckCircle2 className="h-5 w-5 text-green-600" />
                       )}
                     </div>
                   </CardHeader>
-                  <CardContent className="p-3 space-y-2">
+                  <CardContent className="p-3 space-y-3">
                     <div>
                       <h3 className="text-sm font-semibold mb-1">Instruction:</h3>
                       <p className="text-sm p-2 bg-muted/50 rounded-md whitespace-pre-wrap">
@@ -173,9 +111,45 @@ export const PlanPresentation: React.FC<PlanPresentationProps> = ({ plan }) => {
                       </p>
                     </div>
                     <div>
-                      <h3 className="text-sm font-semibold mb-1">Result:</h3>
-                      {renderResult(step.result, step.instruction.type)}
+                      <h3 className="text-sm font-semibold mb-1">Report:</h3>
+                      {renderReportContent(step.report, step.instruction.type)}
                     </div>
+                    {step.invocations && step.invocations.length > 0 && (
+                      <div>
+                        <h3 className="text-sm font-semibold mb-1 flex items-center">
+                          <Zap className="h-3.5 w-3.5 mr-1.5 text-orange-500" />
+                          Tool Invocations ({step.invocations.length}):
+                        </h3>
+                        <ul className="list-none pl-0 mt-1 space-y-2">
+                          {step.invocations.map((invocation, invIndex) => (
+                            <li key={invocation.toolCallId || invIndex} className="text-xs p-2 bg-muted/50 rounded-md shadow-sm">
+                              <div className="flex justify-between items-center mb-0.5">
+                                <span className="font-medium text-primary">{invocation.toolName || 'N/A'}</span>
+                                <Badge variant={invocation.state === 'result' ? 'default' : 'secondary'} className="capitalize text-xs">
+                                  {invocation.state}
+                                </Badge>
+                              </div>
+                              {invocation.args && Object.keys(invocation.args).length > 0 && (
+                                <details className="mt-1">
+                                  <summary className="cursor-pointer text-muted-foreground hover:text-foreground text-xs">Arguments</summary>
+                                  <pre className="text-xs whitespace-pre-wrap bg-background p-1.5 rounded-sm mt-0.5 border">
+                                    {JSON.stringify(invocation.args, null, 2)}
+                                  </pre>
+                                </details>
+                              )}
+                              {invocation.state === 'result' && typeof invocation.result !== 'undefined' && (
+                                <details className="mt-1" open>
+                                  <summary className="cursor-pointer text-muted-foreground hover:text-foreground text-xs">Result</summary>
+                                  <pre className="text-xs whitespace-pre-wrap bg-background p-1.5 rounded-sm mt-0.5 border">
+                                    {JSON.stringify(invocation.result, null, 2)}
+                                  </pre>
+                                </details>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               ))}
