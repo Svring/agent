@@ -1,10 +1,12 @@
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Cat, Bot } from 'lucide-react';
-import React from 'react';
+import { Cat, Bot, Bug } from 'lucide-react';
+import React, { useState } from 'react';
 import { MemoizedMarkdown } from '@/components/message-display/memoized-markdown';
 import { JSONValue, type Message } from 'ai'; // Import JSONValue and Message types
 import { ToolInvocationCall } from '@/components/message-display/tool-invocation-call';
 import { ToolInvocationResult } from '@/components/message-display/tool-invocation-result';
+import { Button } from '@/components/ui/button';
+import { useDebug } from '@/context/DebugContext'; // Import useDebug
 
 // Helper function to count lines in a text string
 const countLines = (text: string): number => {
@@ -23,15 +25,61 @@ interface MessageBubbleProps {
 }
 
 const MessageBubble: React.FC<MessageBubbleProps> = ({ m, openStates, expandedResults, toggleOpen, toggleExpandResult, data, apiRoute, isLastMessage }) => {
+  const [showLocalDebug, setShowLocalDebug] = useState(false); // Renamed to avoid confusion
+  const { isDebugMode: isGlobalDebugMode } = useDebug(); // Get global debug state
+
+  // Show debug elements only if global debug mode is on
+  const canShowDebugElements = isGlobalDebugMode; // Declare the missing constant
+
   // --- Default Rendering Logic (Handles text, tool calls, etc.) ---
   if (Array.isArray(m?.parts)) {
     return (
       <div className="flex items-start gap-2 w-auto justify-start rounded-lg">
-        <Avatar className="border">
+        <Avatar className="border" onClick={() => canShowDebugElements && setShowLocalDebug(!showLocalDebug)} style={{ cursor: canShowDebugElements ? 'pointer' : 'default' }}>
           <AvatarImage src={m.role === 'user' ? '/avatars/user_avatar.jpeg' : '/avatars/bot_avatar.jpeg'} />
           <AvatarFallback>{m.role === 'user' ? <Cat /> : <Bot />}</AvatarFallback>
         </Avatar>
         <div className="space-y-1 break-words overflow-hidden w-auto max-w-full">
+          {/* Debug button - only show if global debug mode is on */}
+          {canShowDebugElements && (
+            <Button 
+              size="sm" 
+              variant="outline" 
+              onClick={() => setShowLocalDebug(!showLocalDebug)}
+              className="mb-1 h-6 px-2 text-xs flex items-center gap-1"
+            >
+              <Bug size={12} />
+              {showLocalDebug ? 'Hide Debug' : 'Debug'}
+            </Button>
+          )}
+
+          {/* Debug panel - only show if global debug AND local debug are on */}
+          {canShowDebugElements && showLocalDebug && (
+            <div className="mb-2 border border-yellow-500 bg-yellow-50 dark:bg-yellow-900/20 p-2 rounded-md text-xs overflow-auto">
+              <h4 className="text-yellow-800 dark:text-yellow-300 font-medium mb-1">Debug Info:</h4>
+              <div className="grid gap-2">
+                <div>
+                  <p className="font-semibold mb-1 text-yellow-700 dark:text-yellow-400">Message Object:</p>
+                  <pre className="bg-black/5 dark:bg-white/5 p-2 rounded overflow-auto max-h-60 text-[10px]">
+                    {JSON.stringify(m, null, 2)}
+                  </pre>
+                </div>
+                {data && (
+                  <div>
+                    <p className="font-semibold mb-1 text-yellow-700 dark:text-yellow-400">Data Prop:</p>
+                    <pre className="bg-black/5 dark:bg-white/5 p-2 rounded overflow-auto max-h-60 text-[10px]">
+                      {JSON.stringify(data, null, 2)}
+                    </pre>
+                  </div>
+                )}
+                <div>
+                  <p className="font-semibold mb-1 text-yellow-700 dark:text-yellow-400">API Route:</p>
+                  <code className="bg-black/5 dark:bg-white/5 p-2 rounded">{apiRoute || 'not specified'}</code>
+                </div>
+              </div>
+            </div>
+          )}
+
           {m.parts.map((part: any, partIndex: number) => {
             const partKey = `${m.id}-${partIndex}`;
             if (part.type === 'text') {
@@ -95,10 +143,50 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ m, openStates, expandedRe
   // fallback for non-array parts
   return (
     <div className="flex items-start gap-3 justify-start">
-      <Avatar className="border">
+      <Avatar className="border" onClick={() => canShowDebugElements && setShowLocalDebug(!showLocalDebug)} style={{ cursor: canShowDebugElements ? 'pointer' : 'default' }}>
         <AvatarFallback>{m.role === 'user' ? <Cat /> : <Bot />}</AvatarFallback>
       </Avatar>
       <div className="space-y-1 max-w-3xl break-words overflow-hidden">
+        {/* Debug button for fallback - only show if global debug mode is on */}
+        {canShowDebugElements && (
+          <Button 
+            size="sm" 
+            variant="outline" 
+            onClick={() => setShowLocalDebug(!showLocalDebug)}
+            className="mb-1 h-6 px-2 text-xs flex items-center gap-1"
+          >
+            <Bug size={12} />
+            {showLocalDebug ? 'Hide Debug' : 'Debug'}
+          </Button>
+        )}
+
+        {/* Debug panel for fallback - only show if global debug AND local debug are on */}
+        {canShowDebugElements && showLocalDebug && (
+          <div className="mb-2 border border-yellow-500 bg-yellow-50 dark:bg-yellow-900/20 p-2 rounded-md text-xs overflow-auto">
+            <h4 className="text-yellow-800 dark:text-yellow-300 font-medium mb-1">Debug Info:</h4>
+            <div className="grid gap-2">
+              <div>
+                <p className="font-semibold mb-1 text-yellow-700 dark:text-yellow-400">Message Object:</p>
+                <pre className="bg-black/5 dark:bg-white/5 p-2 rounded overflow-auto max-h-60 text-[10px]">
+                  {JSON.stringify(m, null, 2)}
+                </pre>
+              </div>
+              {data && (
+                <div>
+                  <p className="font-semibold mb-1 text-yellow-700 dark:text-yellow-400">Data Prop:</p>
+                  <pre className="bg-black/5 dark:bg-white/5 p-2 rounded overflow-auto max-h-60 text-[10px]">
+                    {JSON.stringify(data, null, 2)}
+                  </pre>
+                </div>
+              )}
+              <div>
+                <p className="font-semibold mb-1 text-yellow-700 dark:text-yellow-400">API Route:</p>
+                <code className="bg-black/5 dark:bg-white/5 p-2 rounded">{apiRoute || 'not specified'}</code>
+              </div>
+            </div>
+          </div>
+        )}
+
         {m.content && m.content.length > 0 ? (
           <p className="whitespace-pre-wrap text-sm">{m.content}</p>
         ) : (

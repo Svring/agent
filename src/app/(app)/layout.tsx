@@ -8,6 +8,7 @@ import { SidebarProvider, SidebarTrigger, SidebarInset } from "@/components/ui/s
 import { AppSidebar } from "@/components/app-sidebar"
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner"
+import { DebugProvider } from '@/context/DebugContext';
 
 import config from '@/payload.config'
 
@@ -50,15 +51,17 @@ export default async function RootLayout({
         <body
           className={`antialiased h-screen w-screen`}
         >
-          <SidebarProvider defaultOpen={true} className="border-4 border-muted rounded-lg w-full h-full">
-            <AppSidebar />
-            <SidebarInset className="border border-muted rounded-lg">
-              <main className="py-1.5 flex flex-1 flex-col w-full h-full rounded-lg">
-                {children}
-              </main>
-            </SidebarInset>
-            <Toaster />
-          </SidebarProvider>
+          <DebugProvider>
+            <SidebarProvider defaultOpen={true} className="border-4 border-muted rounded-lg w-full h-full">
+              <AppSidebar />
+              <SidebarInset className="border border-muted rounded-lg">
+                <main className="py-1.5 flex flex-1 flex-col w-full h-full rounded-lg">
+                  {children}
+                </main>
+              </SidebarInset>
+              <Toaster />
+            </SidebarProvider>
+          </DebugProvider>
         </body>
       </html>
     </ThemeProvider>

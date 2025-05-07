@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from 'sonner';
 import { CreateSessionButton } from '@/components/projects-display/create-session-button';
 import { Skeleton } from "@/components/ui/skeleton"; // For loading state
+import { HoverPeek } from "@/components/ui/link-preview";
 
 // Define DevAddress type locally based on Projects collection
 interface DevAddress {
@@ -249,16 +250,18 @@ export default function ProjectDetailPage() {
               ) : (
                 production_address ? (
                   <div className="p-3 bg-muted/50 border rounded-md">
-                     {/* Make the address a clickable link */}
-                     <a 
-                       href={production_address.startsWith('http') ? production_address : `https://${production_address}`}
-                       target="_blank" 
-                       rel="noopener noreferrer"
-                       className="font-mono text-sm truncate text-primary hover:underline"
-                       title={`Open ${production_address} in new tab`}
-                     >
-                       {production_address}
-                     </a>
+                     {/* Make the address a clickable link with HoverPeek preview */}
+                     <HoverPeek url={production_address.startsWith('http') ? production_address : `https://${production_address}`}>
+                       <a 
+                         href={production_address.startsWith('http') ? production_address : `https://${production_address}`}
+                         target="_blank" 
+                         rel="noopener noreferrer"
+                         className="font-mono text-sm truncate text-primary hover:underline"
+                         title={`Open ${production_address} in new tab`}
+                       >
+                         {production_address}
+                       </a>
+                     </HoverPeek>
                   </div>
                 ) : (
                   <p className="text-sm text-muted-foreground italic">Not configured.</p>

@@ -12,7 +12,8 @@ import {
   ArrowLeft,
   FolderOpen,
   Loader2,
-  Database
+  Database,
+  Bug
 } from "lucide-react"
 import Link from "next/link"
 import { useRouter, usePathname } from "next/navigation"
@@ -43,6 +44,8 @@ import { useEffect, useState, useRef, useCallback } from "react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Switch } from "@/components/ui/switch"
+import { useDebug } from '@/context/DebugContext'
 
 // Import generated types and server actions
 import { User, Project } from '@/payload-types'
@@ -99,6 +102,7 @@ export function AppSidebar() {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
+  const { isDebugMode, setIsDebugMode } = useDebug();
   
   // Use the imported User type for state
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -687,6 +691,20 @@ export function AppSidebar() {
                   {theme === 'dark' ? <Sun className="mr-2 h-4 w-4" /> : <Moon className="mr-2 h-4 w-4" />}
                   <span>Theme ({theme === 'dark' ? 'Dark' : 'Light'})</span>
                 </Button>
+
+                {/* Debug Mode Toggle */}
+                <div className="flex items-center justify-between px-2 py-1.5 text-sm hover:bg-muted/50 rounded-md transition-colors cursor-pointer">
+                  <Label htmlFor="debug-mode-toggle" className="flex items-center gap-2 cursor-pointer">
+                    <Bug size={16} /> 
+                    <span>Debug Mode</span>
+                  </Label>
+                  <Switch
+                    id="debug-mode-toggle"
+                    checked={isDebugMode}
+                    onCheckedChange={setIsDebugMode}
+                    className="scale-75"
+                  />
+                </div>
 
                 {/* Logout Button */}
                 <Button

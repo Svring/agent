@@ -8,7 +8,7 @@ import MessageBubble from '@/components/message-display/message-bubble';
 import Stage from '@/components/stage';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { Textarea } from '@/components/ui/textarea';
-import { ArrowUp, Hammer, Send, BrainCog, Power, PowerOff, Square, Bot } from 'lucide-react';
+import { ArrowUp, Hammer, Send, BrainCog, Power, PowerOff, Square, Bot, Eye } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import MultiSelect from '@/components/ui/multi-select';
 import { Button } from '@/components/ui/button';
@@ -16,6 +16,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Toggle } from "@/components/ui/toggle"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { toast } from 'sonner';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetClose, SheetFooter, SheetDescription } from "@/components/ui/sheet";
 
 import useSWR from 'swr';
 
@@ -49,11 +50,12 @@ export default function SessionDetailPage({ params }: SessionDetailPageProps) {
 
   console.log("Rendering Session Page:", { projectId, sessionId }); // Log params
 
-  const [apiRoute, setApiRoute] = useState<string>('/api/opera/chat'); // State for API route
-  const [initialMessages, setInitialMessages] = useState<any[]>([]);
+  const [apiRoute, setApiRoute] = useState<string>('/api/opera/chat');
+  const [initialMessages, setInitialMessages] = useState<Message[]>([]);
   const [isLoadingMessages, setIsLoadingMessages] = useState(true);
   const [projectDetails, setProjectDetails] = useState<Project | null>(null);
   const [isInitializingSSH, setIsInitializingSSH] = useState(false);
+  const [showAllMessagesSheet, setShowAllMessagesSheet] = useState(false);
 
   // Fetch project details on mount
   useEffect(() => {
@@ -74,35 +76,38 @@ export default function SessionDetailPage({ params }: SessionDetailPageProps) {
     }
   }, [projectId]);
 
-  // Load initial chat messages
+  // Initial loading of messages - only when component first mounts or sessionId changes
   useEffect(() => {
     const loadMessages = async () => {
+      if (!sessionId) return;
+
       setIsLoadingMessages(true);
       try {
-        const messages = await getSessionMessagesForChat(sessionId);
-        if (messages) {
-          setInitialMessages(messages);
+        console.log(`Initial load of messages for session ${sessionId}`);
+        const messagesFromDb = await getSessionMessagesForChat(sessionId);
+        if (messagesFromDb && messagesFromDb.length > 0) {
+          setInitialMessages(messagesFromDb as Message[]);
+        } else {
+          setInitialMessages([]);
         }
       } catch (error) {
         console.error('Error loading initial messages:', error);
+        setInitialMessages([]);
       } finally {
         setIsLoadingMessages(false);
       }
     };
     loadMessages();
-  }, [sessionId]);
+  }, [sessionId]); // Remove apiRoute from dependencies - handled separately
 
-  const { messages, data, input, handleInputChange, handleSubmit, stop, status } = useChat({
-    maxSteps: 3, // Consider if maxSteps should differ per route
-    api: apiRoute, // Use state variable for API route
+  const { messages, data, input, handleInputChange, handleSubmit, stop, status, setMessages } = useChat({
+    maxSteps: 3,
+    api: apiRoute,
     initialMessages: initialMessages,
-    // Include projectId and sessionId in the body sent with each request
     body: {
         projectId: projectId,
         sessionId: sessionId
     }
-    // TODO: Add logic here to load initialMessages based on sessionId if needed
-    // initialMessages: fetchedMessagesForSession, 
   });
 
   const [openStates, setOpenStates] = useState<Record<string, boolean>>({});
@@ -296,9 +301,48 @@ export default function SessionDetailPage({ params }: SessionDetailPageProps) {
     setSelectedModel(value);
   };
 
+  // Modified API toggle handler to explicitly load and set messages
+  const handleApiToggle = async (newRoute: string) => {
+    if (apiRoute === newRoute) return; // No change if clicking the same route
+
+    console.log(`API route changing from ${apiRoute} to ${newRoute}`);
+    
+    // Stop any ongoing generation
+    if (status !== 'ready') {
+      stop();
+    }
+    
+    // Clear current messages in UI immediately for visual feedback
+    setMessages([]);
+    setIsLoadingMessages(true);
+    
+    // First update the route
+    setApiRoute(newRoute);
+    
+    try {
+      // Directly load messages for this session from DB
+      console.log(`Loading messages for session ${sessionId} after API route change to ${newRoute}`);
+      const messagesFromDb = await getSessionMessagesForChat(sessionId);
+      
+      // Use setMessages to update the messages displayed by useChat
+      if (messagesFromDb && messagesFromDb.length > 0) {
+        console.log(`Found ${messagesFromDb.length} messages for session ${sessionId}`);
+        setMessages(messagesFromDb as Message[]);
+      } else {
+        console.log(`No messages found for session ${sessionId}`);
+        setMessages([]);
+      }
+    } catch (error) {
+      console.error(`Error loading messages after API change:`, error);
+      setMessages([]);
+    } finally {
+      setIsLoadingMessages(false);
+    }
+  };
+
   const customHandleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const userMessage: Message = { // Use Message from @ai-sdk/react or your defined type
+    const userMessage: Message = {
       id: generateId(),
       role: 'user',
       content: input,
@@ -312,14 +356,13 @@ export default function SessionDetailPage({ params }: SessionDetailPageProps) {
     };
 
     handleSubmit(e, {
-      // Pass projectId and sessionId in the main body object
       body: {
-        messages: [userMessage], // Pass the constructed userMessage
+        messages: [userMessage],
         model: selectedModel,
         tools: selectedTools,
         projectId: projectId,
         sessionId: sessionId,
-        customInfo: `The current active page is Context: ${activeContextId}, Page: ${activePageId || 'unknown'}.`
+        customInfo: `The current active page is Context: ${activeContextId}, Page: ${activePageId || 'unknown'}. Current API: ${apiRoute}`
       }
     });
   };
@@ -396,11 +439,28 @@ export default function SessionDetailPage({ params }: SessionDetailPageProps) {
                {/* Header */}
                <header className="flex items-center px-3 py-2 shrink-0">
                 <SidebarTrigger />
-                {/* TODO: Display project/session info here? */}
                 <p className="flex-1 text-lg font-serif text-center"> Opera </p>
+                
+                {/* Button to show all messages data */}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      onClick={() => setShowAllMessagesSheet(true)}
+                      className="mr-1 h-7 w-7"
+                    >
+                      <Eye size={18} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>View Raw Messages Data</p>
+                  </TooltipContent>
+                </Tooltip>
+
                 <Toggle
                   pressed={apiRoute === '/api/opera/counterfeit'}
-                  onPressedChange={(checked) => setApiRoute(checked ? '/api/opera/counterfeit' : '/api/opera/chat')}
+                  onPressedChange={(checked) => handleApiToggle(checked ? '/api/opera/counterfeit' : '/api/opera/chat')}
                   className="ml-auto cursor-pointer"
                 >
                   <BrainCog color={apiRoute === '/api/opera/counterfeit' ? 'cyan' : 'white'} />
@@ -624,6 +684,49 @@ export default function SessionDetailPage({ params }: SessionDetailPageProps) {
           </ResizablePanel>
         </ResizablePanelGroup>
       </PlaywrightContext.Provider>
+
+      {/* Sheet for All Messages Debug Data */}
+      <Sheet open={showAllMessagesSheet} onOpenChange={setShowAllMessagesSheet}>
+        <SheetContent className="w-full sm:max-w-2xl md:max-w-3xl lg:max-w-4xl xl:max-w-5xl flex flex-col" side="right">
+          <SheetHeader>
+            <SheetTitle>All Messages Raw Data</SheetTitle>
+            <SheetDescription>
+              Below is the raw JSON data for all messages currently in the chat, and the latest `data` prop from `useChat` (if any).
+            </SheetDescription>
+          </SheetHeader>
+          <ScrollArea className="flex-1 pr-4">
+            <div className="space-y-4 py-4">
+              <div>
+                <h3 className="text-lg font-semibold mb-2">Messages Array ({messages.length} items):</h3>
+                <pre className="bg-muted p-3 rounded-md text-xs overflow-auto max-h-[60vh]">
+                  {JSON.stringify(messages, null, 2)}
+                </pre>
+              </div>
+              {(apiRoute === '/api/opera/counterfeit' && data && Array.isArray(data) && data.length > 0) && (
+                <div>
+                  <h3 className="text-lg font-semibold mb-2">Latest `data` prop (Counterfeit Plan):</h3>
+                  <pre className="bg-muted p-3 rounded-md text-xs overflow-auto max-h-[60vh]">
+                    {JSON.stringify(data[data.length - 1], null, 2)}
+                  </pre>
+                </div>
+              )}
+              {(apiRoute !== '/api/opera/counterfeit' && data) && (
+                 <div>
+                  <h3 className="text-lg font-semibold mb-2">`data` prop (Non-Counterfeit):</h3>
+                  <pre className="bg-muted p-3 rounded-md text-xs overflow-auto max-h-[60vh]">
+                    {JSON.stringify(data, null, 2)}
+                  </pre>
+                </div>
+              )}
+            </div>
+          </ScrollArea>
+          <SheetFooter>
+            <SheetClose asChild>
+              <Button type="submit">Close</Button>
+            </SheetClose>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
     </TooltipProvider>
   );
 }

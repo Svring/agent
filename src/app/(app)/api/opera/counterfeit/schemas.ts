@@ -18,7 +18,7 @@ const LanguageModelV1SourceSchema = z.object({
 }).describe("Schema for language model sources.");
 
 // Inferred ToolInvocation structure based on usage in message-bubble.tsx and index.d.ts
-const ToolInvocationSchema = z.object({
+export const ToolInvocationSchema = z.object({
   toolCallId: z.string().describe("Unique ID for the tool call."),
   toolName: z.string().describe("Name of the tool being called."),
   args: z.record(z.any()).optional().describe("Arguments passed to the tool."),
