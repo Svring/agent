@@ -1,6 +1,6 @@
 'use client';
 
-import { useChat, type Message } from '@ai-sdk/react';
+import { useChat, type Message as VercelMessage } from '@ai-sdk/react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useRef, useState, useEffect, useCallback } from 'react';
 import React from 'react';
@@ -8,7 +8,7 @@ import MessageBubble from '@/components/message-display/message-bubble';
 import Stage from '@/components/stage';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { Textarea } from '@/components/ui/textarea';
-import { ArrowUp, Hammer, Send, BrainCog, Power, PowerOff, Square, Bot, Eye, ClipboardCopy } from 'lucide-react';
+import { ArrowUp, Hammer, Send, BrainCog, Power, PowerOff, Square, Bot, Eye, ClipboardCopy, User as UserIcon, Loader2 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import MultiSelect from '@/components/ui/multi-select';
 import { Button } from '@/components/ui/button';
@@ -17,6 +17,7 @@ import { Toggle } from "@/components/ui/toggle"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { toast } from 'sonner';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetClose, SheetFooter, SheetDescription } from "@/components/ui/sheet";
+import { useParams, useRouter } from 'next/navigation';
 
 import useSWR from 'swr';
 
@@ -28,76 +29,101 @@ import {
 
 import { PlaywrightContext } from '@/context/PlaywrightContext';
 import { CounterMessagesSchema, PlanStep } from '@/models/chatSchemas';
+import { type Message } from '@/models/chatSchemas';
 import { generateId } from 'ai';
 import { getSessionMessagesForChat } from '@/db/actions/sessions-actions';
-import { Project } from '@/payload-types';
+import { Project, User } from '@/payload-types';
 import { getProjectById } from '@/db/actions/projects-actions';
 
-// Define a generic fetcher function for useSWR
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
-// Define the props type for the page component
-interface SessionDetailPageProps {
-  params: {
-    'project-id': string;
-    'session-id': string;
-  };
-}
-
-export default function SessionDetailPage({ params }: SessionDetailPageProps) {
-  // Access params directly, no need for await in Client Components
+export default function SessionDetailPage() {
+  const params = useParams<{ 'project-id': string, 'session-id': string }>(); 
   const { 'project-id': projectId, 'session-id': sessionId } = params;
+  const router = useRouter();
 
-  console.log("Rendering Session Page:", { projectId, sessionId }); // Log params
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const userIdForPlaywright = currentUser?.id?.toString();
+  const userIdForProps = currentUser?.id?.toString();
 
   const [apiRoute, setApiRoute] = useState<string>('/api/opera/chat');
-  const [initialMessages, setInitialMessages] = useState<Message[]>([]);
+  const [initialMessages, setInitialMessages] = useState<VercelMessage[]>([]);
   const [isLoadingMessages, setIsLoadingMessages] = useState(true);
   const [projectDetails, setProjectDetails] = useState<Project | null>(null);
   const [isInitializingSSH, setIsInitializingSSH] = useState(false);
   const [showAllMessagesSheet, setShowAllMessagesSheet] = useState(false);
 
-  // Fetch project details on mount
+  const [browserStatus, setBrowserStatus] = useState<{ initialized: boolean, viewport: { width: number, height: number } | null, url: string | null }>({ initialized: false, viewport: null, url: null });
+  const [isBrowserLoading, setIsBrowserLoading] = useState(false);
+  
+  const [sshStatus, setSshStatus] = useState<{ connected: boolean, cwd: string | null }>({ connected: false, cwd: null });
+  const [isConnectingSsh, setIsConnectingSsh] = useState(false);
+
+  useEffect(() => {
+    const fetchMe = async () => {
+      try {
+        setAuthLoading(true);
+        const response = await fetch('/api/users/me'); 
+        if (!response.ok) {
+          if (response.status === 401) {
+            toast.error("Authentication required. Redirecting to login...");
+            router.push('/login?redirect=' + encodeURIComponent(window.location.pathname + window.location.search));
+            setCurrentUser(null);
+          } else {
+            throw new Error(`Failed to fetch user: ${response.status} ${response.statusText}`);
+          }
+        } else {
+          const userData: { user: User | null } = await response.json();
+          if (userData.user) {
+            setCurrentUser(userData.user);
+            console.log("[SessionPage] Current user ID:", userData.user.id);
+          } else {
+            toast.error("No active user session. Redirecting to login...");
+            router.push('/login?redirect=' + encodeURIComponent(window.location.pathname + window.location.search));
+            setCurrentUser(null);
+          }
+        }
+      } catch (error) {
+        console.error("[SessionPage] Error fetching current user:", error);
+        toast.error(`Error fetching user: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        setCurrentUser(null);
+      } finally {
+        setAuthLoading(false);
+      }
+    };
+    fetchMe();
+  }, [router]);
+
   useEffect(() => {
     if (projectId) {
       getProjectById(projectId)
         .then(data => {
-          if (data) {
-            setProjectDetails(data);
-          } else {
-            console.error("Project details not found for ID:", projectId);
-            toast.error("Could not load project details for SSH configuration.");
-          }
+          if (data) setProjectDetails(data);
+          else console.error("Project details not found for ID:", projectId);
         })
-        .catch(err => {
-          console.error("Error fetching project details:", err);
-          toast.error("Error fetching project details.");
-        });
+        .catch(err => console.error("Error fetching project details:", err));
     }
   }, [projectId]);
 
-  // Initial loading of messages - only when component first mounts or sessionId changes
-  // The actual reloadMessagesFromDb function is defined after setMessages is available
-
   const { messages, data, input, handleInputChange, handleSubmit, stop, status, setMessages, reload } = useChat({
-    maxSteps: 3,
     api: apiRoute,
-    initialMessages: initialMessages, // initialMessages is still used for the very first load
+    initialMessages: initialMessages, 
     body: {
         projectId: projectId,
-        sessionId: sessionId
+        sessionId: sessionId,
     },
-    onFinish: async () => { // Make onFinish async
+    onFinish: async (message) => { 
       if (apiRoute === '/api/opera/counterfeit') {
         if (Array.isArray(data) && data.length > 0) {
           const latestCounterfeitState = data[data.length - 1];
           const validationResult = CounterMessagesSchema.safeParse(latestCounterfeitState);
           if (validationResult.success) {
             console.log("[onFinish] Counterfeit API call finished. Setting messages to finalMessages from stream first.");
-            setMessages(validationResult.data.finalMessages as Message[]); // Update UI immediately
+            setMessages(validationResult.data.finalMessages as VercelMessage[]);
             
             console.log("[onFinish] Now, reloading messages from DB after counterfeit call.");
-            await reloadMessagesFromDb(); // Then reload from DB
+            await reloadMessagesFromDb();
           } else {
             console.error("[onFinish] Counterfeit API call finished, but failed to parse finalMessages from the latest data chunk:", validationResult.error.flatten());
             await reloadMessagesFromDb();
@@ -107,52 +133,28 @@ export default function SessionDetailPage({ params }: SessionDetailPageProps) {
           await reloadMessagesFromDb(); 
         }
       }
+      await reloadMessagesFromDb(); 
     }
   });
 
-  // Function to load/reload messages from the DB
-  // Defined here after setMessages and setIsLoadingMessages are available
   const reloadMessagesFromDb = useCallback(async () => {
     if (!sessionId) return;
-    console.log(`Reloading messages from DB for session ${sessionId}`);
     setIsLoadingMessages(true);
     try {
       const messagesFromDb = await getSessionMessagesForChat(sessionId);
-      if (messagesFromDb && messagesFromDb.length > 0) {
-        setMessages(messagesFromDb as Message[]);
-      } else {
-        setMessages([]);
-      }
+      setMessages(messagesFromDb as VercelMessage[]);
     } catch (error) {
       console.error('Error reloading messages from DB:', error);
-      toast.error("Failed to reload messages from database.");
+      toast.error("Failed to reload messages.");
     } finally {
       setIsLoadingMessages(false);
     }
-  }, [sessionId, setMessages, setIsLoadingMessages]);
+  }, [sessionId, setMessages]);
 
   useEffect(() => {
-    // Initial load calls reloadMessagesFromDb
-    if (sessionId) { // Ensure sessionId is available before calling
-        reloadMessagesFromDb();
-    }
+    if (sessionId) reloadMessagesFromDb();
   }, [sessionId, reloadMessagesFromDb]);
 
-  const [openStates, setOpenStates] = useState<Record<string, boolean>>({});
-  const [expandedResults, setExpandedResults] = useState<Record<string, boolean>>({});
-  const messagesEndRef = useRef(null);
-  const [selectedModel, setSelectedModel] = useState<string>('claude-3-7-sonnet-20250219');
-  const [selectedTools, setSelectedTools] = useState<string[]>(['playwright', 'props']);
-  const [availableModels, setAvailableModels] = useState<{ key: string, label: string }[]>([]);
-  const [availableTools, setAvailableTools] = useState<{ key: string, label: string }[]>([]);
-  const [sshStatus, setSshStatus] = useState<{ connected: boolean, cwd: string | null }>({ connected: false, cwd: null });
-  const [isConnecting, setIsConnecting] = useState(false);
-  const [browserStatus, setBrowserStatus] = useState<{ initialized: boolean, viewport: { width: number, height: number } | null, url: string | null }>({ initialized: false, viewport: null, url: null });
-  const [isBrowserLoading, setIsBrowserLoading] = useState(false);
-  const [activeContextId, setActiveContextId] = useState<string>('opera');
-  const [activePageId, setActivePageId] = useState<string | null>('main');
-
-   // --- SWR Hooks ---
   const { data: castingData, error: castingError } = useSWR<{
     models: { key: string, label: string }[];
     tools: { key: string, label: string }[];
@@ -163,9 +165,18 @@ export default function SessionDetailPage({ params }: SessionDetailPageProps) {
     cwd: string | null;
     credentials: any; 
   }>('/api/props', fetcher, { refreshInterval: 5000 });
-  // --- End SWR Hooks ---
 
-    const setActivePage = useCallback((contextId: string, pageId: string | null) => {
+  const [openStates, setOpenStates] = useState<Record<string, boolean>>({});
+  const [expandedResults, setExpandedResults] = useState<Record<string, boolean>>({});
+  const messagesEndRef = useRef(null);
+  const [selectedModel, setSelectedModel] = useState<string>('claude-3-7-sonnet-20250219');
+  const [selectedTools, setSelectedTools] = useState<string[]>(['browser', 'terminal']);
+  const [availableModels, setAvailableModels] = useState<{ key: string, label: string }[]>([]);
+  const [availableTools, setAvailableTools] = useState<{ key: string, label: string }[]>([]);
+  const [activeContextId, setActiveContextId] = useState<string>('opera');
+  const [activePageId, setActivePageId] = useState<string | null>('main');
+
+  const setActivePage = useCallback((contextId: string, pageId: string | null) => {
     setActiveContextId(contextId);
     setActivePageId(pageId);
   }, []);
@@ -178,7 +189,7 @@ export default function SessionDetailPage({ params }: SessionDetailPageProps) {
     setExpandedResults(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
-   useEffect(() => {
+  useEffect(() => {
     if (messagesEndRef.current) {
       (messagesEndRef.current as HTMLElement).scrollIntoView({ behavior: 'smooth' });
     }
@@ -219,82 +230,112 @@ export default function SessionDetailPage({ params }: SessionDetailPageProps) {
     }
   }, [sshData, sshError]);
 
-    const fetchBrowserStatus = useCallback(async () => {
+  const fetchBrowserStatus = useCallback(async () => {
+    if (!userIdForPlaywright || authLoading) return; 
     try {
-      const statusRes = await fetch('/api/playwright', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'getStatus' }) });
+      const statusRes = await fetch('/api/playwright', { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify({ action: 'getStatus' }) 
+      });
       let initialized = false;
+      let viewport = null;
       if (statusRes.ok) {
         const statusData = await statusRes.json();
-        initialized = statusData.status?.browserInitialized;
-      }
-      let viewport = null;
-      let url = null;
-      if (initialized) {
-        const viewportRes = await fetch('/api/playwright', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'getViewportSize' }) });
-        if (viewportRes.ok) {
-          const viewportData = await viewportRes.json();
-          viewport = viewportData.viewport || null;
+        if (statusData.success && statusData.status) {
+            initialized = statusData.status.userContextExists;
+            viewport = statusData.status.userViewport || null;
         }
       }
-      setBrowserStatus({ initialized, viewport, url });
+      setBrowserStatus({ initialized, viewport, url: null });
     } catch (error) {
-      console.error('Error fetching browser status:', error);
+      console.error('[SessionPage] Error fetching browser status:', error);
       setBrowserStatus({ initialized: false, viewport: null, url: null });
     }
-  }, []);
+  }, [userIdForPlaywright, authLoading]);
+
+  const handleBrowserInit = async () => {
+    if (!userIdForPlaywright || authLoading) {
+        toast.error(authLoading ? "Authenticating..." : "User ID not available for browser init.");
+        return;
+    }
+    setIsBrowserLoading(true);
+    try {
+      const width = browserStatus.viewport?.width || 1024;
+      const height = browserStatus.viewport?.height || 768;
+      await fetch('/api/playwright', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'init', width, height })
+      });
+      await fetchBrowserStatus(); 
+      toast.success("Browser initialized for your session.");
+    } catch (error) {
+        toast.error("Failed to initialize browser.");
+        console.error('[SessionPage] Error initializing browser:', error);
+    } finally {
+      setIsBrowserLoading(false);
+    }
+  };
+
+  const handleBrowserCleanup = async () => {
+    if (!userIdForPlaywright || authLoading) {
+        toast.error(authLoading ? "Authenticating..." : "User ID not available for browser cleanup.");
+        return;
+    }
+    setIsBrowserLoading(true);
+    try {
+      await fetch('/api/playwright', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'closeUserContext' })
+      });
+      await fetchBrowserStatus(); 
+      toast.info("Browser session closed.");
+    } catch(error) {
+        toast.error("Failed to close browser session.");
+        console.error('[SessionPage] Error closing browser session:', error);
+    } finally {
+      setIsBrowserLoading(false);
+    }
+  };
 
   useEffect(() => {
-    fetchBrowserStatus();
-    if (!browserStatus.initialized && !isBrowserLoading) {
-      handleBrowserInit();
+    if (userIdForPlaywright && !authLoading && !browserStatus.initialized && !isBrowserLoading) { 
+        console.log("[SessionPage] Attempting initial browser initialization for user:", userIdForPlaywright);
+        handleBrowserInit(); 
     }
-    const intervalId = setInterval(fetchBrowserStatus, 5000);
-    return () => clearInterval(intervalId);
-  }, [fetchBrowserStatus, browserStatus.initialized, isBrowserLoading]); // Added handleBrowserInit to deps
-
-  // --- Initial SSH Connection Attempt --- 
-  useEffect(() => {
-    if (!sshStatus.connected && !isInitializingSSH && projectDetails) {
-       console.log("Attempting initial SSH connection with project details...");
-       handleSshToggle(true);
+    // Setup interval for status check regardless of initial state, clear on unmount
+    if (userIdForPlaywright && !authLoading) {
+      const intervalId = setInterval(fetchBrowserStatus, 5000);
+      return () => clearInterval(intervalId);
     }
-  }, [projectDetails, sshStatus.connected]);
+  }, [userIdForPlaywright, authLoading, browserStatus.initialized, isBrowserLoading, handleBrowserInit, fetchBrowserStatus]);
 
-  const handleSshToggle = async (useProjectCredentials = false) => {
-    if (isConnecting || isInitializingSSH) return; 
-
-    const targetStateConnected = !sshStatus.connected; 
-    const action = targetStateConnected ? 'initialize' : 'disconnect';
-    
-    console.log(`handleSshToggle called: action=${action}, useProjectCredentials=${useProjectCredentials}`);
-    
-    if (action === 'initialize') {
-      setIsInitializingSSH(true);
-    } else {
-      setIsConnecting(true); 
+  const handleSshToggle = useCallback(async (connect = true) => {
+    if (!userIdForProps || authLoading) {
+      toast.error(authLoading ? "Authenticating..." : "User ID not available for SSH actions.");
+      return;
     }
+    if ((connect && (isConnectingSsh || isInitializingSSH || sshStatus.connected)) || (!connect && isConnectingSsh)) {
+      console.log(`[SessionPage] SSH toggle skipped. Connect: ${connect}, isConnecting: ${isConnectingSsh}, isInitializing: ${isInitializingSSH}, isConnected: ${sshStatus.connected}`);
+      return;
+    }
+
+    const action = connect ? 'initialize' : 'disconnect';
+    if (action === 'initialize') setIsInitializingSSH(true); else setIsConnectingSsh(true);
+    console.log(`[SessionPage] SSH Toggling - Action: ${action} for user ${userIdForProps}`);
 
     try {
-      let requestBody: { action: string; host?: string; port?: number; username?: string; password?: string } = { action };
-
-      if (action === 'initialize') {
-        if (useProjectCredentials && projectDetails?.dev_address && projectDetails.dev_address.length > 0) {
-          const devEnv = projectDetails.dev_address[0];
-          if (devEnv && devEnv.address && devEnv.username) {
-            console.log("Using project dev credentials for SSH init:", devEnv);
-            requestBody = {
-              ...requestBody,
-              host: devEnv.address,
-              port: devEnv.port ?? undefined,
-              username: devEnv.username,
-              password: devEnv.password ?? undefined,
-            };
-          } else {
-             console.warn("First dev environment details incomplete, falling back to default init.");
-          }
-        } else {
-           console.log("Initializing SSH with default .env credentials.");
-        }
+      let requestBody: any = { action };
+      if (action === 'initialize' && projectDetails?.dev_address?.[0]) {
+        const devEnv = projectDetails.dev_address[0];
+        requestBody = { ...requestBody, host: devEnv.address, port: devEnv.port, username: devEnv.username, password: devEnv.password };
+      } else if (action === 'initialize') {
+        // Fallback or error if projectDetails are not available for initialization
+        console.warn("[SessionPage] SSH initialize called without projectDetails.dev_address. Connection might fail or use defaults.");
+        // Potentially, you could disallow initialization here if projectDetails are strictly required.
+        // For now, it proceeds, and the backend might use default credentials or fail.
       }
 
       const response = await fetch('/api/props', {
@@ -302,60 +343,67 @@ export default function SessionDetailPage({ params }: SessionDetailPageProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestBody)
       });
+      // It's crucial to await mutateSshStatus to get the latest status before making decisions
+      const newSshData = await mutateSshStatus(); 
+      const data = await response.json(); 
 
-      await mutateSshStatus(); 
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error(`Failed to ${action} SSH:`, errorData.message);
-        toast.error(`SSH ${action} failed: ${errorData.message || 'Unknown error'}`);
-      } else {
-        const data = await response.json();
-        console.log(`SSH ${action} request successful: ${data.message}`);
-        toast.success(`SSH ${action} successful`);
+      if (!response.ok) throw new Error(data.message || `SSH ${action} failed with status ${response.status}`);
+      
+      // Update local state based on the NEW data from mutateSshStatus or response
+      // This ensures UI reflects the actual state post-operation
+      if (newSshData) {
+        setSshStatus({ connected: newSshData.status === 'Connected', cwd: newSshData.cwd });
       }
+
+      toast.success(`SSH ${action} successful.`);
+      console.log(`[SessionPage] SSH ${action} successful for user ${userIdForProps}. New CWD: ${newSshData?.cwd}`);
+
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      console.error(`Error during SSH ${action}:`, error);
-      toast.error(`Error during SSH ${action}: ${errorMsg}`);
-       await mutateSshStatus(); 
+      toast.error(`Error during SSH ${action}: ${error instanceof Error ? error.message : String(error)}`);
+      console.error(`[SessionPage] Error during SSH ${action} for user ${userIdForProps}:`, error);
+      // On error, ensure local state reflects that connection likely failed or is unchanged
+      const currentSshData = sshData; // Use existing swr data as fallback
+      if (currentSshData) {
+         setSshStatus({ connected: currentSshData.status === 'Connected' && action !== 'disconnect', cwd: currentSshData.cwd });
+      }
     } finally {
-       setIsInitializingSSH(false); 
-       setIsConnecting(false);
+      if (action === 'initialize') setIsInitializingSSH(false); else setIsConnectingSsh(false);
+      console.log(`[SessionPage] SSH Toggle Finished - Action: ${action}. Initializing: ${isInitializingSSH}, Connecting: ${isConnectingSsh}`);
     }
-  };
+  }, [userIdForProps, authLoading, projectDetails, isConnectingSsh, isInitializingSSH, sshStatus.connected, mutateSshStatus, sshData]);
+
+  useEffect(() => {
+    if (userIdForProps && !authLoading && projectDetails && !sshStatus.connected && !isInitializingSSH && !isConnectingSsh) {
+       console.log("[SessionPage] Attempting initial SSH connection with project details for user:", userIdForProps);
+       handleSshToggle(true);
+    }
+  }, [projectDetails, sshStatus.connected, userIdForProps, authLoading, isInitializingSSH, isConnectingSsh, handleSshToggle]);
 
   const handleModelChange = (value: string) => {
     setSelectedModel(value);
   };
 
-  // Modified API toggle handler to explicitly load and set messages
   const handleApiToggle = async (newRoute: string) => {
-    if (apiRoute === newRoute) return; // No change if clicking the same route
+    if (apiRoute === newRoute) return;
 
     console.log(`API route changing from ${apiRoute} to ${newRoute}`);
     
-    // Stop any ongoing generation
     if (status !== 'ready') {
       stop();
     }
     
-    // Clear current messages in UI immediately for visual feedback
     setMessages([]);
     setIsLoadingMessages(true);
     
-    // First update the route
     setApiRoute(newRoute);
     
     try {
-      // Directly load messages for this session from DB
       console.log(`Loading messages for session ${sessionId} after API route change to ${newRoute}`);
       const messagesFromDb = await getSessionMessagesForChat(sessionId);
       
-      // Use setMessages to update the messages displayed by useChat
       if (messagesFromDb && messagesFromDb.length > 0) {
         console.log(`Found ${messagesFromDb.length} messages for session ${sessionId}`);
-        setMessages(messagesFromDb as Message[]);
+        setMessages(messagesFromDb as VercelMessage[]);
       } else {
         console.log(`No messages found for session ${sessionId}`);
         setMessages([]);
@@ -370,70 +418,23 @@ export default function SessionDetailPage({ params }: SessionDetailPageProps) {
 
   const customHandleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const userMessage: Message = {
-      id: generateId(),
-      role: 'user',
-      content: input,
-      parts: [
-        {
-          type: 'text',
-          text: input
-        }
-      ],
-      createdAt: new Date(),
-    };
-
+    if (authLoading || !currentUser) {
+      toast.error("Please wait, authenticating user...");
+      return;
+    }
     handleSubmit(e, {
       body: {
-        messages: [userMessage],
-        model: selectedModel,
-        tools: selectedTools,
-        projectId: projectId,
-        sessionId: sessionId,
-        customInfo: `The current active page is Context: ${activeContextId}, Page: ${activePageId || 'unknown'}. Current API: ${apiRoute}`
+          messages: [{id: generateId(), role: 'user', content: input, createdAt: new Date()} as VercelMessage],
+          model: selectedModel,
+          tools: selectedTools,
+          projectId: projectId,
+          sessionId: sessionId,
+          customInfo: `User: ${currentUser.id} | ActivePage: ${activeContextId}/${activePageId || 'unknown'} | API: ${apiRoute}`
       }
     });
   };
 
-   const handleBrowserInit = async () => {
-     setIsBrowserLoading(true);
-    try {
-      const width = browserStatus.viewport?.width || 1024;
-      const height = browserStatus.viewport?.height || 768;
-      await fetch('/api/playwright', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'init', width, height })
-      });
-      await fetchBrowserStatus();
-      toast.success("Browser initialized.");
-    } catch (error) {
-        toast.error("Failed to initialize browser.");
-        console.error(error);
-    } finally {
-      setIsBrowserLoading(false);
-    }
-  };
-
-  const handleBrowserCleanup = async () => {
-     setIsBrowserLoading(true);
-    try {
-      await fetch('/api/playwright', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'cleanup' })
-      });
-      await fetchBrowserStatus();
-      toast.info("Browser cleaned up.");
-    } catch(error) {
-        toast.error("Failed to cleanup browser.");
-        console.error(error);
-    } finally {
-      setIsBrowserLoading(false);
-    }
-  };
-
-   const validatedData = React.useMemo(() => {
+  const validatedData = React.useMemo(() => {
        if (apiRoute === '/api/opera/counterfeit' && Array.isArray(data) && data.length > 0) {
         const latestCounterfeitState = data[data.length - 1];
         const validationResult = CounterMessagesSchema.safeParse(latestCounterfeitState);
@@ -448,7 +449,6 @@ export default function SessionDetailPage({ params }: SessionDetailPageProps) {
        return null;
   }, [data, apiRoute]);
 
-  // Helper function for copying to clipboard
   const copyToClipboard = (text: string, type: string) => {
     navigator.clipboard.writeText(text)
       .then(() => {
@@ -460,22 +460,23 @@ export default function SessionDetailPage({ params }: SessionDetailPageProps) {
       });
   };
 
-  // Determine which set of messages to render
   const messagesToRender = React.useMemo(() => {
     if (apiRoute === '/api/opera/counterfeit' && validatedData && validatedData.type === 'success') {
-      // For counterfeit, finalMessages are in the last data chunk. 
-      // We need to ensure user-initiated messages are also present, so we'll merge.
-      // The first message in validatedData.data.finalMessages is often the initial user message.
       console.log("[Counterfeit Render] Using validatedData.data.finalMessages");
-      return validatedData.data.finalMessages as Message[];
+      return validatedData.data.finalMessages as VercelMessage[];
     } else {
-      // For chat route, or if counterfeit data is not yet ready/valid, use messages from useChat directly.
       console.log("[Chat Render/Fallback] Using messages from useChat hook");
       return messages;
     }
   }, [apiRoute, validatedData, messages]);
 
-  // Render the Opera UI
+  if (authLoading) {
+    return <div className="flex items-center justify-center h-screen"><Loader2 className="h-8 w-8 animate-spin" /> <p className="ml-2">Authenticating...</p></div>;
+  }
+  if (!currentUser) {
+    return <div className="flex items-center justify-center h-screen"><UserIcon className="h-8 w-8 mr-2 text-red-500"/> <p>Authentication failed or no active session.</p></div>;
+  }
+
   return (
      <TooltipProvider>
       <style jsx>{`
@@ -488,15 +489,12 @@ export default function SessionDetailPage({ params }: SessionDetailPageProps) {
           direction="horizontal"
           className="w-full h-full rounded-lg"
         >
-          {/* Left sidebar */}
           <ResizablePanel defaultSize={30} minSize={30} maxSize={50}>
              <div className="h-full flex flex-col">
-               {/* Header */}
                <header className="flex items-center px-3 py-2 shrink-0">
                 <SidebarTrigger />
                 <p className="flex-1 text-lg font-serif text-center"> Opera </p>
                 
-                {/* Button to show all messages data */}
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button 
@@ -522,7 +520,6 @@ export default function SessionDetailPage({ params }: SessionDetailPageProps) {
                 </Toggle>
               </header>
 
-               {/* Messages Section */}
                <div className="flex-1 overflow-auto w-full">
                  <ScrollArea className="h-full w-full px-3 pb-2">
                    <div className="space-y-2 h-full w-full">
@@ -533,10 +530,6 @@ export default function SessionDetailPage({ params }: SessionDetailPageProps) {
                       ) : (
                         messagesToRender.map((m, index) => {
                           const isLastMessage = index === messagesToRender.length - 1;
-                          // The complex logic for extracting from validatedData for the *last* message bubble
-                          // is removed. We now pass the message `m` from `messagesToRender` directly.
-                          // If data prop is needed for the last message bubble specifically for plan display,
-                          // we can still pass it if `m` is the last message from `validatedData.data.finalMessages`
                           let messageSpecificData: { plan: any[] } | undefined = undefined;
                           if (apiRoute === '/api/opera/counterfeit' && 
                               validatedData && 
@@ -554,7 +547,7 @@ export default function SessionDetailPage({ params }: SessionDetailPageProps) {
                                expandedResults={expandedResults}
                                toggleOpen={toggleOpen}
                                toggleExpandResult={toggleExpandResult}
-                               data={messageSpecificData} // Pass plan data if applicable
+                               data={messageSpecificData}
                                apiRoute={apiRoute}
                                isLastMessage={isLastMessage} 
                              />
@@ -566,7 +559,6 @@ export default function SessionDetailPage({ params }: SessionDetailPageProps) {
                 </ScrollArea>
               </div>
 
-               {/* Input Section */}
                <footer className="p-2 border-t shrink-0">
                  <div className="flex w-full flex-col rounded-lg border shadow-sm">
                    <form onSubmit={customHandleSubmit} className="flex flex-col w-full bg-background rounded-lg p-2">
@@ -596,7 +588,7 @@ export default function SessionDetailPage({ params }: SessionDetailPageProps) {
                           </SelectContent>
                         </Select>
                         <MultiSelect
-                          label="tools"
+                          label="Tools"
                           icon={Hammer}
                           options={availableTools.map(tool => ({ label: tool.label, value: tool.key }))}
                           selectedOptions={selectedTools}
@@ -636,7 +628,6 @@ export default function SessionDetailPage({ params }: SessionDetailPageProps) {
                       </div>
                     </div>
                   </form>
-                   {/* SSH Status Bar */}
                    <div className="flex items-center h-auto px-2 text-xs text-muted-foreground rounded">
                        <span
                       className={`w-1.5 h-1.5 rounded-full mr-2 shrink-0 ${sshStatus.connected ? 'bg-green-600 animate-glow' : 'bg-gray-400'}`}
@@ -659,7 +650,7 @@ export default function SessionDetailPage({ params }: SessionDetailPageProps) {
                           size="icon"
                           className="h-6 w-6 p-0 ml-2"
                           onClick={() => handleSshToggle()}
-                          disabled={isConnecting || isInitializingSSH}
+                          disabled={isConnectingSsh || isInitializingSSH}
                         >
                           {sshStatus.connected
                             ? <PowerOff />
@@ -668,11 +659,10 @@ export default function SessionDetailPage({ params }: SessionDetailPageProps) {
                         </Button>
                       </TooltipTrigger>
                       <TooltipContent>
-                        {isInitializingSSH ? 'Initializing...' : isConnecting ? 'Disconnecting...' : sshStatus.connected ? 'Disconnect SSH' : 'Connect SSH'}
+                        {isInitializingSSH ? 'Initializing...' : isConnectingSsh ? 'Disconnecting...' : sshStatus.connected ? 'Disconnect SSH' : 'Connect SSH'}
                       </TooltipContent>
                     </Tooltip>
                   </div>
-                  {/* Browser Status Bar */}
                    <div className="flex items-center h-auto px-2 text-xs text-muted-foreground mb-2 rounded">
                       <span
                        className={`w-1.5 h-1.5 rounded-full mr-2 shrink-0 ${browserStatus.initialized ? 'bg-green-600 animate-glow' : 'bg-gray-400'}`}
@@ -715,7 +705,6 @@ export default function SessionDetailPage({ params }: SessionDetailPageProps) {
 
           <ResizableHandle className="w-0.5 bg-muted transition-colors duration-200" />
 
-          {/* Right stage area */}
           <ResizablePanel defaultSize={70}>
             <div className="h-full p-2">
               <Stage className="h-full w-full" />
@@ -724,7 +713,6 @@ export default function SessionDetailPage({ params }: SessionDetailPageProps) {
         </ResizablePanelGroup>
       </PlaywrightContext.Provider>
 
-      {/* Sheet for All Messages Debug Data */}
       <Sheet open={showAllMessagesSheet} onOpenChange={setShowAllMessagesSheet}>
         <SheetContent className="w-full p-4 sm:max-w-2xl md:max-w-3xl lg:max-w-4xl xl:max-w-5xl flex flex-col overflow-auto" side="right">
           <SheetHeader>

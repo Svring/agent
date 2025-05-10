@@ -1,4 +1,4 @@
-import { castingManager, getPlaywrightTools, getPropsTools } from '@/backstage/casting-manager';
+import { castingManager } from '@/backstage/casting-manager';
 import { streamText, streamObject, createDataStreamResponse, LanguageModel, Message as AIMessage, generateId, generateObject, generateText } from 'ai';
 import {
   PlanStepInstructionSchema,
@@ -11,7 +11,8 @@ import {
 } from '@/models/chatSchemas';
 import { errorResponse } from '../utils';
 import { saveSessionMessages } from '@/db/actions/sessions-actions';
-import { addPlanToMessage } from '@/db/actions/messages-actions';
+import { getAuthenticatedUserId } from '@/lib/auth-utils';
+import { NextRequest } from 'next/server';
 
 // Define a type for AI library message format (different from our app's Message type)
 type AILibraryMessage = {
@@ -110,24 +111,47 @@ function createAssistantMessage(content: string): Message {
 // Add an extended Message type that includes plan
 type MessageWithPlan = Message & { plan?: PlanStep[] };
 
-export async function POST(req: Request) {
+interface CounterfeitRequestBody {
+    messages: AIMessage[];
+    model: string;
+    customInfo?: string;
+    sessionId: string; // This is the chat session ID from the DB
+    // We will get the actual user ID from the authenticated session
+}
+
+export async function POST(req: NextRequest) {
   console.log("--- Counterfeit API Request Start ---");
-  const body = await req.json();
-  console.log("Request Body:", JSON.stringify(body, null, 2));
-  const { messages: initialMessages, model: selectedModelName, customInfo, sessionId } = body;
-
-  if (!sessionId) {
-    return errorResponse('sessionId is required in the request body', 400);
-  }
-
-  const workerModel = castingManager.getModelByName(selectedModelName);
-  if (!workerModel) {
-    console.error(`Error: Invalid or unavailable model selected: ${selectedModelName}`);
-    return errorResponse(`Invalid or unavailable model selected: ${selectedModelName}`, 400);
-  }
-  console.log(`Selected Worker Model: ${selectedModelName}`);
+  
+  let authenticatedUserId: string | null = null;
+  let requestBody: CounterfeitRequestBody | null = null;
+  let actionForLog: string = 'counterfeitProcessing'; // For logging
 
   try {
+    authenticatedUserId = await getAuthenticatedUserId(req.headers);
+    if (!authenticatedUserId) {
+      console.error("[Counterfeit API] Authentication failed or no user ID found in session.");
+      return errorResponse('Authentication required.', 401);
+    }
+    console.log(`[Counterfeit API] Authenticated User ID: ${authenticatedUserId}`);
+
+    requestBody = await req.json();
+    const { messages: initialMessages, model: selectedModelName, customInfo, sessionId } = requestBody!;
+
+    // It's good practice to log what sessionId (from body) and authenticatedUserId (from session) are.
+    // You might also want to verify that the authenticatedUser is authorized to operate on this specific sessionId if they are different concepts.
+    console.log(`[Counterfeit API] Request for DB sessionId: ${sessionId} by User ID: ${authenticatedUserId}`);
+
+    if (!sessionId) {
+      return errorResponse('sessionId (database chat session ID) is required in the request body', 400);
+    }
+
+    const workerModel = castingManager.getModelByName(selectedModelName);
+    if (!workerModel) {
+      console.error(`Error: Invalid or unavailable worker model selected: ${selectedModelName}`);
+      return errorResponse(`Invalid or unavailable worker model selected: ${selectedModelName}`, 400);
+    }
+    console.log(`Selected Worker Model: ${selectedModelName}`);
+
     return createDataStreamResponse({
       async execute(dataStream) {
         const plan: PlanStep[] = [];
@@ -243,33 +267,22 @@ export async function POST(req: Request) {
                 case 'browser':
                 case 'terminal':
                   console.log(`Executing Worker Step: ${stepInstruction.type}`);
-                  const workerOutput = await executeWorkerStep(stepInstruction, workerModel);
-                  
+                  const workerOutput = await executeWorkerStep(
+                    stepInstruction, 
+                    workerModel!, 
+                    customInfo, 
+                    authenticatedUserId === null ? undefined : authenticatedUserId 
+                  );
                   planStep.report = workerOutput.report;
                   if (workerOutput.invocations && workerOutput.invocations.length > 0) {
                     planStep.invocations = workerOutput.invocations;
                   }
-                  
-                  // Add a summary to orchestrator context but NOT to finalMessages
                   const isError = planStep.report.toLowerCase().startsWith("error:");
-
-                  if (!isError) {
-                    let summary = `${stepInstruction.type.charAt(0).toUpperCase() + stepInstruction.type.slice(1)} Agent: `;
-                    // The report string itself is the content/summary from the worker
-                    summary += planStep.report;
-                    const successMsg: AILibraryMessage = {
-                      role: 'assistant',
-                      content: summary
-                    };
-                    orchestratorContextMessages.push(successMsg);
-                  } else {
-                    // The report string already contains the error message
-                    const errorMsg: AILibraryMessage = {
-                      role: 'assistant',
-                      content: planStep.report 
-                    };
-                    orchestratorContextMessages.push(errorMsg);
+                  let summaryCtxMessage = `${stepInstruction.type.charAt(0).toUpperCase() + stepInstruction.type.slice(1)} Agent: ${planStep.report}`;
+                  if (!isError && planStep.invocations && planStep.invocations.length > 0 && !planStep.report.includes("tool invocation(s)")) {
+                    summaryCtxMessage = `${stepInstruction.type.charAt(0).toUpperCase() + stepInstruction.type.slice(1)} Agent used ${planStep.invocations.length} tool(s). Report: ${planStep.report}`;
                   }
+                  orchestratorContextMessages.push({ role: 'assistant', content: summaryCtxMessage });
                   break;
                 default:
                   const unknownStepType = (stepInstruction as any).type;
@@ -386,75 +399,64 @@ export async function POST(req: Request) {
       },
     });
   } catch (error) {
-    console.error('--- Orchestration Failed Critically ---', error);
+    const authUserIdForLog = authenticatedUserId || 'unknown';
+    console.error(`[Counterfeit API] User [${authUserIdForLog}] Orchestration Failed Critically for action [${actionForLog}]:`, error);
     return errorResponse('Orchestration process failed', 500);
   }
 }
 
 async function executeWorkerStep(
   stepInstruction: PlanStepInstruction,
-  workerModel: LanguageModel
+  workerModel: LanguageModel,
+  customInfo?: string,
+  userIdForTools?: string
 ): Promise<{ report: string; invocations: ToolInvocation[] }> {
   let workerTools: Record<string, any> = {};
-  let workerSystemPrompt: string = '';
-  let clientToClose: any = null;
 
   try {
-    console.log(`executeWorkerStep: Loading tools for worker type: ${stepInstruction.type}`);
-    if (stepInstruction.type === 'browser') {
-      const { playwrightTools, playwrightClient } = await getPlaywrightTools();
-      workerTools = playwrightTools;
-      workerSystemPrompt = BROWSER_AGENT_PROMPT();
-      clientToClose = playwrightClient;
-      console.log("executeWorkerStep: Loaded Browser Tools:", Object.keys(workerTools));
-    } else if (stepInstruction.type === 'terminal') {
-      const { propsTools, propsClient } = await getPropsTools();
-      workerTools = propsTools;
-      workerSystemPrompt = TERMINAL_AGENT_PROMPT();
-      clientToClose = propsClient;
-      console.log("executeWorkerStep: Loaded Terminal Tools:", Object.keys(workerTools));
-    } else {
-      throw new Error(`Invalid worker type specified: ${stepInstruction.type}`);
+    const toolProviderKey = stepInstruction.type === 'browser' ? 'playwright' : stepInstruction.type === 'terminal' ? 'props' : null;
+
+    if (toolProviderKey && userIdForTools) {
+      await castingManager.initializeUserSession(userIdForTools, undefined, [toolProviderKey]);
+      const userConfig = (castingManager as any).getUserConfig(userIdForTools);
+      workerTools = userConfig.tools;
+      console.log(`[executeWorkerStep] User [${userIdForTools}] using tools: ${Object.keys(workerTools).join(', ') || 'None'} for type ${stepInstruction.type}`);
+    } else if (toolProviderKey) {
+      console.warn(`[executeWorkerStep] CRITICAL: No userIdForTools provided for a tool-based step (${stepInstruction.type}). Tool execution will likely fail or use a shared context.`);
     }
 
-    if (Object.keys(workerTools).length === 0) {
-      throw new Error(`No tools were loaded for worker type '${stepInstruction.type}'. Ensure tools are available.`);
+    if (Object.keys(workerTools).length === 0 && (stepInstruction.type === 'browser' || stepInstruction.type === 'terminal')) {
+      throw new Error(`No tools were loaded or available for worker type '${stepInstruction.type}' for user [${userIdForTools || 'unknown'}].`);
     }
 
-    console.log(`executeWorkerStep: Calling worker (${stepInstruction.type}) with instruction: ${stepInstruction.instruction}`);
+    let workerSystemPrompt = '';
+    if (stepInstruction.type === 'browser') workerSystemPrompt = BROWSER_AGENT_PROMPT(customInfo);
+    else if (stepInstruction.type === 'terminal') workerSystemPrompt = TERMINAL_AGENT_PROMPT(customInfo);
+    
     const workerMessagesForAI: AILibraryMessage[] = [
       { role: 'system', content: workerSystemPrompt },
       { role: 'user', content: stepInstruction.instruction }
     ];
 
+    const toolsForThisStep = (stepInstruction.type === 'browser' || stepInstruction.type === 'terminal') ? workerTools : undefined;
+
     const { steps } = await generateText({
       model: workerModel,
       messages: workerMessagesForAI,
-      tools: workerTools,
-      maxSteps: 5,
+      tools: toolsForThisStep,
+      maxSteps: 5
     });
-
+    
     const workerSteps = await steps;
     let finalContent = "";
-    const allToolCallsAggregated: any[] = [];
-    const allToolResultsAggregated: any[] = [];
     const finalInvocations: ToolInvocation[] = [];
     const toolCallMapForInvocations = new Map<string, ToolInvocation>();
 
     for (const step of workerSteps) {
-      if (step.text) {
-        finalContent = step.text;
-      }
+      if (step.text) finalContent = step.text;
       if (step.toolCalls) {
-        allToolCallsAggregated.push(...step.toolCalls);
         for (const call of step.toolCalls) {
-          const invocation: ToolInvocation = {
-            toolCallId: call.toolCallId,
-            toolName: call.toolName,
-            args: call.args,
-            state: 'call',
-          };
-          // Add to finalInvocations and map, only if not already added (based on toolCallId)
+          const invocation: ToolInvocation = { toolCallId: call.toolCallId, toolName: call.toolName, args: call.args, state: 'call' };
           if (!toolCallMapForInvocations.has(call.toolCallId)) {
             finalInvocations.push(invocation);
             toolCallMapForInvocations.set(call.toolCallId, invocation);
@@ -462,63 +464,28 @@ async function executeWorkerStep(
         }
       }
       if (step.toolResults) {
-        allToolResultsAggregated.push(...step.toolResults);
         for (const res of step.toolResults) {
           const existingInvocation = toolCallMapForInvocations.get(res.toolCallId);
           if (existingInvocation) {
             existingInvocation.result = res.result;
             existingInvocation.state = 'result'; 
           } else {
-            // Result without a call, create a new one
-            const invocation: ToolInvocation = {
-              toolCallId: res.toolCallId,
-              toolName: res.toolName, // Vercel SDK toolResult includes toolName
-              args: {}, // Args might not be available here
-              state: 'result',
-              result: res.result,
-            };
-            finalInvocations.push(invocation);
-            // Optionally add to map if it could be updated further, though unlikely for a result
-            toolCallMapForInvocations.set(res.toolCallId, invocation); 
+            finalInvocations.push({ toolCallId: res.toolCallId, toolName: res.toolName, args: {}, state: 'result', result: res.result });
           }
         }
       }
     }
 
-    if (!finalContent && workerSteps.length > 0) {
-      finalContent = `Worker finished after ${workerSteps.length} steps.`;
-      if (allToolCallsAggregated.length > 0) finalContent += ` Made ${allToolCallsAggregated.length} tool call(s).`;
-    }
-    
-    console.log(`executeWorkerStep: Worker (${stepInstruction.type}) finished. Extracted content length: ${finalContent.length}`);
-    if (finalInvocations.length > 0) console.log(`executeWorkerStep: Worker (${stepInstruction.type}) constructed ${finalInvocations.length} ToolInvocation objects.`);
-
-    let finalReportString: string;
-    if (finalContent) {
-      finalReportString = finalContent;
-    } else if (finalInvocations.length > 0) {
+    let finalReportString = finalContent;
+    if (!finalReportString && finalInvocations.length > 0) {
       finalReportString = `${stepInstruction.type.charAt(0).toUpperCase() + stepInstruction.type.slice(1)} agent completed task using ${finalInvocations.length} tool invocation(s).`;
-    } else {
+    } else if (!finalReportString) {
       finalReportString = `${stepInstruction.type.charAt(0).toUpperCase() + stepInstruction.type.slice(1)} agent completed task with no specific textual output.`;
     }
-
     return { report: finalReportString, invocations: finalInvocations };
   } catch (error) {
     const errorMessage = (error instanceof Error) ? error.message : String(error);
-    console.error(`Error during worker execution (${stepInstruction.type}):`, errorMessage, error);
-    return { 
-      report: `Error: During ${stepInstruction.type} worker execution - ${errorMessage}`, 
-      invocations: [] 
-    };
-  } finally {
-    if (clientToClose) {
-      try {
-        console.log(`executeWorkerStep: Attempting to close client for ${stepInstruction.type}...`);
-        await clientToClose.close();
-        console.log(`executeWorkerStep: Closed client for ${stepInstruction.type}.`);
-      } catch (closeError) {
-        console.error(`executeWorkerStep: Error closing client for ${stepInstruction.type}:`, closeError);
-      }
-    }
+    console.error(`[executeWorkerStep] User [${userIdForTools || 'unknown'}] Error:`, error);
+    return { report: `Error: During ${stepInstruction.type} worker execution for user [${userIdForTools || 'unknown'}] - ${errorMessage}`, invocations: [] };
   }
 }

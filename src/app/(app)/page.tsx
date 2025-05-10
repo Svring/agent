@@ -8,9 +8,13 @@ import config from '@/payload.config'
 import { redirect } from 'next/navigation'
 
 export default async function Home() {
-  const headers = await getHeaders()
   const payloadConfig = await config
   const payload = await getPayload({ config: payloadConfig })
+
+  const headers = await getHeaders()
+  const user = await payload.auth({ headers })
+
+  console.log("[Home Page] User:", user)
 
   return (
     <Hero

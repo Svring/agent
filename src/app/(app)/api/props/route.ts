@@ -1,121 +1,128 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { propsManager } from '@/backstage/props-manager';
+import { propsManager, SSHCredentials } from '@/backstage/props-manager';
+import { getAuthenticatedUserId } from '@/lib/auth-utils';
 
 export async function POST(req: NextRequest) {
-  const body = await req.json();
-  const action = body.action;
-  
-  console.log(`Received request for action: ${action}`);
-  
+  let body: any;
+  let authenticatedUserId: string | null = null;
+  let action: string | undefined = undefined;
+
   try {
+    authenticatedUserId = await getAuthenticatedUserId(req.headers);
+    body = await req.json();
+    action = body.action;
+
+    console.log(`[Props API] User [${authenticatedUserId || 'unknown'}] requested action: ${action}`);
+
+    if (!authenticatedUserId) {
+      return NextResponse.json({ message: 'Authentication required for this action.' }, { status: 401 });
+    }
+
     switch (action) {
       case 'initialize':
-        const { host, port, username, password } = body; 
-        let credentials;
-        if (host && username) {
-            credentials = { host, port, username, password };
-            console.log('API: Initialize action called with specific credentials.');
-        } else {
-            console.log('API: Initialize action called without specific credentials (using defaults).');
+        const { host, port, username, password, privateKeyPath } = body;
+        if (!host || !username || (!password && !privateKeyPath)) {
+          return NextResponse.json({ message: 'Host, username, and (password or privateKeyPath) are required for SSH initialization.' }, { status: 400 });
         }
-        
-        const initResult = await propsManager.initializeSSH(credentials); 
-        
-        if (initResult.success) {
-          console.log('SSH Initialization successful via API.');
-          return NextResponse.json({ message: initResult.message }, { status: 200 });
-        } else {
-          console.log('SSH Initialization failed via API:', initResult.message);
-          return NextResponse.json({ message: initResult.message }, { status: 500 });
-        }
+        const credentialsToUse: SSHCredentials = { host, port, username, password, privateKeyPath };
+        // Call to initializeSSH which now requires credentials
+        const initResult = await propsManager.initializeSSH(authenticatedUserId, credentialsToUse);
+        return NextResponse.json({ message: initResult.message, data: initResult.data }, { status: initResult.success ? 200 : 500 });
+
       case 'execute': {
         const command = body.command;
-        if (!command) {
-          return NextResponse.json({ message: 'Command is required for execute action' }, { status: 400 });
-        }
-        const execResult = await propsManager.executeCommand(command);
-        return NextResponse.json({ 
-            message: execResult.message, 
-            stdout: execResult.stdout, 
-            stderr: execResult.stderr 
+        if (!command) return NextResponse.json({ message: 'Command is required' }, { status: 400 });
+        const execResult = await propsManager.executeCommand(authenticatedUserId, command);
+        return NextResponse.json({
+          message: execResult.message, stdout: execResult.stdout, stderr: execResult.stderr
         }, { status: execResult.success ? 200 : 500 });
       }
+
       case 'editFile': {
         const { filePath, content } = body;
-        if (!filePath || content === undefined) {
-          return NextResponse.json({ message: 'filePath and content are required for editFile action' }, { status: 400 });
-        }
-        const editResult = await propsManager.editRemoteFile(filePath, content);
+        if (!filePath || content === undefined) return NextResponse.json({ message: 'filePath and content are required' }, { status: 400 });
+        const editResult = await propsManager.editRemoteFile(authenticatedUserId, filePath, content);
         return NextResponse.json({ message: editResult.message }, { status: editResult.success ? 200 : 500 });
       }
+
       case 'readFile': {
         const { filePath } = body;
-        if (!filePath) {
-          return NextResponse.json({ message: 'filePath is required for readFile action' }, { status: 400 });
-        }
-        const readResult = await propsManager.readRemoteFile(filePath);
-        return NextResponse.json({ 
-            message: readResult.message, 
-            content: readResult.content 
+        if (!filePath) return NextResponse.json({ message: 'filePath is required' }, { status: 400 });
+        const readResult = await propsManager.readRemoteFile(authenticatedUserId, filePath);
+        return NextResponse.json({
+          message: readResult.message, content: readResult.content
         }, { status: readResult.success ? 200 : 500 });
       }
+
       case 'disconnect': {
-        try {
-          propsManager.disconnectSSH();
-          console.log('SSH Disconnection successful via API.');
-          return NextResponse.json({ message: 'SSH disconnected successfully' }, { status: 200 });
-        } catch (disconnectErr) {
-          console.error('SSH Disconnection failed via API:', disconnectErr);
-          return NextResponse.json({ message: `SSH Disconnection failed: ${disconnectErr instanceof Error ? disconnectErr.message : String(disconnectErr)}` }, { status: 500 });
-        }
+        propsManager.disconnectSSH(authenticatedUserId);
+        return NextResponse.json({ message: `SSH session for user ${authenticatedUserId} disconnected` }, { status: 200 });
       }
-      case 'updateCredentials': {
-        const creds = body.credentials;
-        if (!creds || typeof creds !== 'object') {
-          return NextResponse.json({ message: 'Credentials object is required for updateCredentials action' }, { status: 400 });
-        }
-        const updateResult = propsManager.updateSSHCredentials(creds);
-        return NextResponse.json({ message: updateResult.message }, { status: updateResult.success ? 200 : 500 });
-      }
-      case 'updateModelProxyEnv': {
-        const proxy = body.proxy;
-        if (!proxy || typeof proxy !== 'object') {
-          return NextResponse.json({ message: 'Proxy object is required for updateModelProxyEnv action' }, { status: 400 });
-        }
-        const proxyResult = propsManager.updateModelProxyEnv(proxy);
-        return NextResponse.json({ message: proxyResult.message }, { status: proxyResult.success ? 200 : 500 });
-      }
+
+      // case 'disconnectAll': { // This is an admin-level action, ideally role-protected.
+      //   // For now, allow if any authenticated user calls it (though not ideal for production without role checks)
+      //   propsManager.disconnectAllSessions();
+      //   return NextResponse.json({ message: 'All user SSH sessions disconnected' }, { status: 200 });
+      // }
+
+      // updateDefaultSSHCredentials and updateModelProxyEnv handled above as global actions
+
       default:
         return NextResponse.json({ message: 'Invalid action specified' }, { status: 400 });
     }
   } catch (error) {
-    console.error(`Unexpected error during ${action} via API:`, error);
+    console.error(`[Props API] User [${authenticatedUserId || 'unknown'}] Error for action [${action || 'unknown'}]:`, error);
     return NextResponse.json(
-      { message: `Internal Server Error: ${error instanceof Error ? error.message : String(error)}` }, 
-      { status: 500 } 
+      { message: `Internal Server Error: ${error instanceof Error ? error.message : String(error)}` },
+      { status: 500 }
     );
   }
 }
 
 export async function GET(req: NextRequest) {
-  const status = propsManager.getStatus();
-  const cwd = propsManager.getCurrentWorkingDirectory();
-  const credentials = propsManager.getSSHCredentials();
-  const commandLog = propsManager.getCommandLog();
+  let authenticatedUserId: string | null = null;
+  try {
+    authenticatedUserId = await getAuthenticatedUserId(req.headers);
 
-  return NextResponse.json({
-    status: status.connected ? 'Connected' : 'Disconnected',
-    cwd: cwd,
-    credentials: {
-      host: credentials.host,
-      username: credentials.username,
-      port: credentials.port,
-      privateKeyPath: credentials.privateKeyPath
-    },
-    modelProxy: {
-      baseUrl: process.env.SEALOS_USW_BASE_URL || '',
-      apiKey: process.env.SEALOS_USW_API_KEY || ''
-    },
-    commandLog: commandLog
-  });
+    if (authenticatedUserId) {
+      // If a userId is available, return status for that user
+      const userStatus = propsManager.getUserStatus(authenticatedUserId);
+      const commandLog = propsManager.getCommandLog(authenticatedUserId);
+      return NextResponse.json({
+        userSpecific: true,
+        status: userStatus.connected ? 'Connected' : 'Disconnected',
+        cwd: userStatus.cwd,
+        activeCredentials: userStatus.activeCredentials, // These are the credentials used for the current user's session
+        commandLog: commandLog,
+        // Default credentials are no longer managed by PropsManager .env loading for SSH.
+        // SSH connections now require explicit credentials per user session initialization.
+        // Model proxy env vars are still relevant if set globally.
+        modelProxy: {
+          baseUrl: process.env.SEALOS_USW_BASE_URL || 'Not Set',
+          apiKeySet: !!process.env.SEALOS_USW_API_KEY // Just indicate if API key is set, not its value
+        }
+      });
+    } else {
+      // If no specific userId, return global manager status
+      const managerStatus = propsManager.getManagerStatus();
+      return NextResponse.json({
+        userSpecific: false,
+        activeUserSessions: managerStatus.activeUserSessions,
+        // No default SSH credentials to report from the manager itself.
+        // Application relies on user-provided credentials for each session init 
+        // or credentials stored per user profile (if implemented).
+        modelProxy: {
+          baseUrl: process.env.SEALOS_USW_BASE_URL || 'Not Set',
+          apiKeySet: !!process.env.SEALOS_USW_API_KEY
+        }
+      });
+    }
+  } catch (error) {
+    console.error(`[Props API] User [${authenticatedUserId || 'unknown'}] Error during GET status:`, error);
+    return NextResponse.json(
+      { message: `Internal Server Error fetching status: ${error instanceof Error ? error.message : String(error)}` },
+      { status: 500 }
+    );
+  }
 }
+

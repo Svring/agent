@@ -1,6 +1,7 @@
 import { NextResponse, NextRequest } from 'next/server';
 import { PlaywrightManager } from '@/backstage/playwright-manager'; // Assuming correct path
 import { Page } from 'playwright';
+import { getAuthenticatedUserId } from '@/lib/auth-utils'; // Import the new auth utility
 
 // Coordinate transformation removed.
 // Coordinates (x, y, startX/Y, endX/Y) are now expected to be relative to the actual viewport.
@@ -12,7 +13,7 @@ interface RequestBody {
   action: 'init' | 'cleanup' | 'goto' | 'screenshot' | 'click' |
   'pressKey' | 'typeText' | 'mouseMove' | 'doubleClick' |
   'mouseDown' | 'mouseUp' | 'cursor_position' |
-  'scroll' | 'drag' | 'getViewportSize' | 'setViewportSize' | 'goBack' | 'goForward' | 'getCookies' | 'getStatus' | 'createPage' | 'deletePage' | 'renamePage';
+  'scroll' | 'drag' | 'getViewportSize' | 'setViewportSize' | 'goBack' | 'goForward' | 'getCookies' | 'getStatus' | 'createPage' | 'deletePage' | 'renamePage' | 'closeUserContext';
   url?: string;
   x?: number;         // Viewport coordinate
   y?: number;         // Viewport coordinate
@@ -27,7 +28,7 @@ interface RequestBody {
   endY?: number;      // Viewport coordinate for drag end
   width?: number;     // Viewport width
   height?: number;    // Viewport height
-  contextId?: string; // For specifying context
+  userId?: string;    // Added userId, can be extracted from auth headers ideally
   pageId?: string;    // For specifying page
   newPageId?: string; // For renaming page
   options?: any;      // Generic options for playwright methods
@@ -38,334 +39,182 @@ interface RequestBody {
 export async function POST(request: NextRequest) {
   let requestBody: RequestBody | null = null;
   let action: RequestBody['action'] | undefined = undefined;
+  let authenticatedUserId: string | null = null;
 
   try {
-    // Parse request body
+    authenticatedUserId = await getAuthenticatedUserId(request.headers);
+    console.log("[Playwright API] Authenticated user ID:", authenticatedUserId);
     if (request.body) {
       requestBody = await request.json();
       action = requestBody?.action;
     }
 
-    // Ensure action is provided
     if (!action) {
-      return NextResponse.json({ success: false, message: 'Action is required in the request body.' }, { status: 400 });
+      return NextResponse.json({ success: false, message: 'Action is required.' }, { status: 400 });
     }
-
-    // console.log(`Received playwright request with action: ${action}`);
 
     const manager = PlaywrightManager.getInstance();
 
-    // No need to get page/viewport here anymore unless specifically needed by an action
-    // let page: Page | null = null;
-    // let viewportSize: { width: number; height: number } | null = null;
-
-    // Ensure browser is initialized for actions other than 'init' and 'cleanup'
-    if (action !== 'init' && action !== 'cleanup') {
-      if (!manager.isBrowserInitialized()) {
-        return NextResponse.json({ success: false, message: `Browser not initialized. Please call 'init' first.` }, { status: 400 });
-      }
-      // Getting page might still be needed implicitly by manager methods
+    // Handle global actions first
+    if (action === 'cleanup') {
+      await manager.closeBrowser();
+      return NextResponse.json({ success: true, message: 'Global browser instance and all user contexts closed.' });
+    }
+    if (action === 'getStatus' && !authenticatedUserId) {
+      const status = manager.getStatus(); // Global status
+      return NextResponse.json({ success: true, status });
     }
 
-    // Coordinate transformation helper REMOVED
+    // For all other actions, authenticatedUserId is required
+    if (!authenticatedUserId) {
+      return NextResponse.json({ success: false, message: 'Authentication required for this action.' }, { status: 401 });
+    }
 
-    // --- Action Handling --- 
+    // Default pageId and contextId for user-specific actions
+    const pageId = requestBody?.pageId || 'main';
+    const contextId = "opera"; // Placeholder/default contextId for methods that might still use it with userId
+
+    // User-specific actions from here, authenticatedUserId is guaranteed to be non-null
     switch (action) {
       case 'init': {
         const width = requestBody?.width || 1024;
         const height = requestBody?.height || 768;
-        
-        await manager.ensureBrowser();
-        console.log(`Browser ensured with viewport ${width}x${height}.`);
-        await manager.getContext('opera', { width, height });
-        console.log('Opera context ensured.');
-        await manager.getPage('opera', 'main', { width, height });
-        console.log('Opera main page ensured.');
-        // Go to google.com by default
-        await manager.goto('https://google.com', 'main');
-        console.log('Opera main page navigated to google.com.');
-        const viewportSize = manager.getViewportSize('opera');
-        return NextResponse.json({ 
-          success: true, 
-          message: `Browser initialized successfully for Opera with viewport ${viewportSize.width}x${viewportSize.height}.`,
+        await manager.getUserContext(authenticatedUserId, { width, height });
+        await manager.getPage(authenticatedUserId, pageId, { width, height });
+        await manager.goto(authenticatedUserId, 'https://google.com', pageId, requestBody?.options || {});
+        const viewportSize = manager.getViewportSize(authenticatedUserId);
+        return NextResponse.json({
+          success: true,
+          message: `Context for user ${authenticatedUserId} initialized with page '${pageId}', viewport ${viewportSize.width}x${viewportSize.height}.`,
           viewport: viewportSize
         });
       }
 
-      case 'cleanup':
-        if (manager.isBrowserInitialized()) { // Only cleanup if browser exists
-          await manager.closeBrowser();
-          console.log('Playwright browser closed via API.');
-          return NextResponse.json({ success: true, message: 'Browser closed successfully.' });
-        } else {
-          console.log('Cleanup requested, but browser was not initialized.');
-          return NextResponse.json({ success: true, message: 'Browser not initialized, no cleanup needed.' });
-        }
+      case 'closeUserContext':
+        await manager.closeUserContext(authenticatedUserId);
+        return NextResponse.json({ success: true, message: `Context for user ${authenticatedUserId} closed.` });
 
       case 'goto': {
-        if (!requestBody?.url) {
-          return NextResponse.json({ success: false, message: 'URL is required for goto action.' }, { status: 400 });
-        }
-        
-        // Check if viewport size is specified
-        const options = { ...requestBody.options || {} };
-        const width = requestBody?.width;
-        const height = requestBody?.height;
-        const contextId = requestBody?.contextId || 'opera';
-        const pageId = requestBody?.pageId || 'main';
-        
-        if (width || height) {
-          await manager.getContext(contextId, { width, height });
-          console.log(`Updated viewport size for navigation: ${width || 'default'}x${height || 'default'}`);
-        }
-        
-        await manager.goto(requestBody.url, pageId, options);
-        console.log(`Navigated to ${requestBody.url} on page ${pageId} in context ${contextId}`);
-        return NextResponse.json({ success: true, message: `Navigated to ${requestBody.url} on page ${pageId}` });
+        if (!requestBody?.url) return NextResponse.json({ success: false, message: 'URL is required.' }, { status: 400 });
+        await manager.goto(authenticatedUserId, requestBody.url, pageId, requestBody.options || {});
+        return NextResponse.json({ success: true, message: `User ${authenticatedUserId} navigated page ${pageId} to ${requestBody.url}` });
       }
 
       case 'screenshot': {
-        // Extract options from the request body
         const options = requestBody?.options || {};
-        const pageId = requestBody?.pageId || 'main';
-        const buffer = await manager.screenshot(pageId, options);
-        console.log('Screenshot taken for page:', pageId, 'with options:', options);
-        
-        // Determine mimeType based on options (default to png if not specified)
+        const buffer = await manager.screenshot(authenticatedUserId, pageId, options);
         const mimeType = options.type === 'jpeg' ? 'image/jpeg' : 'image/png';
-        
-        const viewportSize = manager.getViewportSize('opera');
+        const viewportSize = manager.getViewportSize(authenticatedUserId);
         return NextResponse.json({
-          success: true,
-          message: 'Screenshot captured successfully for page ' + pageId,
-          data: buffer.toString('base64'),
-          mimeType: mimeType, // Use determined mimeType
-          viewport: viewportSize
+          success: true, message: `Screenshot for user ${authenticatedUserId}, page ${pageId}`,
+          data: buffer.toString('base64'), mimeType, viewport: viewportSize
         });
       }
 
       case 'getViewportSize': {
-        const contextId = requestBody?.contextId || 'opera';
-        const viewportSize = manager.getViewportSize(contextId);
-        // console.log(`Retrieved viewport size: ${viewportSize.width}x${viewportSize.height} for context ${contextId}`);
-        return NextResponse.json({
-          success: true,
-          message: 'Viewport size retrieved.',
-          viewport: viewportSize
-        });
+        const viewportSize = manager.getViewportSize(authenticatedUserId);
+        return NextResponse.json({ success: true, message: 'Viewport size retrieved.', viewport: viewportSize });
       }
 
       case 'setViewportSize': {
-        const width = requestBody?.width;
-        const height = requestBody?.height;
-        const contextId = requestBody?.contextId || 'opera';
-        
-        if (!width || !height) {
-          return NextResponse.json({ 
-            success: false, 
-            message: 'Both width and height are required for setViewportSize action.' 
-          }, { status: 400 });
-        }
-        
-        await manager.getContext(contextId, { width, height });
-        await manager.getPage(contextId, requestBody?.pageId || 'main', { width, height });
-        
-        const viewportSize = manager.getViewportSize(contextId);
-        console.log(`Viewport size set to ${viewportSize.width}x${viewportSize.height} for context ${contextId}`);
-        
-        return NextResponse.json({
-          success: true,
-          message: `Viewport size set to ${width}x${height} for context ${contextId}.`,
-          viewport: viewportSize
-        });
+        const { width, height } = requestBody || {};
+        if (!width || !height) return NextResponse.json({ success: false, message: 'Width and height required.' }, { status: 400 });
+        await manager.setViewportSize(authenticatedUserId, width, height);
+        return NextResponse.json({ success: true, message: `Viewport for user ${authenticatedUserId} set to ${width}x${height}.`, viewport: { width, height } });
       }
 
       case 'pressKey':
-        if (!requestBody?.key) {
-          return NextResponse.json({ success: false, message: 'key is required for pressKey action.' }, { status: 400 });
-        }
-        const pressKeyPageId = requestBody?.pageId || 'main';
-        await manager.pressKey(requestBody.key, pressKeyPageId);
-        console.log(`Pressed key: ${requestBody.key} on page ${pressKeyPageId}`);
-        return NextResponse.json({ success: true, message: `Pressed key: ${requestBody.key} on page ${pressKeyPageId}` });
+        if (!requestBody?.key) return NextResponse.json({ success: false, message: 'key is required.' }, { status: 400 });
+        await manager.pressKey(authenticatedUserId, requestBody.key, pageId);
+        return NextResponse.json({ success: true, message: `User ${authenticatedUserId} pressed key ${requestBody.key} on page ${pageId}` });
 
       case 'typeText':
-        if (requestBody?.text === undefined) { // Allow empty string but not undefined
-          return NextResponse.json({ success: false, message: 'text is required for typeText action.' }, { status: 400 });
-        }
-        const typeTextPageId = requestBody?.pageId || 'main';
-        await manager.typeText(requestBody.text, typeTextPageId);
-        console.log(`Typed text: ${requestBody.text} on page ${typeTextPageId}`);
-        return NextResponse.json({ success: true, message: `Typed text: ${requestBody.text} on page ${typeTextPageId}` });
+        if (requestBody?.text === undefined) return NextResponse.json({ success: false, message: 'text is required.' }, { status: 400 });
+        await manager.typeText(authenticatedUserId, requestBody.text, pageId);
+        return NextResponse.json({ success: true, message: `User ${authenticatedUserId} typed on page ${pageId}` });
 
-      // --- Mouse Actions (Using Raw Viewport Coords) --- 
-      case 'mouseMove': {
-        if (requestBody?.x === undefined || requestBody?.y === undefined) {
-          return NextResponse.json({ success: false, message: `x and y coordinates are required for ${action} action.` }, { status: 400 });
-        }
-        const mouseMovePageId = requestBody?.pageId || 'main';
-        await manager.mouseAction('move', requestBody.x, requestBody.y, mouseMovePageId, requestBody?.options || {});
-        console.log(`${action} performed at viewport coords (${requestBody.x}, ${requestBody.y}) on page ${mouseMovePageId}`);
-        return NextResponse.json({ success: true, message: `${action} performed at (${requestBody.x}, ${requestBody.y}) on page ${mouseMovePageId}` });
-      }
-
+      case 'mouseMove':
       case 'click':
       case 'doubleClick':
       case 'mouseDown':
       case 'mouseUp': {
-        if (requestBody?.x === undefined || requestBody?.y === undefined) {
-          return NextResponse.json({ success: false, message: `x and y coordinates are required for ${action} action.` }, { status: 400 });
-        }
-
-        const button = requestBody?.button || 'left';
-        const clickOptions = { ...requestBody?.options, button };
-        const x = requestBody.x;
-        const y = requestBody.y;
-        const mouseActionPageId = requestBody?.pageId || 'main';
-
-        let managerAction: 'click' | 'dblclick' | 'down' | 'up';
-        if (action === 'click') managerAction = 'click';
-        else if (action === 'doubleClick') managerAction = 'dblclick';
-        else if (action === 'mouseDown') managerAction = 'down';
-        else managerAction = 'up';
-
-        await manager.mouseAction(managerAction, x, y, mouseActionPageId, clickOptions);
-        console.log(`${action} performed at viewport coords (${x}, ${y}) with button ${button} on page ${mouseActionPageId}`);
-        return NextResponse.json({ success: true, message: `${action} performed at (${x}, ${y}) on page ${mouseActionPageId}` });
+        const { x, y, button = 'left' } = requestBody || {};
+        if (x === undefined || y === undefined) return NextResponse.json({ success: false, message: 'x and y required.' }, { status: 400 });
+        const managerAction = action === 'mouseMove' ? 'move' : action === 'mouseDown' ? 'down' : action === 'mouseUp' ? 'up' : action === 'doubleClick' ? 'dblclick' : 'click';
+        await manager.mouseAction(authenticatedUserId, managerAction, x, y, pageId, { ...requestBody?.options, button });
+        return NextResponse.json({ success: true, message: `User ${authenticatedUserId} action ${action} on page ${pageId}` });
       }
 
       case 'scroll': {
-        if (requestBody?.deltaX === undefined || requestBody?.deltaY === undefined) {
-          return NextResponse.json({ success: false, message: `deltaX and deltaY are required for ${action} action.` }, { status: 400 });
-        }
-        const scrollPageId = requestBody?.pageId || 'main';
-        await manager.scroll(requestBody.deltaX, requestBody.deltaY, scrollPageId);
-        console.log(`Scrolled by (${requestBody.deltaX}, ${requestBody.deltaY}) on page ${scrollPageId}`);
-        return NextResponse.json({ success: true, message: `Scrolled by (${requestBody.deltaX}, ${requestBody.deltaY}) on page ${scrollPageId}` });
+        const { deltaX = 0, deltaY = 0 } = requestBody || {};
+        await manager.scroll(authenticatedUserId, deltaX, deltaY, pageId);
+        return NextResponse.json({ success: true, message: `User ${authenticatedUserId} scrolled page ${pageId}` });
       }
 
-      case 'goBack': {
-        const goBackPageId = requestBody?.pageId || 'main';
-        await manager.goBack(goBackPageId, requestBody?.options || {});
-        console.log(`Navigated back on page ${goBackPageId}`);
-        return NextResponse.json({ success: true, message: `Navigated back on page ${goBackPageId}` });
-      }
+      case 'goBack':
+        await manager.goBack(authenticatedUserId, pageId, requestBody?.options || {});
+        return NextResponse.json({ success: true, message: `User ${authenticatedUserId} navigated back on page ${pageId}` });
 
-      case 'goForward': {
-        const goForwardPageId = requestBody?.pageId || 'main';
-        await manager.goForward(goForwardPageId, requestBody?.options || {});
-        console.log(`Navigated forward on page ${goForwardPageId}`);
-        return NextResponse.json({ success: true, message: `Navigated forward on page ${goForwardPageId}` });
-      }
+      case 'goForward':
+        await manager.goForward(authenticatedUserId, pageId, requestBody?.options || {});
+        return NextResponse.json({ success: true, message: `User ${authenticatedUserId} navigated forward on page ${pageId}` });
 
       case 'drag': {
         const { startX, startY, endX, endY, button = 'left' } = requestBody || {};
-        if (startX === undefined || startY === undefined || endX === undefined || endY === undefined) {
-          return NextResponse.json({ success: false, message: `startX, startY, endX, and endY are required for ${action} action.` }, { status: 400 });
-        }
-        const dragPageId = requestBody?.pageId || 'main';
-        console.log(`Performing drag from (${startX}, ${startY}) to (${endX}, ${endY}) with button ${button} on page ${dragPageId}`);
-        await manager.mouseAction('move', startX, startY, dragPageId, { button }); // Move to start
-        await manager.mouseAction('down', startX, startY, dragPageId, { button }); // Press button
-        await manager.mouseAction('move', endX, endY, dragPageId, { button });   // Drag to end
-        await manager.mouseAction('up', endX, endY, dragPageId, { button });     // Release button
-        console.log(`Drag completed on page ${dragPageId}`);
-        return NextResponse.json({ success: true, message: `Dragged from (${startX}, ${startY}) to (${endX}, ${endY}) on page ${dragPageId}` });
+        if (startX === undefined || startY === undefined || endX === undefined || endY === undefined) return NextResponse.json({ success: false, message: 'Drag coordinates required.' }, { status: 400 });
+        await manager.mouseAction(authenticatedUserId, 'move', startX, startY, pageId, { button });
+        await manager.mouseAction(authenticatedUserId, 'down', startX, startY, pageId, { button });
+        await manager.mouseAction(authenticatedUserId, 'move', endX, endY, pageId, { button });
+        await manager.mouseAction(authenticatedUserId, 'up', endX, endY, pageId, { button });
+        return NextResponse.json({ success: true, message: `User ${authenticatedUserId} dragged on page ${pageId}` });
       }
-
-      case 'cursor_position':
-        console.warn('Action cursor_position is not supported by Playwright.');
-        return NextResponse.json({ success: false, message: 'Action cursor_position is not supported.' }, { status: 400 });
 
       case 'getCookies': {
         const url = requestBody?.url;
-        if (!url) {
-          return NextResponse.json({ success: false, message: 'URL is required for getCookies action.' }, { status: 400 });
-        }
-        const manager = PlaywrightManager.getInstance();
-        const contextId = 'opera';
-        // Log cookies to console
-        await manager.logCookies(contextId, url);
-        // Also return cookies in response
-        const context = manager['contexts'].get(contextId);
-        if (!context) {
-          return NextResponse.json({ success: false, message: `Context ${contextId} does not exist.` }, { status: 400 });
-        }
-        const cookies = await context.cookies(url);
+        if (!url) return NextResponse.json({ success: false, message: 'URL required.' }, { status: 400 });
+        const cookies = await manager.logCookies(authenticatedUserId, contextId, url);
         return NextResponse.json({ success: true, cookies });
       }
 
-      case 'getStatus': {
-        const manager = PlaywrightManager.getInstance();
-        const status = manager.getStatus();
-        // console.log('[Playwright API] getStatus called', status); // Log status server-side
+      case 'getStatus': { // User-specific status (authenticatedUserId is guaranteed non-null here)
+        const status = manager.getStatus(authenticatedUserId);
         return NextResponse.json({ success: true, status });
       }
 
       case 'createPage': {
-        const contextId = requestBody?.contextId || 'opera';
-        const pageId = requestBody?.pageId || `page-${Date.now()}`;
-        const width = requestBody?.width;
-        const height = requestBody?.height;
-        const url = requestBody?.url;
-
-        await manager.getContext(contextId, { width, height });
-        const page = await manager.createPage(contextId, pageId, { width, height });
-        console.log(`New page created with ID ${pageId} under context ${contextId}`);
+        const newPageId = requestBody?.pageId || `page-${Date.now()}`;
+        const { width, height, url } = requestBody || {};
+        await manager.createPage(authenticatedUserId, newPageId, { width, height });
         if (url) {
-          await manager.goto(url, pageId, requestBody?.options || {});
-          console.log(`Navigated new page ${pageId} to ${url}`);
+          await manager.goto(authenticatedUserId, url, newPageId, requestBody?.options || {});
         }
-        const viewportSize = manager.getViewportSize(contextId);
-        return NextResponse.json({
-          success: true,
-          message: `Page ${pageId} created under context ${contextId}${url ? ` and navigated to ${url}` : ''}`,
-          pageId,
-          contextId,
-          viewport: viewportSize
-        });
+        return NextResponse.json({ success: true, message: `Page ${newPageId} created for user ${authenticatedUserId}.`, pageId: newPageId, userId: authenticatedUserId });
       }
 
       case 'deletePage': {
-        const pageId = requestBody?.pageId;
-        const contextId = requestBody?.contextId || 'opera';
-        if (!pageId) {
-          return NextResponse.json({ success: false, message: 'pageId is required for deletePage action.' }, { status: 400 });
-        }
-        await manager.deletePage(contextId, pageId);
-        console.log(`Deleted page ${pageId} from context ${contextId}`);
-        return NextResponse.json({
-          success: true,
-          message: `Page ${pageId} deleted from context ${contextId}`
-        });
+        if (!requestBody?.pageId) return NextResponse.json({ success: false, message: 'pageId required.' }, { status: 400 });
+        await manager.deletePage(authenticatedUserId, contextId, requestBody.pageId);
+        return NextResponse.json({ success: true, message: `Page ${requestBody.pageId} deleted for user ${authenticatedUserId} from context ${contextId}.` });
       }
 
       case 'renamePage': {
-        const pageId = requestBody?.pageId;
-        const newPageId = requestBody?.newPageId;
-        const contextId = requestBody?.contextId || 'opera';
-        if (!pageId || !newPageId) {
-          return NextResponse.json({ success: false, message: 'pageId and newPageId are required for renamePage action.' }, { status: 400 });
-        }
-        await manager.renamePage(contextId, pageId, newPageId);
-        console.log(`Renamed page ${pageId} to ${newPageId} in context ${contextId}`);
-        return NextResponse.json({
-          success: true,
-          message: `Page ${pageId} renamed to ${newPageId} in context ${contextId}`
-        });
+        const { pageId: oldPageId, newPageId } = requestBody || {};
+        if (!oldPageId || !newPageId) return NextResponse.json({ success: false, message: 'oldPageId and newPageId required.' }, { status: 400 });
+        await manager.renamePage(authenticatedUserId, contextId, oldPageId, newPageId);
+        return NextResponse.json({ success: true, message: `Page for user ${authenticatedUserId} in context ${contextId} renamed from ${oldPageId} to ${newPageId}.` });
       }
 
       default:
-        console.log('Invalid action received:', action);
-        return NextResponse.json({ success: false, message: 'Invalid action specified.' }, { status: 400 });
-    } // End of switch statement
-
+        // This should ideally be caught by TypeScript if all action types are covered
+        console.warn("[Playwright API] Unhandled action type:", action);
+        return NextResponse.json({ success: false, message: 'Invalid or unhandled action specified.' }, { status: 400 });
+    }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.error(`Error processing playwright action [${action || 'unknown'}]:`, error);
+    console.error(`[Playwright API Error] Action [${action || 'unknown'}] User [${authenticatedUserId || 'unknown'}]:`, error);
     return NextResponse.json(
       { success: false, message: `Failed to process action ${action || 'unknown'}: ${errorMessage}` },
       { status: 500 }
     );
-  } // End of try-catch
-} // End of POST function
+  }
+}

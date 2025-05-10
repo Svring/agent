@@ -1,6 +1,8 @@
 import { castingManager } from '@/backstage/casting-manager';
 import { saveSessionMessages } from '@/db/actions/sessions-actions';
 import { MessageSchema, type Message, type UIPart } from '@/models/chatSchemas';
+import { getAuthenticatedUserId } from '@/lib/auth-utils';
+import { NextRequest, NextResponse } from 'next/server';
 
 // --- Helpers ---
 function errorResponse(message: string, status = 400) {
@@ -169,77 +171,75 @@ function mergeAssistantResponse(originalMessages: Message[], assistantResponse: 
   return [...updatedOriginalMessages, ...finalAssistantMessages]; // Use finalAssistantMessages
 }
 
-export async function POST(req: Request) {
-  const body = await req.json();
-  const { messages, sessionId, model: selectedModelName, tools: selectedToolKeys, customInfo } = body;
-
-  // --- Validation ---
-  if (!sessionId) {
-    return errorResponse('sessionId is required in the request body', 400);
-  }
-
-  const model = castingManager.getModelByName(selectedModelName);
-  if (!model) {
-    return errorResponse(`Invalid or unavailable model selected: ${selectedModelName}`, 400);
-  }
-
-  // Prompt
-  const systemPrompt = buildSystemPrompt(customInfo);
-
-  // Tool loading
-  let tools: Record<string, any> = {};
+export async function POST(req: NextRequest) {
+  let authenticatedUserId: string | null = null;
   try {
-    tools = await castingManager.loadSelectedTools(selectedToolKeys);
-  } catch (error) {
-    console.error('Failed to load selected tools:', error);
-    return errorResponse('Failed to load selected tools', 500);
-  }
+    authenticatedUserId = await getAuthenticatedUserId(req.headers);
+    if (!authenticatedUserId) {
+      console.error("[Chat API] Authentication failed or no user ID found in session.");
+      return errorResponse('Authentication required.', 401);
+    }
+    console.log(`[Chat API] Authenticated User ID: ${authenticatedUserId}`);
 
-  // Casting
-  const result = await castingManager.cast({
-    model,
-    tools,
-    systemPrompt,
-    messages,
-    maxSteps: 20,
-    toolCallStreaming: true,
-    onError({ error }: { error: any }) {
-      console.error('streamText error from automation api:', JSON.stringify(error, null, 2));
-    },
-    onFinish: async ({ response }) => {
-      try {
-        // Log the inputs
-        console.log('--- Original Messages for onFinish ---');
-        console.log(JSON.stringify(messages, null, 2));
-        console.log('--- Raw Assistant Response obj for onFinish ---'); // Log raw response obj
-        console.log(JSON.stringify(response, null, 2)); 
-        console.log('-------------------------------------------');
+    const body = await req.json();
+    const { messages, sessionId, model: selectedModelName, tools: selectedToolKeys, customInfo } = body;
 
-        // Use the custom merge function
-        const finalMessages = mergeAssistantResponse(messages, response, sessionId);
+    if (!sessionId) {
+      return errorResponse('sessionId is required in the request body', 400);
+    }
+    // It's good to log that the incoming sessionId from body is for DB association,
+    // while authenticatedUserId is for manager operations.
+    console.log(`[Chat API] Request for DB sessionId: ${sessionId} by User ID: ${authenticatedUserId}`);
 
-        // Log the final messages before saving
-        console.log('--- Final Messages in onFinish (merged) ---');
-        console.log(JSON.stringify(finalMessages, null, 2));
-        console.log('-----------------------------------------');
+    // getModelByName is public
+    const model = castingManager.getModelByName(selectedModelName);
+    if (!model) {
+      return errorResponse(`Invalid or unavailable model selected: ${selectedModelName}`, 400);
+    }
 
-        if (finalMessages.length > messages.length) { // Only save if new messages were added
-          console.log(`Saving ${finalMessages.length} messages for session ${sessionId}`);
-          const saveSuccess = await saveSessionMessages(sessionId, finalMessages);
-          if (!saveSuccess) {
-            console.error(`Failed to save messages for session ${sessionId}`);
-            // Decide how to handle save failure, e.g., log, retry, notify?
+    const systemPrompt = buildSystemPrompt(customInfo);
+
+    // Initialize user session in CastingManager, which also loads tools
+    // This replaces the direct call to a global loadSelectedTools
+    try {
+      await castingManager.initializeUserSession(authenticatedUserId, selectedModelName, selectedToolKeys, systemPrompt);
+    } catch (error) {
+      console.error(`[Chat API] User ${authenticatedUserId}: Failed to initialize user session or load tools:`, error);
+      return errorResponse('Failed to initialize session or load tools', 500);
+    }
+    
+    // The tools for the user are now managed within their session config in CastingManager
+    // The cast method will retrieve them internally using the userId.
+
+    const result = await castingManager.cast({
+      userId: authenticatedUserId, // Pass authenticatedUserId
+      // model, systemPrompt, and tools will be taken from the user's session config by cast method
+      // No need to pass model, systemPrompt, tools directly here if initializeUserSession was successful
+      messages,
+      maxSteps: 20,
+      toolCallStreaming: true,
+      onError({ error }: { error: any }) {
+        console.error(`[Chat API] User ${authenticatedUserId}: streamText error:`, JSON.stringify(error, null, 2));
+      },
+      onFinish: async ({ response }) => {
+        try {
+          const finalMessages = mergeAssistantResponse(messages, response, sessionId);
+          if (finalMessages.length > messages.length) {
+            await saveSessionMessages(sessionId, finalMessages);
           }
-        } else {
-          console.log(`No new messages to save for session ${sessionId}`);
+        } catch (error) {
+          console.error(`[Chat API] User ${authenticatedUserId}: Error during onFinish for session ${sessionId}:`, error);
         }
-      } catch (error) {
-        console.error(`Error during onFinish processing for session ${sessionId}:`, error);
-      }
-      // Close clients regardless of save success/failure
-      await castingManager.closeClients();
-    },
-  });
+        // Client closing is now handled per-user within the cast method's onFinish in CastingManager
+        // No need to call castingManager.closeClients() here directly.
+      },
+    });
 
-  return result.toDataStreamResponse();
+    return result.toDataStreamResponse();
+
+  } catch (error) {
+    const authUserIdForLog = authenticatedUserId || 'unknown';
+    console.error(`[Chat API] User [${authUserIdForLog}] POST request failed:`, error);
+    return errorResponse('Failed to process chat request', 500);
+  }
 }
