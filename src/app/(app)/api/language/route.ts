@@ -384,6 +384,349 @@ export async function POST(req: NextRequest) {
         }
       }
 
+      // === GALATEA API ENDPOINTS ===
+      
+      case 'galateaHealth': {
+        try {
+          const result = await languageManager.galateaHealth(authenticatedUserId);
+          return NextResponse.json(result, { status: result.success ? 200 : 500 });
+        } catch (error) {
+          console.error(`[Language API] Error checking Galatea health:`, error);
+          return NextResponse.json({
+            success: false,
+            message: `Error checking Galatea health: ${error instanceof Error ? error.message : String(error)}`
+          }, { status: 500 });
+        }
+      }
+
+      case 'galateaFindFiles': {
+        const { dir, suffixes, exclude_dirs } = body;
+        
+        if (!dir || !suffixes || !Array.isArray(suffixes)) {
+          return NextResponse.json({
+            success: false,
+            message: 'Required parameters missing: dir (string) and suffixes (array)'
+          }, { status: 400 });
+        }
+        
+        try {
+          const result = await languageManager.galateaFindFiles(authenticatedUserId, {
+            dir,
+            suffixes,
+            exclude_dirs
+          });
+          return NextResponse.json(result, { status: result.success ? 200 : 500 });
+        } catch (error) {
+          console.error(`[Language API] Error finding files:`, error);
+          return NextResponse.json({
+            success: false,
+            message: `Error finding files: ${error instanceof Error ? error.message : String(error)}`
+          }, { status: 500 });
+        }
+      }
+
+      case 'galateaParseFile': {
+        const { file_path, max_snippet_size } = body;
+        
+        if (!file_path) {
+          return NextResponse.json({
+            success: false,
+            message: 'Required parameter missing: file_path (string)'
+          }, { status: 400 });
+        }
+        
+        try {
+          const result = await languageManager.galateaParseFile(authenticatedUserId, {
+            file_path,
+            max_snippet_size
+          });
+          return NextResponse.json(result, { status: result.success ? 200 : 500 });
+        } catch (error) {
+          console.error(`[Language API] Error parsing file:`, error);
+          return NextResponse.json({
+            success: false,
+            message: `Error parsing file: ${error instanceof Error ? error.message : String(error)}`
+          }, { status: 500 });
+        }
+      }
+
+      case 'galateaParseDirectory': {
+        const { dir, suffixes, exclude_dirs, max_snippet_size, granularity } = body;
+        
+        if (!dir || !suffixes || !Array.isArray(suffixes)) {
+          return NextResponse.json({
+            success: false,
+            message: 'Required parameters missing: dir (string) and suffixes (array)'
+          }, { status: 400 });
+        }
+        
+        try {
+          const result = await languageManager.galateaParseDirectory(authenticatedUserId, {
+            dir,
+            suffixes,
+            exclude_dirs,
+            max_snippet_size,
+            granularity
+          });
+          return NextResponse.json(result, { status: result.success ? 200 : 500 });
+        } catch (error) {
+          console.error(`[Language API] Error parsing directory:`, error);
+          return NextResponse.json({
+            success: false,
+            message: `Error parsing directory: ${error instanceof Error ? error.message : String(error)}`
+          }, { status: 500 });
+        }
+      }
+
+      case 'galateaQuery': {
+        const { collection_name, query_text, model, api_key, api_base, qdrant_url } = body;
+        
+        if (!collection_name || !query_text) {
+          return NextResponse.json({
+            success: false,
+            message: 'Required parameters missing: collection_name (string) and query_text (string)'
+          }, { status: 400 });
+        }
+        
+        try {
+          const result = await languageManager.galateaQuery(authenticatedUserId, {
+            collection_name,
+            query_text,
+            model,
+            api_key,
+            api_base,
+            qdrant_url
+          });
+          return NextResponse.json(result, { status: result.success ? 200 : 500 });
+        } catch (error) {
+          console.error(`[Language API] Error querying collection:`, error);
+          return NextResponse.json({
+            success: false,
+            message: `Error querying collection: ${error instanceof Error ? error.message : String(error)}`
+          }, { status: 500 });
+        }
+      }
+
+      case 'galateaGenerateEmbeddings': {
+        const { input_file, output_file, model, api_key, api_base } = body;
+        
+        if (!input_file || !output_file) {
+          return NextResponse.json({
+            success: false,
+            message: 'Required parameters missing: input_file (string) and output_file (string)'
+          }, { status: 400 });
+        }
+        
+        try {
+          const result = await languageManager.galateaGenerateEmbeddings(authenticatedUserId, {
+            input_file,
+            output_file,
+            model,
+            api_key,
+            api_base
+          });
+          return NextResponse.json(result, { status: result.success ? 200 : 500 });
+        } catch (error) {
+          console.error(`[Language API] Error generating embeddings:`, error);
+          return NextResponse.json({
+            success: false,
+            message: `Error generating embeddings: ${error instanceof Error ? error.message : String(error)}`
+          }, { status: 500 });
+        }
+      }
+
+      case 'galateaUpsertEmbeddings': {
+        const { input_file, collection_name, qdrant_url } = body;
+        
+        if (!input_file || !collection_name) {
+          return NextResponse.json({
+            success: false,
+            message: 'Required parameters missing: input_file (string) and collection_name (string)'
+          }, { status: 400 });
+        }
+        
+        try {
+          const result = await languageManager.galateaUpsertEmbeddings(authenticatedUserId, {
+            input_file,
+            collection_name,
+            qdrant_url
+          });
+          return NextResponse.json(result, { status: result.success ? 200 : 500 });
+        } catch (error) {
+          console.error(`[Language API] Error upserting embeddings:`, error);
+          return NextResponse.json({
+            success: false,
+            message: `Error upserting embeddings: ${error instanceof Error ? error.message : String(error)}`
+          }, { status: 500 });
+        }
+      }
+
+      case 'galateaBuildIndex': {
+        const { 
+          dir, 
+          suffixes, 
+          exclude_dirs, 
+          max_snippet_size, 
+          granularity,
+          embedding_model,
+          api_key,
+          api_base,
+          collection_name,
+          qdrant_url
+        } = body;
+        
+        if (!dir || !suffixes || !Array.isArray(suffixes) || !collection_name) {
+          return NextResponse.json({
+            success: false,
+            message: 'Required parameters missing: dir (string), suffixes (array), and collection_name (string)'
+          }, { status: 400 });
+        }
+        
+        try {
+          const result = await languageManager.galateaBuildIndex(authenticatedUserId, {
+            dir,
+            suffixes,
+            exclude_dirs,
+            max_snippet_size,
+            granularity,
+            embedding_model,
+            api_key,
+            api_base,
+            collection_name,
+            qdrant_url
+          });
+          return NextResponse.json(result, { status: result.success ? 200 : 500 });
+        } catch (error) {
+          console.error(`[Language API] Error building index:`, error);
+          return NextResponse.json({
+            success: false,
+            message: `Error building index: ${error instanceof Error ? error.message : String(error)}`
+          }, { status: 500 });
+        }
+      }
+
+      case 'galateaEditorCommand': {
+        const { command, path, file_text, insert_line, new_str, old_str, view_range } = body;
+        
+        if (!command || !path) {
+          return NextResponse.json({
+            success: false,
+            message: 'Required parameters missing: command (string) and path (string)'
+          }, { status: 400 });
+        }
+        
+        try {
+          const result = await languageManager.galateaEditorCommand(authenticatedUserId, {
+            command,
+            path,
+            file_text,
+            insert_line,
+            new_str,
+            old_str,
+            view_range
+          });
+          return NextResponse.json(result, { status: result.success ? 200 : 500 });
+        } catch (error) {
+          console.error(`[Language API] Error executing editor command:`, error);
+          return NextResponse.json({
+            success: false,
+            message: `Error executing editor command: ${error instanceof Error ? error.message : String(error)}`
+          }, { status: 500 });
+        }
+      }
+
+      case 'galateaLint': {
+        const { paths } = body;
+        
+        if (!paths || !Array.isArray(paths)) {
+          return NextResponse.json({
+            success: false,
+            message: 'Required parameter missing: paths (array)'
+          }, { status: 400 });
+        }
+        
+        try {
+          const result = await languageManager.galateaLint(authenticatedUserId, { paths });
+          return NextResponse.json(result, { status: result.success ? 200 : 500 });
+        } catch (error) {
+          console.error(`[Language API] Error linting files:`, error);
+          return NextResponse.json({
+            success: false,
+            message: `Error linting files: ${error instanceof Error ? error.message : String(error)}`
+          }, { status: 500 });
+        }
+      }
+
+      case 'galateaFormatCheck': {
+        const { patterns } = body;
+        
+        if (!patterns || !Array.isArray(patterns)) {
+          return NextResponse.json({
+            success: false,
+            message: 'Required parameter missing: patterns (array)'
+          }, { status: 400 });
+        }
+        
+        try {
+          const result = await languageManager.galateaFormatCheck(authenticatedUserId, { patterns });
+          return NextResponse.json(result, { status: result.success ? 200 : 500 });
+        } catch (error) {
+          console.error(`[Language API] Error checking formatting:`, error);
+          return NextResponse.json({
+            success: false,
+            message: `Error checking formatting: ${error instanceof Error ? error.message : String(error)}`
+          }, { status: 500 });
+        }
+      }
+
+      case 'galateaFormatWrite': {
+        const { patterns } = body;
+        
+        if (!patterns || !Array.isArray(patterns)) {
+          return NextResponse.json({
+            success: false,
+            message: 'Required parameter missing: patterns (array)'
+          }, { status: 400 });
+        }
+        
+        try {
+          const result = await languageManager.galateaFormatWrite(authenticatedUserId, { patterns });
+          return NextResponse.json(result, { status: result.success ? 200 : 500 });
+        } catch (error) {
+          console.error(`[Language API] Error formatting files:`, error);
+          return NextResponse.json({
+            success: false,
+            message: `Error formatting files: ${error instanceof Error ? error.message : String(error)}`
+          }, { status: 500 });
+        }
+      }
+
+      case 'galateaLspGotoDefinition': {
+        const { uri, line, character } = body;
+        
+        if (!uri || line === undefined || character === undefined) {
+          return NextResponse.json({
+            success: false,
+            message: 'Required parameters missing: uri (string), line (number), and character (number)'
+          }, { status: 400 });
+        }
+        
+        try {
+          const result = await languageManager.galateaLspGotoDefinition(authenticatedUserId, {
+            uri,
+            line,
+            character
+          });
+          return NextResponse.json(result, { status: result.success ? 200 : 500 });
+        } catch (error) {
+          console.error(`[Language API] Error getting definition:`, error);
+          return NextResponse.json({
+            success: false,
+            message: `Error getting definition: ${error instanceof Error ? error.message : String(error)}`
+          }, { status: 500 });
+        }
+      }
+
       default:
         return NextResponse.json({ message: 'Invalid action specified' }, { status: 400 });
     }

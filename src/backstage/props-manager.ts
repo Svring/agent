@@ -454,10 +454,13 @@ export class PropsManager {
 // Singleton instance, now HMR-safe
 export const propsManager = PropsManager.getInstance();
 
-// Ensure cleanup on process exit
-process.on('exit', () => propsManager.disconnectAllSessions());
-process.on('SIGINT', () => { propsManager.disconnectAllSessions(); process.exit(0); });
-process.on('SIGTERM', () => { propsManager.disconnectAllSessions(); process.exit(0); });
+let cleanupDone = false;
+process.on('exit', () => {
+  if (!cleanupDone) {
+    cleanupDone = true;
+    propsManager.disconnectAllSessions();
+  }
+});
 
 // Do not automatically connect when module loads
 // connectToServer(); 

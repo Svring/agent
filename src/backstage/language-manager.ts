@@ -755,6 +755,256 @@ export default nextConfig;
     };
   }
 
+  // === GALATEA API ENDPOINTS ===
+
+  /**
+   * Common method to make requests to the Galatea API
+   * @param userId The user ID
+   * @param endpoint The API endpoint (without the /api prefix)
+   * @param method HTTP method (GET, POST)
+   * @param body Request body for POST requests
+   * @returns API response
+   */
+  private async makeGalateaRequest(
+    userId: string, 
+    endpoint: string, 
+    method: 'GET' | 'POST' = 'POST', 
+    body?: any
+  ): Promise<any> {
+    if (!userId) {
+      return { success: false, message: "User ID is required." };
+    }
+
+    if (!propsManager.isSSHConnected(userId)) {
+      return { success: false, message: "SSH not connected. Please connect SSH first." };
+    }
+
+    // Check if Galatea is running
+    const healthCheck = await this.checkGalateaFunctioning(userId);
+    if (!healthCheck.healthy) {
+      return { 
+        success: false, 
+        message: `Galatea service is not running: ${healthCheck.message}. Please restart Galatea.` 
+      };
+    }
+
+    // Prepare curl command
+    const fullUrl = `http://localhost:3051/api${endpoint}`;
+    let curlCommand = `curl -sS -X ${method} "${fullUrl}"`;
+    
+    if (method === 'POST' && body) {
+      // Escape double quotes for proper JSON passing in bash
+      const jsonBody = JSON.stringify(body).replace(/"/g, '\\"');
+      curlCommand += ` -H "Content-Type: application/json" -d "${jsonBody}"`;
+    }
+
+    console.log(`[LanguageManager] Making Galatea API request to ${fullUrl}`);
+    
+    try {
+      const result = await propsManager.executeCommand(userId, curlCommand);
+      
+      if (!result.success) {
+        return { 
+          success: false, 
+          message: `Failed to execute Galatea API request: ${result.stderr || 'Unknown error'}` 
+        };
+      }
+
+      // Try to parse the response as JSON
+      try {
+        if (!result.stdout) {
+          return { success: false, message: "No response from Galatea API" };
+        }
+        const jsonResponse = JSON.parse(result.stdout);
+        return { success: true, data: jsonResponse };
+      } catch (parseError) {
+        return { 
+          success: false, 
+          message: `Failed to parse Galatea API response as JSON: ${String(parseError)}`,
+          rawResponse: result.stdout 
+        };
+      }
+    } catch (error) {
+      return { 
+        success: false, 
+        message: `Error making Galatea API request: ${error instanceof Error ? error.message : String(error)}` 
+      };
+    }
+  }
+
+  /**
+   * Find files in the project matching the given criteria
+   */
+  public async galateaFindFiles(
+    userId: string, 
+    params: { dir: string; suffixes: string[]; exclude_dirs?: string[] }
+  ): Promise<any> {
+    return this.makeGalateaRequest(userId, '/find-files', 'POST', params);
+  }
+
+  /**
+   * Parse a single file and extract code entities
+   */
+  public async galateaParseFile(
+    userId: string, 
+    params: { file_path: string; max_snippet_size?: number }
+  ): Promise<any> {
+    return this.makeGalateaRequest(userId, '/parse-file', 'POST', params);
+  }
+
+  /**
+   * Parse all files in a directory and extract code entities
+   */
+  public async galateaParseDirectory(
+    userId: string, 
+    params: { 
+      dir: string; 
+      suffixes: string[]; 
+      exclude_dirs?: string[]; 
+      max_snippet_size?: number;
+      granularity?: string;
+    }
+  ): Promise<any> {
+    return this.makeGalateaRequest(userId, '/parse-directory', 'POST', params);
+  }
+
+  /**
+   * Query the code database (semantic search)
+   */
+  public async galateaQuery(
+    userId: string, 
+    params: { 
+      collection_name: string; 
+      query_text: string;
+      model?: string;
+      api_key?: string;
+      api_base?: string;
+      qdrant_url?: string;
+    }
+  ): Promise<any> {
+    return this.makeGalateaRequest(userId, '/query', 'POST', params);
+  }
+
+  /**
+   * Generate embeddings for code entities
+   */
+  public async galateaGenerateEmbeddings(
+    userId: string, 
+    params: { 
+      input_file: string; 
+      output_file: string;
+      model?: string;
+      api_key?: string;
+      api_base?: string;
+    }
+  ): Promise<any> {
+    return this.makeGalateaRequest(userId, '/generate-embeddings', 'POST', params);
+  }
+
+  /**
+   * Upload embeddings to the vector database
+   */
+  public async galateaUpsertEmbeddings(
+    userId: string, 
+    params: { 
+      input_file: string; 
+      collection_name: string;
+      qdrant_url?: string;
+    }
+  ): Promise<any> {
+    return this.makeGalateaRequest(userId, '/upsert-embeddings', 'POST', params);
+  }
+
+  /**
+   * Build a complete index: find files, parse, generate embeddings, store
+   */
+  public async galateaBuildIndex(
+    userId: string, 
+    params: { 
+      dir: string;
+      suffixes: string[];
+      exclude_dirs?: string[];
+      max_snippet_size?: number;
+      granularity?: string;
+      embedding_model?: string;
+      api_key?: string;
+      api_base?: string;
+      collection_name: string;
+      qdrant_url?: string;
+    }
+  ): Promise<any> {
+    return this.makeGalateaRequest(userId, '/build-index', 'POST', params);
+  }
+
+  /**
+   * File editing operations
+   */
+  public async galateaEditorCommand(
+    userId: string, 
+    params: { 
+      command: string; // "view", "create", "str_replace", "insert", "undo_edit"
+      path: string;
+      file_text?: string;
+      insert_line?: number;
+      new_str?: string;
+      old_str?: string;
+      view_range?: number[];
+    }
+  ): Promise<any> {
+    return this.makeGalateaRequest(userId, '/editor', 'POST', params);
+  }
+
+  /**
+   * ESLint integration
+   */
+  public async galateaLint(
+    userId: string, 
+    params: { paths: string[] }
+  ): Promise<any> {
+    return this.makeGalateaRequest(userId, '/lint', 'POST', params);
+  }
+
+  /**
+   * Prettier check
+   */
+  public async galateaFormatCheck(
+    userId: string, 
+    params: { patterns: string[] }
+  ): Promise<any> {
+    return this.makeGalateaRequest(userId, '/format-check', 'POST', params);
+  }
+
+  /**
+   * Prettier format
+   */
+  public async galateaFormatWrite(
+    userId: string, 
+    params: { patterns: string[] }
+  ): Promise<any> {
+    return this.makeGalateaRequest(userId, '/format-write', 'POST', params);
+  }
+
+  /**
+   * Language Server Protocol - Goto Definition
+   */
+  public async galateaLspGotoDefinition(
+    userId: string, 
+    params: { 
+      uri: string;
+      line: number;
+      character: number;
+    }
+  ): Promise<any> {
+    return this.makeGalateaRequest(userId, '/lsp/goto-definition', 'POST', params);
+  }
+
+  /**
+   * Simple health check for Galatea API
+   */
+  public async galateaHealth(userId: string): Promise<any> {
+    return this.makeGalateaRequest(userId, '/health', 'GET');
+  }
+
   /**
    * Monitor and ensure Galatea service is running by performing health checks and recovery.
    * @param userId The user ID

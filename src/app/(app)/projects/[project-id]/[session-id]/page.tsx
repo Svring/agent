@@ -112,9 +112,9 @@ export default function SessionDetailPage() {
   }, [serverStatusData]);
 
   // Add a new SWR hook for Galatea health
-  const { data: galateaHealthData, error: galateaHealthError, mutate: refreshGalateaHealth } = 
+  const { data: galateaHealthData, error: galateaHealthError, mutate: refreshGalateaHealth } =
     useSWR(
-      currentUser?.id ? `/api/language/galatea-health-check` : null, 
+      currentUser?.id ? `/api/language/galatea-health-check` : null,
       async (url) => {
         const response = await fetch('/api/language', {
           method: 'POST',
@@ -124,7 +124,7 @@ export default function SessionDetailPage() {
           })
         });
         return response.json();
-      }, 
+      },
       { refreshInterval: 15000 } // Poll every 15 seconds
     );
 
@@ -276,7 +276,7 @@ export default function SessionDetailPage() {
   const [expandedResults, setExpandedResults] = useState<Record<string, boolean>>({});
   const messagesEndRef = useRef(null);
   const [selectedModel, setSelectedModel] = useState<string>('claude-3-7-sonnet-20250219');
-  const [selectedTools, setSelectedTools] = useState<string[]>(['browser', 'terminal']);
+  const [selectedTools, setSelectedTools] = useState<string[]>(['terminal', 'coder']);
   const [availableModels, setAvailableModels] = useState<{ key: string, label: string }[]>([]);
   const [availableTools, setAvailableTools] = useState<{ key: string, label: string }[]>([]);
   const [activeContextId, setActiveContextId] = useState<string>('opera');
@@ -535,7 +535,7 @@ export default function SessionDetailPage() {
         tools: selectedTools,
         projectId: projectId,
         sessionId: sessionId,
-        customInfo: `User: ${currentUser.id} | ActivePage: ${activeContextId}/${activePageId || 'unknown'} | API: ${apiRoute}`
+        customInfo: `The current user's id which is used for tool calls: ${currentUser.id} | ActivePage: ${activeContextId}/${activePageId || 'unknown'} | API: ${apiRoute}`
       }
     });
   };
@@ -788,16 +788,16 @@ export default function SessionDetailPage() {
     try {
       const prodUrl = projectDetails.production_address;
       const healthUrl = `${prodUrl.replace(/\/$/, '')}/galatea/api/health`;
-      
+
       toast.info(`Checking Galatea health at ${healthUrl}...`);
-      
+
       const response = await fetch(healthUrl, {
         method: 'GET',
         headers: {
           'Accept': 'application/json'
         }
       });
-      
+
       if (response.ok) {
         const data = await response.text();
         toast.success(`Galatea health check succeeded! Status: ${response.status}, Response: ${data}`);
@@ -1057,7 +1057,7 @@ export default function SessionDetailPage() {
                             checkAndFixGalatea();
                           }}
                         >
-                          <BrainCog className="h-4 w-4" />
+                          <PowerOff className="h-4 w-4" />
                         </Button>
                       </TooltipTrigger>
                       <TooltipContent>

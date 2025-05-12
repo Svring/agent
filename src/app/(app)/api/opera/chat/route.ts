@@ -36,7 +36,7 @@ function mergeAssistantResponse(originalMessages: Message[], assistantResponse: 
   }));
 
   const intermediateAssistantMessages: Array<Message & { session?: string }> = []; // Renamed for clarity
-  const toolResultsMap = new Map<string, any>(); 
+  const toolResultsMap = new Map<string, any>();
 
   if (!assistantResponse || !Array.isArray(assistantResponse.messages)) {
     console.warn('Assistant response is missing or has no messages property.');
@@ -70,15 +70,15 @@ function mergeAssistantResponse(originalMessages: Message[], assistantResponse: 
             }
           });
         } else {
-           console.warn(`[DEBUG] Pass 1: Skipping unexpected part type in assistant message: ${part.type}`);
+          console.warn(`[DEBUG] Pass 1: Skipping unexpected part type in assistant message: ${part.type}`);
         }
       }
 
       if (messageParts.length === 0 && !textContent) {
-         console.warn(`[DEBUG] Pass 1: Skipping assistant message ${msgData.id} with no processable parts or text.`);
-         continue;
+        console.warn(`[DEBUG] Pass 1: Skipping assistant message ${msgData.id} with no processable parts or text.`);
+        continue;
       }
-      
+
       const messageData: Partial<Message> = {
         id: msgData.id || `gen_call_${Date.now()}`,
         role: 'assistant',
@@ -98,10 +98,10 @@ function mergeAssistantResponse(originalMessages: Message[], assistantResponse: 
     } else if (msgData.role === 'tool' && Array.isArray(msgData.content)) {
       for (const part of msgData.content) {
         if (part.type === 'tool-result' && part.toolCallId) {
-           console.log(`[DEBUG] Pass 1: Storing result for toolCallId: ${part.toolCallId}`);
-           toolResultsMap.set(part.toolCallId, { toolName: part.toolName, result: part.result });
+          console.log(`[DEBUG] Pass 1: Storing result for toolCallId: ${part.toolCallId}`);
+          toolResultsMap.set(part.toolCallId, { toolName: part.toolName, result: part.result });
         } else {
-            console.warn(`[DEBUG] Pass 1: Skipping unexpected/invalid part type in tool message: ${part.type}`);
+          console.warn(`[DEBUG] Pass 1: Skipping unexpected/invalid part type in tool message: ${part.type}`);
         }
       }
     } else {
@@ -121,9 +121,9 @@ function mergeAssistantResponse(originalMessages: Message[], assistantResponse: 
             part.toolInvocation.state = 'result';
             part.toolInvocation.result = resultData.result;
             if (typeof resultData.result === 'string') {
-               assistantMsg.content = resultData.result;
+              assistantMsg.content = resultData.result;
             } else if (resultData.result && typeof resultData.result === 'object') {
-               assistantMsg.content = `[Result for ${resultData.toolName}]`;
+              assistantMsg.content = `[Result for ${resultData.toolName}]`;
             }
             contentUpdated = true;
             return part;
@@ -131,9 +131,9 @@ function mergeAssistantResponse(originalMessages: Message[], assistantResponse: 
         }
         return part;
       });
-       if (!contentUpdated && assistantMsg.parts.some(p => p.type === 'tool-invocation') && !assistantMsg.content) {
-           assistantMsg.content = '[Tool Interaction]';
-       }
+      if (!contentUpdated && assistantMsg.parts.some(p => p.type === 'tool-invocation') && !assistantMsg.content) {
+        assistantMsg.content = '[Tool Interaction]';
+      }
     }
   }
 
@@ -141,9 +141,9 @@ function mergeAssistantResponse(originalMessages: Message[], assistantResponse: 
   const finalAssistantMessages: Array<Message & { session?: string }> = [];
   if (intermediateAssistantMessages.length > 0) {
     // Start with the first message
-    let currentMergedMessage = { ...intermediateAssistantMessages[0] }; 
+    let currentMergedMessage = { ...intermediateAssistantMessages[0] };
     // Ensure parts is always an array, even if initially undefined/null
-    currentMergedMessage.parts = [...(currentMergedMessage.parts || [])]; 
+    currentMergedMessage.parts = [...(currentMergedMessage.parts || [])];
 
     for (let i = 1; i < intermediateAssistantMessages.length; i++) {
       const nextMessage = intermediateAssistantMessages[i];
@@ -155,7 +155,7 @@ function mergeAssistantResponse(originalMessages: Message[], assistantResponse: 
         // Append parts from the next message (ensure nextMessage.parts is an array)
         currentMergedMessage.parts.push(...(nextMessage.parts || []));
         // Combine content (optional, adjust as needed)
-        currentMergedMessage.content += '\n' + (nextMessage.content || ''); 
+        currentMergedMessage.content += '\n' + (nextMessage.content || '');
       } else {
         // If the next message is not an assistant message, push the current merged one and start anew
         finalAssistantMessages.push(currentMergedMessage);
@@ -207,7 +207,7 @@ export async function POST(req: NextRequest) {
       console.error(`[Chat API] User ${authenticatedUserId}: Failed to initialize user session or load tools:`, error);
       return errorResponse('Failed to initialize session or load tools', 500);
     }
-    
+
     // The tools for the user are now managed within their session config in CastingManager
     // The cast method will retrieve them internally using the userId.
 

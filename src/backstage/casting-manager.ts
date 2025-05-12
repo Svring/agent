@@ -7,6 +7,7 @@ import { LanguageModel, streamText } from 'ai';
 import { computerTool } from '@/tools/functions/computer';
 import { browserTools } from '@/tools/functions/browser';
 import { terminalTools } from '@/tools/functions/terminal';
+import { coderTools } from '@/tools/functions/coder';
 
 // Types
 type ToolRegistry = Record<string, { label: string; tool: any }>;
@@ -15,16 +16,12 @@ type ToolCollection = Record<string, any>;
 // Model configurations
 const MODEL_CONFIG = {
   AVAILABLE_MODELS: [
-    'claude-3-5-sonnet-latest',
     'claude-3-7-sonnet-20250219',
-    'gemini-2.5-pro-preview-03-25',
-    'gpt-4.1-nano',
+    'gemini-2.5-pro-preview-05-06',
     'grok-3-latest',
     'o3',
-    'gpt-4.1',
   ],
   CLAUDE_MODELS: [
-    'claude-3-5-sonnet-latest',
     'claude-3-7-sonnet-20250219',
   ],
 };
@@ -34,6 +31,7 @@ const toolRegistry: ToolRegistry = {
   computer: { label: 'Computer Use', tool: computerTool },
   browser: { label: 'Browser Control', tool: browserTools },
   terminal: { label: 'Terminal Commands', tool: terminalTools },
+  coder: { label: 'Code Editing', tool: coderTools },
 };
 
 // Pre-populated tool groups mapping
@@ -41,6 +39,7 @@ const TOOL_GROUPS: Record<string, string[]> = {
   computer: typeof computerTool === 'function' ? ['computer'] : Object.keys(computerTool),
   browser: Object.keys(browserTools),
   terminal: Object.keys(terminalTools),
+  coder: Object.keys(coderTools),
 };
 
 // Flattened tool registry with all individual tools
@@ -48,6 +47,7 @@ const staticToolRegistry: ToolCollection = {
   ...(typeof computerTool === 'function' ? { computer: computerTool } : computerTool),
   ...browserTools,
   ...terminalTools,
+  ...coderTools,
 };
 
 interface UserCastingConfig {
