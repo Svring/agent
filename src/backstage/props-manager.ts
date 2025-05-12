@@ -60,7 +60,7 @@ export class PropsManager {
       return global.propsManagerInstance;
     }
   }
-  
+
   // Helper to get or create a user session structure
   private getUserSession(userId: string): UserSshSession {
     if (!this.userSessions.has(userId)) {
@@ -82,25 +82,25 @@ export class PropsManager {
    * Prioritizes password from credentials, falls back to privateKeyPath (either from credentials or .env).
    */
   public async initializeSSH(
-    userId: string, 
+    userId: string,
     credentials: SSHCredentials
   ): Promise<{ success: boolean; message: string; data?: any }> {
     if (!userId) return { success: false, message: '[PropsManager] userId is required.' };
     if (!credentials) return { success: false, message: '[PropsManager] SSH credentials are required to initialize session.' };
-    
+
     const session = this.getUserSession(userId);
 
     // Check if already connected with potentially different credentials
     if (session.isConnected && session.ssh.isConnected()) {
       const currentCreds = session.activeCredentials;
       const portOrDefault = credentials.port || 22;
-      if (currentCreds && 
-          currentCreds.host === credentials.host &&
-          currentCreds.port === portOrDefault &&
-          currentCreds.username === credentials.username &&
-          // Check if new request uses password OR privateKey, and if it matches stored type
-          ((credentials.password && currentCreds.password === credentials.password) || 
-           (credentials.privateKeyPath && currentCreds.privateKeyPath === credentials.privateKeyPath && !currentCreds.password))) {
+      if (currentCreds &&
+        currentCreds.host === credentials.host &&
+        currentCreds.port === portOrDefault &&
+        currentCreds.username === credentials.username &&
+        // Check if new request uses password OR privateKey, and if it matches stored type
+        ((credentials.password && currentCreds.password === credentials.password) ||
+          (credentials.privateKeyPath && currentCreds.privateKeyPath === credentials.privateKeyPath && !currentCreds.password))) {
         console.log(`[PropsManager] SSH already connected for user ${userId} with matching credentials.`);
         return { success: true, message: 'Already connected with matching credentials', data: { cwd: session.currentWorkingDirectory, credentials: session.activeCredentials } };
       } else {
@@ -109,12 +109,12 @@ export class PropsManager {
       }
     }
 
-    const { 
-        host, 
-        port = 22,
-        username, 
-        password, 
-        privateKeyPath 
+    const {
+      host,
+      port = 22,
+      username,
+      password,
+      privateKeyPath
     } = credentials;
 
     console.log(`[PropsManager] Initializing SSH for user ${userId} with: host=${host}, port=${port}, username=${username}, usingPassword=${!!password}, pkPath=${privateKeyPath || 'none'}`);
@@ -127,15 +127,15 @@ export class PropsManager {
 
     let privateKeyContent: string | undefined = undefined;
     if (!password && privateKeyPath) {
-       if (!fs.existsSync(privateKeyPath)) {
-         session.activeCredentials = null; session.isConnected = false;
-         return { success: false, message: `Private key file not found: ${privateKeyPath}` };
-       }
-       try { privateKeyContent = fs.readFileSync(privateKeyPath, 'utf8'); }
-       catch (readErr: any) { 
-         session.activeCredentials = null; session.isConnected = false;
-         return { success: false, message: `Failed to read PK: ${readErr.message || readErr}` }; 
-       }
+      if (!fs.existsSync(privateKeyPath)) {
+        session.activeCredentials = null; session.isConnected = false;
+        return { success: false, message: `Private key file not found: ${privateKeyPath}` };
+      }
+      try { privateKeyContent = fs.readFileSync(privateKeyPath, 'utf8'); }
+      catch (readErr: any) {
+        session.activeCredentials = null; session.isConnected = false;
+        return { success: false, message: `Failed to read PK: ${readErr.message || readErr}` };
+      }
     }
 
     try {
@@ -148,15 +148,15 @@ export class PropsManager {
       try {
         const pwdResult = await session.ssh.execCommand('pwd');
         session.currentWorkingDirectory = pwdResult.stdout?.trim() || null;
-      } catch (pwdErr) { 
+      } catch (pwdErr) {
         console.warn(`[PropsManager] User ${userId}: Failed to get CWD after connect.`, pwdErr);
-        session.currentWorkingDirectory = null; 
+        session.currentWorkingDirectory = null;
       }
       console.log(`[PropsManager] User ${userId} CWD: ${session.currentWorkingDirectory}`);
       return { success: true, message: 'SSH connection successful', data: { cwd: session.currentWorkingDirectory, activeCredentials: session.activeCredentials } };
     } catch (err: any) { // Catch any error from connect or pwd
       console.error(`[PropsManager] SSH Connection or initial CWD failed for ${userId} to ${host}:`, err);
-      session.isConnected = false; 
+      session.isConnected = false;
       session.activeCredentials = null; // Crucial: clear active credentials on any failure
       session.ssh.dispose(); // Dispose of the NodeSSH instance on failure
       return { success: false, message: `SSH Connection for ${userId} to ${host} failed: ${err.message || err}` };
@@ -182,7 +182,7 @@ export class PropsManager {
       // this.userSessions.delete(userId);
     }
   }
-  
+
   public disconnectAllSessions(): void {
     console.log("[PropsManager] Disconnecting all active SSH sessions...");
     this.userSessions.forEach((session, userId) => {
@@ -198,7 +198,7 @@ export class PropsManager {
   public getCommandLog(userId: string): CommandLogEntry[] {
     if (!userId) return [];
     const session = this.userSessions.get(userId);
-    return session ? [...session.commandLog] : []; 
+    return session ? [...session.commandLog] : [];
   }
 
   public isSSHConnected(userId: string): boolean {
@@ -239,20 +239,20 @@ export class PropsManager {
     if (!userId) return { connected: false, cwd: null, activeCredentials: null };
     const session = this.userSessions.get(userId);
     if (!session) {
-        return { connected: false, cwd: null, activeCredentials: null };
+      return { connected: false, cwd: null, activeCredentials: null };
     }
     return {
-        connected: session.isConnected && session.ssh.isConnected(),
-        cwd: session.currentWorkingDirectory,
-        activeCredentials: session.activeCredentials ? { 
-            host: session.activeCredentials.host,
-            port: session.activeCredentials.port,
-            username: session.activeCredentials.username,
-            privateKeyPath: session.activeCredentials.privateKeyPath
-        } : null
+      connected: session.isConnected && session.ssh.isConnected(),
+      cwd: session.currentWorkingDirectory,
+      activeCredentials: session.activeCredentials ? {
+        host: session.activeCredentials.host,
+        port: session.activeCredentials.port,
+        username: session.activeCredentials.username,
+        privateKeyPath: session.activeCredentials.privateKeyPath
+      } : null
     };
   }
-  
+
   // Overall status of the manager
   public getManagerStatus(): { activeUserSessions: number } {
     let activeCount = 0;
@@ -267,7 +267,7 @@ export class PropsManager {
       console.log(`[PropsManager] User ${userId}: SSH connection seems down. Attempting to re-establish with stored credentials.`);
       // Pass a copy of credentials to ensure no modification issues if any
       const credsToRetry = { ...session.activeCredentials };
-      const result = await this.initializeSSH(userId, credsToRetry); 
+      const result = await this.initializeSSH(userId, credsToRetry);
       // initializeSSH handles setting isConnected and activeCredentials internally, including clearing on failure.
       if (result.success) {
         console.log(`[PropsManager] User ${userId}: Reconnection successful.`);
@@ -300,8 +300,8 @@ export class PropsManager {
 
     if (!connectionReady) {
       const errorMessage = hadStoredCredentials
-                       ? 'SSH re-connection attempt failed. Please check credentials or server, then try connecting again via UI.'
-                       : 'SSH not connected. Please initialize connection first via UI.';
+        ? 'SSH re-connection attempt failed. Please check credentials or server, then try connecting again via UI.'
+        : 'SSH not connected. Please initialize connection first via UI.';
       // Do not log command here as it might contain sensitive info & we didn't execute
       console.warn(`[PropsManager] User ${userId}: Command '${command.split(' ')[0]}...' execution aborted. ${errorMessage}`);
       return { success: false, message: errorMessage, stdout: '', stderr: errorMessage };
@@ -347,16 +347,16 @@ export class PropsManager {
     const timestamp = new Date();
     session.commandLog.push({ timestamp, command, stdout, stderr, success });
     const logFileName = 'command.log';
-    const fileLogEntry = 
+    const fileLogEntry =
       `[${timestamp.toISOString()}] User: ${userId} ${success ? '✅' : '❌'} CMD: ${command}\n` +
       `${stdout ? `[${timestamp.toISOString()}] STDOUT: ${stdout}\n` : ''}` +
       `${stderr ? `[${timestamp.toISOString()}] STDERR: ${stderr}\n` : ''}`;
     if (session.isConnected && session.ssh.isConnected()) {
       try {
-        await session.ssh.exec(`tee -a ${logFileName}`, [], { 
-            cwd: session.currentWorkingDirectory || undefined, 
-            stdin: fileLogEntry, 
-            stream: 'stderr' 
+        await session.ssh.exec(`tee -a ${logFileName}`, [], {
+          cwd: session.currentWorkingDirectory || undefined,
+          stdin: fileLogEntry,
+          stream: 'stderr'
         });
       } catch (err) { console.error(`[PropsManager] User ${userId}: Error appending to remote log:`, err); }
     } else {
@@ -375,7 +375,7 @@ export class PropsManager {
       const cmdResult = await session.ssh.exec(`cat > '${escapedFilePath}'`, [], {
         cwd: session.currentWorkingDirectory || undefined,
         stdin: content,
-        stream: 'stderr' 
+        stream: 'stderr'
       });
       if (cmdResult && cmdResult.trim().length > 0) { // Check if stderr from tee has content
         throw new Error(cmdResult); // cmdResult here is stderr content
@@ -398,6 +398,55 @@ export class PropsManager {
       return { success: true, message: `File ${filePath} read for user ${userId}`, content: result.stdout };
     } catch (err) {
       return { success: false, message: `File read failed for ${userId}: ${err}` };
+    }
+  }
+
+  public async uploadFileToRemote(
+    userId: string,
+    localFilePath: string, // Path to the local file to upload
+    remoteFilePath: string // Path on the remote server
+  ): Promise<{ success: boolean; message: string }> {
+    if (!userId) return { success: false, message: '[PropsManager] userId is required.' };
+    const session = this.getUserSession(userId);
+
+    let connectionReady = false;
+    const hadStoredCredentials = !!session.activeCredentials;
+    if (session.isConnected && session.ssh.isConnected()) {
+      connectionReady = true;
+    } else {
+      console.log(`[PropsManager] User ${userId} file upload: Not connected. session.isConnected: ${session.isConnected}, session.ssh.isConnected(): ${session.ssh?.isConnected() ?? 'N/A'}`);
+      if (hadStoredCredentials) {
+        connectionReady = await this._tryReconnect(userId, session);
+      }
+    }
+
+    if (!connectionReady) {
+      const errorMessage = hadStoredCredentials
+        ? 'SSH re-connection attempt failed for file upload. Please check credentials or server, then try connecting again via UI.'
+        : 'SSH not connected for file upload. Please initialize connection first via UI.';
+      console.warn(`[PropsManager] User ${userId}: File upload from '${localFilePath}' aborted. ${errorMessage}`);
+      return { success: false, message: errorMessage };
+    }
+
+    try {
+      if (!fs.existsSync(localFilePath)) {
+        return { success: false, message: `Local file not found: ${localFilePath}` };
+      }
+
+      console.log(`[PropsManager] User ${userId}: Attempting to upload ${localFilePath} to ${remoteFilePath} (cwd: ${session.currentWorkingDirectory || 'default'})`);
+      await session.ssh.putFile(localFilePath, remoteFilePath, null, {
+        // node-ssh putFile's remotePath is relative to CWD if CWD is set and remotePath is not absolute.
+        // To ensure it's always absolute, remoteFilePath should be an absolute path.
+        // If remoteFilePath is not absolute, it will be relative to session.currentWorkingDirectory
+      });
+      return { success: true, message: `File ${localFilePath} uploaded to ${remoteFilePath} for user ${userId}` };
+    } catch (err: any) {
+      console.error(`[PropsManager] User ${userId}: File upload failed for '${localFilePath}' to '${remoteFilePath}':`, err);
+      if (!session.ssh.isConnected()) {
+        session.isConnected = false;
+        console.warn(`[PropsManager] User ${userId}: SSH connection appears to have dropped during file upload.`);
+      }
+      return { success: false, message: `File upload failed: ${err.message || err}` };
     }
   }
 }

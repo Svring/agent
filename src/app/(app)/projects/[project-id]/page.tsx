@@ -27,7 +27,7 @@ interface DevAddress {
 }
 
 // Define a type for the dev environment being edited, including the temporary _id
-interface EditingDevEnv extends DevAddress { 
+interface EditingDevEnv extends DevAddress {
   _id?: string; // Temporary ID for mapping/keys
 }
 
@@ -112,8 +112,8 @@ export default function ProjectDetailPage() {
   };
 
   const handleDevInputChange = (index: number, field: keyof Omit<DevAddress, 'id'>, value: string | number | null) => {
-    setEditingDevValues(current => 
-      current.map((env, i) => 
+    setEditingDevValues(current =>
+      current.map((env, i) =>
         i === index ? { ...env, [field]: value } : env
       )
     );
@@ -131,14 +131,14 @@ export default function ProjectDetailPage() {
     if (!project) return;
     // Prepare data for saving: remove temporary _id and convert fields if necessary
     const devDataToSave: DevAddress[] = editingDevValues.map(({ _id, id, ...rest }) => ({
-        id: typeof id === 'string' && id.startsWith('temp-') ? undefined : id, // Keep original id if exists, discard temp id
-        ...rest,
-        port: rest.port ? Number(rest.port) : null, // Ensure port is number or null
-        address: rest.address || null,
-        username: rest.username || null,
-        password: rest.password || null,
+      id: typeof id === 'string' && id.startsWith('temp-') ? undefined : id, // Keep original id if exists, discard temp id
+      ...rest,
+      port: rest.port ? Number(rest.port) : null, // Ensure port is number or null
+      address: rest.address || null,
+      username: rest.username || null,
+      password: rest.password || null,
     }));
-    
+
     try {
       const updated = await updateProject(project.id, { dev_address: devDataToSave });
       if (updated) {
@@ -178,12 +178,12 @@ export default function ProjectDetailPage() {
   if (!project) {
     // This case might be handled by the initial notFound() but added for robustness
     return (
-       <div className="container mx-auto py-10 text-center">
-          <h1 className="text-xl font-semibold">Project not found</h1>
-          <Link href="/projects">
-             <Button variant="link" className="mt-4">Go back to projects</Button>
-          </Link>
-       </div>
+      <div className="container mx-auto py-10 text-center">
+        <h1 className="text-xl font-semibold">Project not found</h1>
+        <Link href="/projects">
+          <Button variant="link" className="mt-4">Go back to projects</Button>
+        </Link>
+      </div>
     );
   }
 
@@ -194,10 +194,10 @@ export default function ProjectDetailPage() {
 
   return (
     <div className="container mx-auto py-6 max-w-4xl">
-      {/* Project Header - Basic, renaming handled in sidebar */} 
+      {/* Project Header - Basic, renaming handled in sidebar */}
       <div className="flex items-center justify-between mb-6">
-         {/* ... header content ... */}
-         <div className="flex items-center gap-3">
+        {/* ... header content ... */}
+        <div className="flex items-center gap-3">
           <div className="p-2 bg-primary/10 rounded-full">
             <FolderGit2 className="h-8 w-8 text-primary" />
           </div>
@@ -214,9 +214,9 @@ export default function ProjectDetailPage() {
       </div>
 
       <div className="grid gap-6 md:grid-cols-12">
-        {/* Main Content */} 
+        {/* Main Content */}
         <div className="md:col-span-8 space-y-6">
-          {/* Production Environment Card */} 
+          {/* Production Environment Card */}
           <Card className="p-4">
             <CardHeader className="flex flex-row items-center justify-between pb-2 pt-0 px-0">
               <div>
@@ -236,7 +236,7 @@ export default function ProjectDetailPage() {
               {isEditingProd ? (
                 <div className="space-y-3">
                   <Label htmlFor="prod-address">Address</Label>
-                  <Input 
+                  <Input
                     id="prod-address"
                     value={editingProdValue}
                     onChange={(e) => setEditingProdValue(e.target.value)}
@@ -250,18 +250,18 @@ export default function ProjectDetailPage() {
               ) : (
                 production_address ? (
                   <div className="p-3 bg-muted/50 border rounded-md">
-                     {/* Make the address a clickable link with HoverPeek preview */}
-                     <HoverPeek url={production_address.startsWith('http') ? production_address : `https://${production_address}`}>
-                       <a 
-                         href={production_address.startsWith('http') ? production_address : `https://${production_address}`}
-                         target="_blank" 
-                         rel="noopener noreferrer"
-                         className="font-mono text-sm truncate text-primary hover:underline"
-                         title={`Open ${production_address} in new tab`}
-                       >
-                         {production_address}
-                       </a>
-                     </HoverPeek>
+                    {/* Make the address a clickable link with HoverPeek preview */}
+                    <HoverPeek url={production_address.startsWith('http') ? production_address : `https://${production_address}`}>
+                      <a
+                        href={production_address.startsWith('http') ? production_address : `https://${production_address}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-mono text-sm truncate text-primary hover:underline"
+                        title={`Open ${production_address} in new tab`}
+                      >
+                        {production_address}
+                      </a>
+                    </HoverPeek>
                   </div>
                 ) : (
                   <p className="text-sm text-muted-foreground italic">Not configured.</p>
@@ -270,7 +270,7 @@ export default function ProjectDetailPage() {
             </CardContent>
           </Card>
 
-          {/* Development Environments Card */} 
+          {/* Development Environments Card */}
           <Card className="p-4">
             <CardHeader className="flex flex-row items-center justify-between pb-2 pt-0 px-0">
               <div>
@@ -291,61 +291,61 @@ export default function ProjectDetailPage() {
                 <div className="space-y-4">
                   {editingDevValues.map((env, index) => (
                     <div key={env._id || index} className="p-3 border rounded-md space-y-2 relative group">
-                       <Button 
-                         variant="destructive"
-                         size="icon"
-                         className="absolute top-1 right-1 h-6 w-6 text-destructive-foreground hover:bg-destructive/90 opacity-0 group-hover:opacity-100 transition-opacity p-1"
-                         onClick={() => handleRemoveDevEnv(index)}
-                         title="Remove Environment"
-                       >
-                         <Trash2 className="h-3.5 w-3.5" />
-                       </Button>
+                      <Button
+                        variant="destructive"
+                        size="icon"
+                        className="absolute top-1 right-1 h-6 w-6 text-destructive-foreground hover:bg-destructive/90 opacity-0 group-hover:opacity-100 transition-opacity p-1"
+                        onClick={() => handleRemoveDevEnv(index)}
+                        title="Remove Environment"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                         <div>
-                            <Label htmlFor={`dev-addr-${index}`}>Address</Label>
-                            <Input 
-                               id={`dev-addr-${index}`}
-                               value={env.address || ''}
-                               onChange={(e) => handleDevInputChange(index, 'address', e.target.value || null)}
-                               placeholder="e.g., dev.myapp.com or IP"
-                            />
-                         </div>
-                         <div>
-                            <Label htmlFor={`dev-port-${index}`}>Port</Label>
-                            <Input 
-                               id={`dev-port-${index}`}
-                               type="number"
-                               value={env.port || ''}
-                               onChange={(e) => handleDevInputChange(index, 'port', e.target.value ? parseInt(e.target.value, 10) : null)}
-                               placeholder="e.g., 8080"
-                            />
-                         </div>
+                        <div>
+                          <Label htmlFor={`dev-addr-${index}`}>Address</Label>
+                          <Input
+                            id={`dev-addr-${index}`}
+                            value={env.address || ''}
+                            onChange={(e) => handleDevInputChange(index, 'address', e.target.value || null)}
+                            placeholder="e.g., dev.myapp.com or IP"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor={`dev-port-${index}`}>Port</Label>
+                          <Input
+                            id={`dev-port-${index}`}
+                            type="number"
+                            value={env.port || ''}
+                            onChange={(e) => handleDevInputChange(index, 'port', e.target.value ? parseInt(e.target.value, 10) : null)}
+                            placeholder="e.g., 8080"
+                          />
+                        </div>
                       </div>
-                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                         <div>
-                            <Label htmlFor={`dev-user-${index}`}>Username <span className="text-xs text-muted-foreground">(Optional)</span></Label>
-                            <Input 
-                               id={`dev-user-${index}`}
-                               value={env.username || ''}
-                               onChange={(e) => handleDevInputChange(index, 'username', e.target.value || null)}
-                               placeholder="Username"
-                            />
-                         </div>
-                         <div>
-                            <Label htmlFor={`dev-pass-${index}`}>Password <span className="text-xs text-muted-foreground">(Optional)</span></Label>
-                            <Input 
-                               id={`dev-pass-${index}`}
-                               type="password"
-                               value={env.password || ''}
-                               onChange={(e) => handleDevInputChange(index, 'password', e.target.value || null)}
-                               placeholder="Password"
-                            />
-                         </div>
-                       </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div>
+                          <Label htmlFor={`dev-user-${index}`}>Username <span className="text-xs text-muted-foreground">(Optional)</span></Label>
+                          <Input
+                            id={`dev-user-${index}`}
+                            value={env.username || ''}
+                            onChange={(e) => handleDevInputChange(index, 'username', e.target.value || null)}
+                            placeholder="Username"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor={`dev-pass-${index}`}>Password <span className="text-xs text-muted-foreground">(Optional)</span></Label>
+                          <Input
+                            id={`dev-pass-${index}`}
+                            type="password"
+                            value={env.password || ''}
+                            onChange={(e) => handleDevInputChange(index, 'password', e.target.value || null)}
+                            placeholder="Password"
+                          />
+                        </div>
+                      </div>
                     </div>
                   ))}
                   <Button variant="outline" size="sm" onClick={handleAddDevEnv} className="mt-2">
-                     <Plus className="mr-2 h-4 w-4" /> Add Environment
+                    <Plus className="mr-2 h-4 w-4" /> Add Environment
                   </Button>
                   <div className="flex justify-end gap-2 mt-4 border-t pt-4">
                     <Button variant="ghost" size="sm" onClick={handleCancelDev}>Cancel</Button>
@@ -358,28 +358,28 @@ export default function ProjectDetailPage() {
                     {(dev_address as DevAddress[]).map((env, index) => ( // Cast for type safety
                       <div key={env.id || index} className="p-3 bg-muted/50 border rounded-md">
                         <div className="flex flex-col gap-1">
-                           <div className="flex items-center justify-between">
-                             <p className="font-mono text-sm">
-                               {env.address}
-                               {env.port ? `:${env.port}` : ''}
-                             </p>
-                             <Badge variant="outline" className="text-xs">{index === 0 ? 'Primary Dev' : `Dev ${index + 1}`}</Badge>
-                           </div>
-                           {(env.username || env.password) && (
-                             <div className="grid grid-cols-2 gap-3 mt-2 text-xs text-muted-foreground/80">
-                               {env.username && (
-                                 <div>
-                                   <span className="font-medium">Username:</span> {env.username}
-                                 </div>
-                               )}
-                               {env.password && (
-                                 <div>
-                                   <span className="font-medium">Password:</span> <span className='italic'>••••••••</span>
-                                 </div>
-                               )}
-                             </div>
-                           )}
-                         </div>
+                          <div className="flex items-center justify-between">
+                            <p className="font-mono text-sm">
+                              {env.address}
+                              {env.port ? `:${env.port}` : ''}
+                            </p>
+                            <Badge variant="outline" className="text-xs">{index === 0 ? 'Primary Dev' : `Dev ${index + 1}`}</Badge>
+                          </div>
+                          {(env.username || env.password) && (
+                            <div className="grid grid-cols-2 gap-3 mt-2 text-xs text-muted-foreground/80">
+                              {env.username && (
+                                <div>
+                                  <span className="font-medium">Username:</span> {env.username}
+                                </div>
+                              )}
+                              {env.password && (
+                                <div>
+                                  <span className="font-medium">Password:</span> <span className='italic'>••••••••</span>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -391,10 +391,10 @@ export default function ProjectDetailPage() {
           </Card>
         </div>
 
-        {/* Sidebar */} 
+        {/* Sidebar */}
         <div className="md:col-span-4 space-y-6">
-           {/* Sessions Card - Minimal change, links to session page */}
-           <Card className="p-4">
+          {/* Sessions Card - Minimal change, links to session page */}
+          <Card className="p-4">
             <CardHeader className="pb-2 pt-0 px-0">
               <CardTitle className="flex items-center gap-2">
                 <FolderOpen className="h-5 w-5 text-primary" />
@@ -412,7 +412,7 @@ export default function ProjectDetailPage() {
                     const sessionId = typeof session === 'object' && session !== null && session.id
                       ? session.id
                       : session;
-                      
+
                     return (
                       <Link href={`/projects/${projectId}/${sessionId}`} key={index}>
                         <div className="p-2 hover:bg-muted rounded-md transition-colors cursor-pointer flex items-center justify-between">
@@ -426,7 +426,7 @@ export default function ProjectDetailPage() {
                       </Link>
                     );
                   })}
-                  
+
                   {sessions.length > 5 && (
                     <div className="pt-2">
                       <Separator />
@@ -446,18 +446,18 @@ export default function ProjectDetailPage() {
                   </CreateSessionButton>
                 </>
               )}
-               {/* Add Create Session button even if sessions exist */}
-               {hasSessions && (
-                   <div className="mt-4 pt-4 border-t">
-                       <CreateSessionButton projectId={projectId} variant="outline" className="w-full">
-                           <Plus className="mr-2 h-4 w-4" /> New Session
-                       </CreateSessionButton>
-                   </div>
-               )}
+              {/* Add Create Session button even if sessions exist */}
+              {hasSessions && (
+                <div className="mt-4 pt-4 border-t">
+                  <CreateSessionButton projectId={projectId} variant="outline" className="w-full">
+                    <Plus className="mr-2 h-4 w-4" /> New Session
+                  </CreateSessionButton>
+                </div>
+              )}
             </CardContent>
           </Card>
 
-           {/* Removed old Action Buttons card */}
+          {/* Removed old Action Buttons card */}
         </div>
       </div>
     </div>

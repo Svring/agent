@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
 
   try {
     authenticatedUserId = await getAuthenticatedUserId(request.headers);
-    console.log("[Playwright API] Authenticated user ID:", authenticatedUserId);
+    // console.log("[Playwright API] Authenticated user ID:", authenticatedUserId);
     if (request.body) {
       requestBody = await request.json();
       action = requestBody?.action;
