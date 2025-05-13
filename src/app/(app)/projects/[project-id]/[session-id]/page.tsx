@@ -276,7 +276,7 @@ export default function SessionDetailPage() {
   const [expandedResults, setExpandedResults] = useState<Record<string, boolean>>({});
   const messagesEndRef = useRef(null);
   const [selectedModel, setSelectedModel] = useState<string>('claude-3-7-sonnet-20250219');
-  const [selectedTools, setSelectedTools] = useState<string[]>(['terminal', 'coder']);
+  const [selectedTools, setSelectedTools] = useState<string[]>(['browser']);
   const [availableModels, setAvailableModels] = useState<{ key: string, label: string }[]>([]);
   const [availableTools, setAvailableTools] = useState<{ key: string, label: string }[]>([]);
   const [activeContextId, setActiveContextId] = useState<string>('opera');

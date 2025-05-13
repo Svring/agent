@@ -5,7 +5,7 @@ import { notFound, useParams } from 'next/navigation';
 import { getProjectById, updateProject } from '@/db/actions/projects-actions';
 import { Project } from '@/payload-types'; // Keep Project type
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
-import { FolderGit2, Globe, Server, Calendar, FolderOpen, Plus, Edit, Trash2, Save, X } from 'lucide-react';
+import { FolderGit2, Globe, Server, Calendar, FolderOpen, Plus, Edit, Trash2, Save, X, Database } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
@@ -43,6 +43,8 @@ export default function ProjectDetailPage() {
   const [editingProdValue, setEditingProdValue] = useState<string>("");
   const [isEditingDev, setIsEditingDev] = useState(false);
   const [editingDevValues, setEditingDevValues] = useState<EditingDevEnv[]>([]);
+  const [isEditingVectorStore, setIsEditingVectorStore] = useState(false);
+  const [editingVectorStoreValue, setEditingVectorStoreValue] = useState<string>("");
 
   // Fetch project data
   useEffect(() => {
@@ -154,6 +156,34 @@ export default function ProjectDetailPage() {
     }
   };
 
+  // Vector Store Address
+  const handleEditVectorStoreClick = () => {
+    setEditingVectorStoreValue(project?.vector_store_address || "");
+    setIsEditingVectorStore(true);
+  };
+
+  const handleCancelVectorStore = () => {
+    setIsEditingVectorStore(false);
+    setEditingVectorStoreValue(""); // Reset
+  };
+
+  const handleSaveVectorStore = async () => {
+    if (!project) return;
+    try {
+      const updated = await updateProject(project.id, { vector_store_address: editingVectorStoreValue.trim() });
+      if (updated) {
+        setProject(updated); // Update local state
+        toast.success("Vector Store address updated.");
+        handleCancelVectorStore(); // Exit edit mode
+      } else {
+        toast.error("Failed to update Vector Store address.");
+      }
+    } catch (error) {
+      toast.error("An error occurred while saving Vector Store address.");
+      console.error(error);
+    }
+  };
+
   // --- Loading State --- 
   if (isLoading) {
     return (
@@ -188,7 +218,7 @@ export default function ProjectDetailPage() {
   }
 
   // --- Display Logic --- 
-  const { name, production_address, dev_address = [], sessions = [] } = project;
+  const { name, production_address, vector_store_address, dev_address = [], sessions = [] } = project;
   const createdAt = project.createdAt ? new Date(project.createdAt).toLocaleDateString() : 'Unknown';
   const hasSessions = Array.isArray(sessions) && sessions.length > 0;
 
@@ -260,6 +290,59 @@ export default function ProjectDetailPage() {
                         title={`Open ${production_address} in new tab`}
                       >
                         {production_address}
+                      </a>
+                    </HoverPeek>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground italic">Not configured.</p>
+                )
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Vector Store Address Card */}
+          <Card className="p-4">
+            <CardHeader className="flex flex-row items-center justify-between pb-2 pt-0 px-0">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Database className="h-5 w-5 text-primary" />
+                  Vector Store
+                </CardTitle>
+                <CardDescription>Address of the vector database (e.g., Qdrant)</CardDescription>
+              </div>
+              {!isEditingVectorStore && (
+                <Button variant="ghost" size="icon" onClick={handleEditVectorStoreClick} className="h-7 w-7">
+                  <Edit className="h-4 w-4" />
+                </Button>
+              )}
+            </CardHeader>
+            <CardContent>
+              {isEditingVectorStore ? (
+                <div className="space-y-3">
+                  <Label htmlFor="vector-store-address">Address</Label>
+                  <Input
+                    id="vector-store-address"
+                    value={editingVectorStoreValue}
+                    onChange={(e) => setEditingVectorStoreValue(e.target.value)}
+                    placeholder="e.g., http://localhost:6334"
+                  />
+                  <div className="flex justify-end gap-2 mt-2">
+                    <Button variant="ghost" size="sm" onClick={handleCancelVectorStore}>Cancel</Button>
+                    <Button size="sm" onClick={handleSaveVectorStore}>Save</Button>
+                  </div>
+                </div>
+              ) : (
+                vector_store_address ? (
+                  <div className="p-3 bg-muted/50 border rounded-md">
+                    <HoverPeek url={vector_store_address.startsWith('http') ? vector_store_address : `http://${vector_store_address}`}>
+                      <a
+                        href={vector_store_address.startsWith('http') ? vector_store_address : `http://${vector_store_address}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-mono text-sm truncate text-primary hover:underline"
+                        title={`Open ${vector_store_address} in new tab`}
+                      >
+                        {vector_store_address}
                       </a>
                     </HoverPeek>
                   </div>

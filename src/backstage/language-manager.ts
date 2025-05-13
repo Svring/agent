@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { getProjectById } from '../db/actions/projects-actions'; // Corrected import path
+import payload from 'payload';
 
 // Augment global for HMR-safe singleton in dev
 declare global {
@@ -957,7 +958,29 @@ export default nextConfig;
       qdrant_url?: string;
     }
   ): Promise<any> {
-    return this.makeGalateaRequest(userId, '/query', 'POST', params);
+    let finalQdrantUrl = params.qdrant_url;
+
+    const activeProjectId = this.getActiveProject(userId);
+    if (activeProjectId) {
+      try {
+        const projectDetails = await getProjectById(activeProjectId);
+        if (projectDetails?.vector_store_address) {
+          finalQdrantUrl = projectDetails.vector_store_address;
+          console.log(`[LanguageManager] Using vector_store_address from project ${activeProjectId} for galateaQuery: ${finalQdrantUrl}`);
+        } else if (projectDetails) {
+          console.log(`[LanguageManager] Project ${activeProjectId} does not have vector_store_address set for galateaQuery. Params URL: ${params.qdrant_url}`);
+        } else {
+          console.log(`[LanguageManager] Active project ${activeProjectId} not found for galateaQuery. Params URL: ${params.qdrant_url}`);
+        }
+      } catch (error) {
+        console.error(`[LanguageManager] Error fetching project details for ${activeProjectId}:`, error);
+      }
+    } else {
+      console.log(`[LanguageManager] No active project for user ${userId} for galateaQuery. Params URL: ${params.qdrant_url}`);
+    }
+    
+    const finalParams = { ...params, qdrant_url: finalQdrantUrl };
+    return this.makeGalateaRequest(userId, '/query', 'POST', finalParams);
   }
 
   /**
@@ -989,7 +1012,29 @@ export default nextConfig;
       qdrant_url?: string;
     }
   ): Promise<any> {
-    return this.makeGalateaRequest(userId, '/upsert-embeddings', 'POST', params);
+    let finalQdrantUrl = params.qdrant_url;
+
+    const activeProjectId = this.getActiveProject(userId);
+    if (activeProjectId) {
+      try {
+        const projectDetails = await getProjectById(activeProjectId);
+        if (projectDetails?.vector_store_address) {
+          finalQdrantUrl = projectDetails.vector_store_address;
+          console.log(`[LanguageManager] Using vector_store_address from project ${activeProjectId} for galateaUpsertEmbeddings: ${finalQdrantUrl}`);
+        } else if (projectDetails) {
+          console.log(`[LanguageManager] Project ${activeProjectId} does not have vector_store_address set for galateaUpsertEmbeddings. Params URL: ${params.qdrant_url}`);
+        } else {
+          console.log(`[LanguageManager] Active project ${activeProjectId} not found for galateaUpsertEmbeddings. Params URL: ${params.qdrant_url}`);
+        }
+      } catch (error) {
+        console.error(`[LanguageManager] Error fetching project details for ${activeProjectId}:`, error);
+      }
+    } else {
+      console.log(`[LanguageManager] No active project for user ${userId} for galateaUpsertEmbeddings. Params URL: ${params.qdrant_url}`);
+    }
+
+    const finalParams = { ...params, qdrant_url: finalQdrantUrl };
+    return this.makeGalateaRequest(userId, '/upsert-embeddings', 'POST', finalParams);
   }
 
   /**
@@ -1011,7 +1056,29 @@ export default nextConfig;
       qdrant_url?: string;
     }
   ): Promise<any> {
-    return this.makeGalateaRequest(userId, '/build-index', 'POST', params);
+    let finalQdrantUrl = params.qdrant_url;
+
+    const activeProjectId = this.getActiveProject(userId);
+    if (activeProjectId) {
+      try {
+        const projectDetails = await getProjectById(activeProjectId);
+        if (projectDetails?.vector_store_address) {
+          finalQdrantUrl = projectDetails.vector_store_address;
+          console.log(`[LanguageManager] Using vector_store_address from project ${activeProjectId} for galateaBuildIndex: ${finalQdrantUrl}`);
+        } else if (projectDetails) {
+          console.log(`[LanguageManager] Project ${activeProjectId} does not have vector_store_address set for galateaBuildIndex. Params URL: ${params.qdrant_url}`);
+        } else {
+          console.log(`[LanguageManager] Active project ${activeProjectId} not found for galateaBuildIndex. Params URL: ${params.qdrant_url}`);
+        }
+      } catch (error) {
+        console.error(`[LanguageManager] Error fetching project details for ${activeProjectId}:`, error);
+      }
+    } else {
+      console.log(`[LanguageManager] No active project for user ${userId} for galateaBuildIndex. Params URL: ${params.qdrant_url}`);
+    }
+
+    const finalParams = { ...params, qdrant_url: finalQdrantUrl };
+    return this.makeGalateaRequest(userId, '/build-index', 'POST', finalParams);
   }
 
   /**

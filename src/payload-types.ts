@@ -176,6 +176,7 @@ export interface Project {
       }[]
     | null;
   production_address?: string | null;
+  vector_store_address?: string | null;
   sessions?: (number | Session)[] | null;
   updatedAt: string;
   createdAt: string;
@@ -368,6 +369,7 @@ export interface ProjectsSelect<T extends boolean = true> {
         id?: T;
       };
   production_address?: T;
+  vector_store_address?: T;
   sessions?: T;
   updatedAt?: T;
   createdAt?: T;

@@ -478,36 +478,25 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      case 'galateaQuery': {
-        const { collection_name, query_text, model, api_key, api_base, qdrant_url } = body;
-        
+      case 'query': {
+        const { collection_name, query_text, model, api_key, api_base } = body;
         if (!collection_name || !query_text) {
           return NextResponse.json({
             success: false,
             message: 'Required parameters missing: collection_name (string) and query_text (string)'
           }, { status: 400 });
         }
-        
-        try {
-          const result = await languageManager.galateaQuery(authenticatedUserId, {
-            collection_name,
-            query_text,
-            model,
-            api_key,
-            api_base,
-            qdrant_url
-          });
-          return NextResponse.json(result, { status: result.success ? 200 : 500 });
-        } catch (error) {
-          console.error(`[Language API] Error querying collection:`, error);
-          return NextResponse.json({
-            success: false,
-            message: `Error querying collection: ${error instanceof Error ? error.message : String(error)}`
-          }, { status: 500 });
-        }
+        const result = await languageManager.galateaQuery(authenticatedUserId, {
+          collection_name,
+          query_text,
+          model,
+          api_key,
+          api_base,
+        });
+        return NextResponse.json(result);
       }
 
-      case 'galateaGenerateEmbeddings': {
+      case 'generate-embeddings': {
         const { input_file, output_file, model, api_key, api_base } = body;
         
         if (!input_file || !output_file) {
@@ -535,8 +524,8 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      case 'galateaUpsertEmbeddings': {
-        const { input_file, collection_name, qdrant_url } = body;
+      case 'upsert-embeddings': {
+        const { input_file, collection_name } = body;
         
         if (!input_file || !collection_name) {
           return NextResponse.json({
@@ -549,7 +538,6 @@ export async function POST(req: NextRequest) {
           const result = await languageManager.galateaUpsertEmbeddings(authenticatedUserId, {
             input_file,
             collection_name,
-            qdrant_url
           });
           return NextResponse.json(result, { status: result.success ? 200 : 500 });
         } catch (error) {
@@ -561,18 +549,17 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      case 'galateaBuildIndex': {
-        const { 
-          dir, 
-          suffixes, 
-          exclude_dirs, 
-          max_snippet_size, 
+      case 'build-index': {
+        const {
+          dir,
+          suffixes,
+          exclude_dirs,
+          max_snippet_size,
           granularity,
           embedding_model,
           api_key,
           api_base,
           collection_name,
-          qdrant_url
         } = body;
         
         if (!dir || !suffixes || !Array.isArray(suffixes) || !collection_name) {
@@ -593,7 +580,6 @@ export async function POST(req: NextRequest) {
             api_key,
             api_base,
             collection_name,
-            qdrant_url
           });
           return NextResponse.json(result, { status: result.success ? 200 : 500 });
         } catch (error) {

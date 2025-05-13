@@ -4,7 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Server, Globe, FolderGit2, ExternalLink } from 'lucide-react';
+import { Server, Globe, FolderGit2, ExternalLink, Database } from 'lucide-react';
 import type { Project } from '@/payload-types';
 
 interface ProjectCardProps {
@@ -26,9 +26,10 @@ export function ProjectCard({ project }: ProjectCardProps) {
     );
   }
 
-  const { id, name, production_address, dev_address = [] } = project;
+  const { id, name, production_address, dev_address = [], vector_store_address } = project;
   const hasDevEnvironments = Array.isArray(dev_address) && dev_address.length > 0;
   const hasProductionAddress = !!production_address;
+  const hasVectorStoreAddress = !!vector_store_address;
 
   return (
     // Use bg-card and border for theme consistency
@@ -80,6 +81,21 @@ export function ProjectCard({ project }: ProjectCardProps) {
                   </div>
                 ) : (
                   <p className="text-xs text-muted-foreground">No dev environments configured</p>
+                )}
+              </div>
+            </div>
+
+            {/* Vector Store Address */}
+            <div className="flex items-start">
+              <Database className="h-4 w-4 text-muted-foreground mr-2 mt-0.5" />
+              <div className="flex-1">
+                <p className="text-sm font-medium text-foreground">Vector Store</p>
+                {hasVectorStoreAddress ? (
+                  <div className="flex items-center mt-1">
+                    <p className="text-xs text-muted-foreground truncate" title={vector_store_address}>{vector_store_address}</p>
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground">Not configured</p>
                 )}
               </div>
             </div>

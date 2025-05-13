@@ -5,7 +5,6 @@ import configPromise from '@payload-config';
 import type { Project } from '@/payload-types'; // Assuming Project type is generated
 import { headers } from 'next/headers';
 import { revalidatePath } from 'next/cache';
-import type { User } from "@/payload-types";
 
 const getPayloadClient = async () => {
   const payload = await getPayload({
