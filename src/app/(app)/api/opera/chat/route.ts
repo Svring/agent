@@ -80,6 +80,13 @@ ${customInfo}
  */
 function mergeAssistantResponse(originalMessages: Message[], assistantResponse: any, sessionId: string): Array<Message & { session?: string }> {
   console.log(`[DEBUG] mergeAssistantResponse called with sessionId: ${sessionId} (${typeof sessionId})`);
+  console.log(`[DEBUG] Original messages count: ${originalMessages.length}`);
+  
+  // Log a summary of original messages to verify the history is being preserved
+  if (originalMessages.length > 0) {
+    const origRoles = originalMessages.map((m, i) => `${i+1}:${m.role}`).join(', ');
+    console.log(`[DEBUG] Original message roles: ${origRoles}`);
+  }
 
   const updatedOriginalMessages = originalMessages.map(msg => ({
     ...msg,
@@ -238,6 +245,19 @@ export async function POST(req: NextRequest) {
     if (!sessionId) {
       return errorResponse('sessionId is required in the request body', 400);
     }
+    
+    // Log information about received messages
+    console.log(`[Chat API] Received ${messages?.length || 0} messages for session ${sessionId}`);
+    if (messages?.length > 0) {
+      // Log the roles in sequence to understand the conversation flow
+      const messageRoles = messages.map((m: any, i: number) => `${i+1}:${m.role}`).join(', ');
+      console.log(`[Chat API] Message sequence: ${messageRoles}`);
+      
+      // Log the last message for context
+      const lastMessage = messages[messages.length - 1];
+      console.log(`[Chat API] Last message - Role: ${lastMessage.role}, Content length: ${lastMessage.content?.length || 0}`);
+    }
+    
     // It's good to log that the incoming sessionId from body is for DB association,
     // while authenticatedUserId is for manager operations.
     console.log(`[Chat API] Request for DB sessionId: ${sessionId} by User ID: ${authenticatedUserId}`);
@@ -274,9 +294,17 @@ export async function POST(req: NextRequest) {
       },
       onFinish: async ({ response }) => {
         try {
+          console.log(`[Chat API] onFinish called for session ${sessionId} with response containing ${response?.messages?.length || 0} messages`);
+          
           const finalMessages = mergeAssistantResponse(messages, response, sessionId);
+          console.log(`[Chat API] After merging, we have ${finalMessages.length} total messages (${finalMessages.length - messages.length} new)`);
+          
           if (finalMessages.length > messages.length) {
+            console.log(`[Chat API] Saving ${finalMessages.length} messages to session ${sessionId}`);
             await saveSessionMessages(sessionId, finalMessages);
+            console.log(`[Chat API] Messages saved successfully`);
+          } else {
+            console.log(`[Chat API] No new messages to save (finalMessages: ${finalMessages.length}, original: ${messages.length})`);
           }
         } catch (error) {
           console.error(`[Chat API] User ${authenticatedUserId}: Error during onFinish for session ${sessionId}:`, error);

@@ -528,9 +528,31 @@ export default function SessionDetailPage() {
       toast.error("Please wait, authenticating user...");
       return;
     }
+    
+    // Create the new user message
+    const newUserMessage = { 
+      id: generateId(), 
+      role: 'user', 
+      content: input, 
+      createdAt: new Date() 
+    } as VercelMessage;
+    
+    // Use messagesToRender which contains all currently visible messages
+    // Then add the new user message to the end
+    const allMessages = [...messagesToRender, newUserMessage];
+    
+    // Log for debugging
+    console.log(`Submitting ${allMessages.length} messages to API`, {
+      existingCount: messagesToRender.length,
+      withNewInput: allMessages.length
+    });
+    
+    // Add a toast notification when submitting to help debug
+    toast.info(`Sending ${allMessages.length} messages to API`);
+    
     handleSubmit(e, {
       body: {
-        messages: [{ id: generateId(), role: 'user', content: input, createdAt: new Date() } as VercelMessage],
+        messages: allMessages,
         model: selectedModel,
         tools: selectedTools,
         projectId: projectId,
