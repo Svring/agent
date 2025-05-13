@@ -693,10 +693,6 @@ export default nextConfig;
       return { success: false, message: "User ID is required.", healthy: false };
     }
 
-    if (!propsManager.isSSHConnected(userId)) {
-      return { success: false, message: "SSH not connected. Please connect SSH first.", healthy: false };
-    }
-
     const activeProjectId = this.getActiveProject(userId);
     if (!activeProjectId) {
       return { success: false, message: "No active project set for the user.", healthy: false };
@@ -712,47 +708,64 @@ export default nextConfig;
       return { success: false, message: `Failed to fetch project details: ${e instanceof Error ? e.message : String(e)}`, healthy: false };
     }
 
-    // First, check if we can detect the process
-    const findProcessCommand = `ps aux | grep "[g]alatea_for_linux" || echo "NOT_RUNNING"`;
-    const processResult = await propsManager.executeCommand(userId, findProcessCommand);
-    
-    const isProcessRunning = !processResult.stdout?.includes('NOT_RUNNING');
-    console.log(`[LanguageManager] Galatea process check: ${isProcessRunning ? 'RUNNING' : 'NOT RUNNING'}`);
-    
-    // Next, check if the port is in use
-    const portCheckCommand = `netstat -tuln | grep :3051 || echo "PORT_FREE"`;
-    const portResult = await propsManager.executeCommand(userId, portCheckCommand);
-    
-    const isPortBound = !portResult.stdout?.includes('PORT_FREE');
-    console.log(`[LanguageManager] Galatea port check: ${isPortBound ? 'BOUND' : 'NOT BOUND'}`);
-    
-    // Get the latest logs
-    const logCommand = `cd /home/devbox && tail -n 40 galatea_server.log`;
-    const logResult = await propsManager.executeCommand(userId, logCommand);
-    const logs = logResult.success ? logResult.stdout : "Could not retrieve logs";
-    
-    // See if we find error patterns in logs
-    const hasBindError = logs?.includes("Address already in use");
-    const wasTerminated = logs?.includes("Terminated") || logs?.includes("Killed");
-    
-    let healthy = isProcessRunning && isPortBound && !hasBindError && !wasTerminated;
-    let message = healthy 
-      ? "Galatea service appears to be running properly" 
-      : "Galatea service is not functioning correctly";
-    
-    if (!healthy) {
-      if (hasBindError) message += ". Port binding error detected";
-      if (wasTerminated) message += ". Process was terminated";
-      if (!isProcessRunning) message += ". Process not found";
-      if (!isPortBound) message += ". Port not bound";
+    const productionUrl = projectDetails.production_address;
+    if (!productionUrl) {
+      return { 
+        success: false, 
+        message: "Production address not configured for the project. Required for health check.", 
+        healthy: false 
+      };
     }
+
+    // Use fetch to check the Galatea health endpoint
+    const baseUrl = productionUrl.replace(/\/$/, ''); // Remove trailing slash if present
+    const healthUrl = `${baseUrl}/galatea/api/health`;
     
-    return {
-      success: true,
-      message,
-      healthy,
-      logs
-    };
+    console.log(`[LanguageManager] Checking Galatea health at ${healthUrl}`);
+    
+    try {
+      const response = await fetch(healthUrl, {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' },
+        signal: AbortSignal.timeout(10000) // 10 second timeout
+      });
+      
+      const healthy = response.ok;
+      let message = healthy 
+        ? "Galatea service is running properly" 
+        : `Galatea service health check failed with status: ${response.status} ${response.statusText}`;
+      
+      let logs = "";
+      if (!healthy) {
+        try {
+          // Try to get logs from next endpoint if available
+          const logsUrl = `${baseUrl}/galatea/api/logs?lines=40`;
+          const logsResponse = await fetch(logsUrl, {
+            method: 'GET',
+            signal: AbortSignal.timeout(5000) // 5 second timeout
+          });
+          
+          if (logsResponse.ok) {
+            logs = await logsResponse.text();
+          }
+        } catch (logsError) {
+          console.warn(`[LanguageManager] Error fetching logs: ${logsError instanceof Error ? logsError.message : String(logsError)}`);
+        }
+      }
+      
+      return {
+        success: true,
+        message,
+        healthy,
+        logs: logs || undefined
+      };
+    } catch (error) {
+      return {
+        success: true, // The check itself succeeded (we got a result)
+        message: `Galatea service unreachable: ${error instanceof Error ? error.message : String(error)}`,
+        healthy: false
+      };
+    }
   }
 
   // === GALATEA API ENDPOINTS ===
@@ -775,11 +788,35 @@ export default nextConfig;
       return { success: false, message: "User ID is required." };
     }
 
-    if (!propsManager.isSSHConnected(userId)) {
-      return { success: false, message: "SSH not connected. Please connect SSH first." };
+    // Get the user's active project
+    const activeProjectId = this.getActiveProject(userId);
+    if (!activeProjectId) {
+      return { success: false, message: "No active project set for the user." };
     }
 
-    // Check if Galatea is running
+    // Get the project details to obtain the production_address
+    let projectDetails;
+    try {
+      projectDetails = await getProjectById(activeProjectId);
+      if (!projectDetails) {
+        return { success: false, message: `Project with ID ${activeProjectId} not found.` };
+      }
+    } catch (e) {
+      return { 
+        success: false, 
+        message: `Failed to fetch project details: ${e instanceof Error ? e.message : String(e)}` 
+      };
+    }
+
+    const productionUrl = projectDetails.production_address;
+    if (!productionUrl) {
+      return { 
+        success: false, 
+        message: "Production address not configured for the project. Required for API requests." 
+      };
+    }
+
+    // Check if Galatea is running via health check
     const healthCheck = await this.checkGalateaFunctioning(userId);
     if (!healthCheck.healthy) {
       return { 
@@ -788,52 +825,87 @@ export default nextConfig;
       };
     }
 
-    // Prepare curl command
-    const fullUrl = `http://localhost:3051/api${endpoint}`;
-    let curlCommand = `curl -sS -X ${method} "${fullUrl}"`;
+    // Prepare fetch request
+    const baseUrl = productionUrl.replace(/\/$/, ''); // Remove trailing slash if present
+    const fullUrl = `${baseUrl}/galatea/api${endpoint}`;
+    
+    const headers = {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    };
+    
+    const fetchOptions: RequestInit = {
+      method,
+      headers,
+      // Set a timeout to prevent hanging
+      signal: AbortSignal.timeout(30000) // 30 second timeout
+    };
     
     if (method === 'POST' && body) {
-      // Escape double quotes for proper JSON passing in bash
-      const jsonBody = JSON.stringify(body).replace(/"/g, '\\"');
-      curlCommand += ` -H "Content-Type: application/json" -d "${jsonBody}"`;
+      // Log the raw body object
+      // console.log('[LanguageManager] Request body before stringify:', {
+      //   type: typeof body,
+      //   keys: Object.keys(body),
+      //   hasCircularRefs: JSON.stringify(body).includes('"[Circular]"'),
+      //   size: JSON.stringify(body).length
+      // });
+      
+      fetchOptions.body = JSON.stringify(body);
+      
+      // Log the stringified body
+      // console.log('[LanguageManager] Request body after stringify:', {
+      //   content: fetchOptions.body,
+      //   size: fetchOptions.body.length,
+      //   endpoint
+      // });
     }
 
     console.log(`[LanguageManager] Making Galatea API request to ${fullUrl}`);
     
     try {
-      const result = await propsManager.executeCommand(userId, curlCommand);
+      console.log('[LanguageManager] Fetch options:', {
+        url: fullUrl,
+        method: fetchOptions.method,
+        headers: fetchOptions.headers,
+        body: fetchOptions.body ? {
+          content: fetchOptions.body,
+        } : undefined,
+        signal: fetchOptions.signal ? 'AbortSignal (30s timeout)' : undefined
+      });
+      const response = await fetch(fullUrl, fetchOptions);
       
-      if (!result.success) {
+      if (!response.ok) {
         return { 
           success: false, 
-          message: `Failed to execute Galatea API request: ${result.stderr || 'Unknown error'}` 
+          message: `Failed API request: ${response.status} ${response.statusText}`,
+          statusCode: response.status
         };
       }
-
-      // Try to parse the response as JSON
+      
+      // Get the response body as JSON
       try {
-        if (!result.stdout) {
-          return { success: false, message: "No response from Galatea API" };
-        }
-        const jsonResponse = JSON.parse(result.stdout);
+        const jsonResponse = await response.json();
         return { success: true, data: jsonResponse };
       } catch (parseError) {
+        // Try to get text response if JSON parsing fails
+        const textResponse = await response.text();
         return { 
           success: false, 
-          message: `Failed to parse Galatea API response as JSON: ${String(parseError)}`,
-          rawResponse: result.stdout 
+          message: `Failed to parse API response as JSON: ${String(parseError)}`,
+          rawResponse: textResponse
         };
       }
     } catch (error) {
       return { 
         success: false, 
-        message: `Error making Galatea API request: ${error instanceof Error ? error.message : String(error)}` 
+        message: `Error making API request: ${error instanceof Error ? error.message : String(error)}` 
       };
     }
   }
 
   /**
-   * Find files in the project matching the given criteria
+   * Find files in the project matching the given criteria using the remote API
+   * No SSH connection needed - uses the project's production URL
    */
   public async galateaFindFiles(
     userId: string, 
@@ -843,7 +915,8 @@ export default nextConfig;
   }
 
   /**
-   * Parse a single file and extract code entities
+   * Parse a single file and extract code entities using the remote API
+   * No SSH connection needed - uses the project's production URL
    */
   public async galateaParseFile(
     userId: string, 
@@ -853,7 +926,8 @@ export default nextConfig;
   }
 
   /**
-   * Parse all files in a directory and extract code entities
+   * Parse all files in a directory and extract code entities using the remote API
+   * No SSH connection needed - uses the project's production URL
    */
   public async galateaParseDirectory(
     userId: string, 
@@ -869,7 +943,8 @@ export default nextConfig;
   }
 
   /**
-   * Query the code database (semantic search)
+   * Query the code database (semantic search) using the remote API
+   * No SSH connection needed - uses the project's production URL
    */
   public async galateaQuery(
     userId: string, 
@@ -886,7 +961,8 @@ export default nextConfig;
   }
 
   /**
-   * Generate embeddings for code entities
+   * Generate embeddings for code entities using the remote API
+   * No SSH connection needed - uses the project's production URL
    */
   public async galateaGenerateEmbeddings(
     userId: string, 
@@ -902,7 +978,8 @@ export default nextConfig;
   }
 
   /**
-   * Upload embeddings to the vector database
+   * Upload embeddings to the vector database using the remote API
+   * No SSH connection needed - uses the project's production URL
    */
   public async galateaUpsertEmbeddings(
     userId: string, 
@@ -916,7 +993,8 @@ export default nextConfig;
   }
 
   /**
-   * Build a complete index: find files, parse, generate embeddings, store
+   * Build a complete index: find files, parse, generate embeddings, store using the remote API
+   * No SSH connection needed - uses the project's production URL
    */
   public async galateaBuildIndex(
     userId: string, 
@@ -937,7 +1015,8 @@ export default nextConfig;
   }
 
   /**
-   * File editing operations
+   * File editing operations using the remote API
+   * No SSH connection needed - uses the project's production URL
    */
   public async galateaEditorCommand(
     userId: string, 
@@ -950,12 +1029,37 @@ export default nextConfig;
       old_str?: string;
       view_range?: number[];
     }
-  ): Promise<any> {
-    return this.makeGalateaRequest(userId, '/editor', 'POST', params);
+  ): Promise<{ 
+    success: boolean; 
+    message: string;
+    data?: {
+      success: boolean;
+      message?: string;
+      content?: string;
+      file_path?: string;
+      operation?: string;
+      line_count?: number;
+      modified_at?: string;
+      modified_lines?: number[];
+    }
+  }> {
+    const result = await this.makeGalateaRequest(userId, '/editor', 'POST', params);
+    
+    // Add logging for the enhanced response
+    if (result.success && result.data) {
+      console.log(`[LanguageManager] Galatea editor command '${params.command}' successful on ${params.path}`);
+      
+      if (params.command !== 'view' && result.data.content) {
+        console.log(`[LanguageManager] File modified successfully. Content length: ${result.data.content.length} chars, ${result.data.line_count || 'unknown'} lines`);
+      }
+    }
+    
+    return result;
   }
 
   /**
-   * ESLint integration
+   * ESLint integration using the remote API
+   * No SSH connection needed - uses the project's production URL
    */
   public async galateaLint(
     userId: string, 
@@ -965,7 +1069,8 @@ export default nextConfig;
   }
 
   /**
-   * Prettier check
+   * Prettier check using the remote API
+   * No SSH connection needed - uses the project's production URL
    */
   public async galateaFormatCheck(
     userId: string, 
@@ -975,7 +1080,8 @@ export default nextConfig;
   }
 
   /**
-   * Prettier format
+   * Prettier format using the remote API
+   * No SSH connection needed - uses the project's production URL
    */
   public async galateaFormatWrite(
     userId: string, 
@@ -985,7 +1091,8 @@ export default nextConfig;
   }
 
   /**
-   * Language Server Protocol - Goto Definition
+   * Language Server Protocol - Goto Definition using the remote API
+   * No SSH connection needed - uses the project's production URL
    */
   public async galateaLspGotoDefinition(
     userId: string, 
@@ -1000,6 +1107,7 @@ export default nextConfig;
 
   /**
    * Simple health check for Galatea API
+   * No SSH connection needed - uses the project's production URL
    */
   public async galateaHealth(userId: string): Promise<any> {
     return this.makeGalateaRequest(userId, '/health', 'GET');

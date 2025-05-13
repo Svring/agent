@@ -179,7 +179,11 @@ export const coderCreateFile = tool({
       
       return { 
         success: true, 
-        message: `Created file at ${path}` 
+        message: `Created file at ${path}`,
+        file_path: result.data?.file_path || path,
+        line_count: result.data?.line_count || 0,
+        content: result.data?.content || null,
+        modified_at: result.data?.modified_at || null
       };
     } catch (error: any) {
       return { success: false, error: `Failed to create file ${path}: ${error.message}` };
@@ -197,6 +201,23 @@ export const coderReplaceString = tool({
   }),
   execute: async ({ userId, path, old_str, new_str }) => {
     try {
+      // console.log("Replacing text in file:", {
+      //   path,
+      //   old_str: {
+      //     content: old_str,
+      //     length: old_str.length,
+      //     type: typeof old_str,
+      //     hasNewlines: old_str.includes('\n'),
+      //     isWhitespace: /^\s*$/.test(old_str)
+      //   },
+      //   new_str: {
+      //     content: new_str,
+      //     length: new_str.length,
+      //     type: typeof new_str,
+      //     hasNewlines: new_str.includes('\n'),
+      //     isWhitespace: /^\s*$/.test(new_str)
+      //   }
+      // });
       const result = await LanguageManager.getInstance().galateaEditorCommand(userId, {
         command: "str_replace",
         path,
@@ -210,7 +231,12 @@ export const coderReplaceString = tool({
       
       return { 
         success: true, 
-        message: `Successfully replaced text in ${path}` 
+        message: `Successfully replaced text in ${path}`,
+        file_path: result.data?.file_path || path,
+        content: result.data?.content || null,
+        line_count: result.data?.line_count || 0,
+        modified_lines: result.data?.modified_lines || [],
+        modified_at: result.data?.modified_at || null
       };
     } catch (error: any) {
       return { success: false, error: `Failed to replace text in ${path}: ${error.message}` };
@@ -241,7 +267,12 @@ export const coderInsertAtLine = tool({
       
       return { 
         success: true, 
-        message: `Successfully inserted text at line ${insert_line} in ${path}` 
+        message: `Successfully inserted text at line ${insert_line} in ${path}`,
+        file_path: result.data?.file_path || path,
+        content: result.data?.content || null,
+        line_count: result.data?.line_count || 0,
+        modified_lines: result.data?.modified_lines || [insert_line],
+        modified_at: result.data?.modified_at || null
       };
     } catch (error: any) {
       return { success: false, error: `Failed to insert text in ${path}: ${error.message}` };

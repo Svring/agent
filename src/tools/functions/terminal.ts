@@ -23,48 +23,48 @@ export const terminalExecuteCommand = tool({
     }
 });
 
-export const terminalEditFile = tool({
-    description: "Edits or creates a file on the remote server with the provided content for a user.",
-    parameters: z.object({
-        userId: z.string().describe("User ID."),
-        filePath: z.string().describe("The absolute path to the file on the remote server."),
-        content: z.string().describe("The content to write to the file."),
-    }),
-    execute: async ({ userId, filePath, content }) => {
-        try {
-            if (!propsManager.isSSHConnected(userId)) {
-                return { success: false, error: `SSH session for user ${userId} is not active. Please initialize connection.` };
-            }
-            const result = await propsManager.editRemoteFile(userId, filePath, content);
-            return { success: result.success, message: result.message };
-        } catch (error: any) {
-            return { success: false, error: `Failed to edit file '${filePath}' for user ${userId}: ${error.message}` };
-        }
-    }
-});
+// export const terminalEditFile = tool({
+//     description: "Edits or creates a file on the remote server with the provided content for a user.",
+//     parameters: z.object({
+//         userId: z.string().describe("User ID."),
+//         filePath: z.string().describe("The absolute path to the file on the remote server."),
+//         content: z.string().describe("The content to write to the file."),
+//     }),
+//     execute: async ({ userId, filePath, content }) => {
+//         try {
+//             if (!propsManager.isSSHConnected(userId)) {
+//                 return { success: false, error: `SSH session for user ${userId} is not active. Please initialize connection.` };
+//             }
+//             const result = await propsManager.editRemoteFile(userId, filePath, content);
+//             return { success: result.success, message: result.message };
+//         } catch (error: any) {
+//             return { success: false, error: `Failed to edit file '${filePath}' for user ${userId}: ${error.message}` };
+//         }
+//     }
+// });
 
-export const terminalReadFile = tool({
-    description: "Reads the content of a specified file from the remote server for a user.",
-    parameters: z.object({
-        userId: z.string().describe("User ID."),
-        filePath: z.string().describe("The absolute path to the file on the remote server."),
-    }),
-    execute: async ({ userId, filePath }) => {
-        try {
-            if (!propsManager.isSSHConnected(userId)) {
-                return { success: false, error: `SSH session for user ${userId} is not active. Please initialize connection.` };
-            }
-            const result = await propsManager.readRemoteFile(userId, filePath);
-            if (result.success) {
-                return { success: true, content: result.content || "", message: result.message };
-            } else {
-                return { success: false, error: result.message, content: null };
-            }
-        } catch (error: any) {
-            return { success: false, error: `Failed to read file '${filePath}' for user ${userId}: ${error.message}`, content: null };
-        }
-    }
-});
+// export const terminalReadFile = tool({
+//     description: "Reads the content of a specified file from the remote server for a user.",
+//     parameters: z.object({
+//         userId: z.string().describe("User ID."),
+//         filePath: z.string().describe("The absolute path to the file on the remote server."),
+//     }),
+//     execute: async ({ userId, filePath }) => {
+//         try {
+//             if (!propsManager.isSSHConnected(userId)) {
+//                 return { success: false, error: `SSH session for user ${userId} is not active. Please initialize connection.` };
+//             }
+//             const result = await propsManager.readRemoteFile(userId, filePath);
+//             if (result.success) {
+//                 return { success: true, content: result.content || "", message: result.message };
+//             } else {
+//                 return { success: false, error: result.message, content: null };
+//             }
+//         } catch (error: any) {
+//             return { success: false, error: `Failed to read file '${filePath}' for user ${userId}: ${error.message}`, content: null };
+//         }
+//     }
+// });
 
 export const terminalInitializeSsh = tool({
     description: "Initializes or re-initializes the SSH connection for a user. Requires host, username, and auth (password or privateKeyPath).",
@@ -248,8 +248,8 @@ export const terminalReadCommandLog = tool({
 // Group all terminal tools
 export const terminalTools = {
     terminalExecuteCommand,
-    terminalEditFile,
-    terminalReadFile,
+    // terminalEditFile,
+    // terminalReadFile,
     // terminalInitializeSsh,
     // terminalDisconnectSsh,
     terminalLaunchDevServer,

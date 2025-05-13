@@ -750,24 +750,30 @@ export default function SessionDetailPage() {
         } else {
           toast.warning(`Galatea is not healthy: ${result.message}`);
 
-          if (confirm("Galatea is not functioning correctly. Would you like to attempt to restart it?")) {
-            // First, try to stop any existing Galatea server
-            const stopResponse = await fetch('/api/language', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                action: 'stopGalateaServer'
-              })
-            });
+          // Remove the alert/confirm and use toast.promise instead
+          toast.promise(
+            (async () => {
+              // First, try to stop any existing Galatea server
+              await fetch('/api/language', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  action: 'stopGalateaServer'
+                })
+              });
 
-            // Wait for processes to terminate
-            await new Promise(resolve => setTimeout(resolve, 3000));
+              // Wait for processes to terminate
+              await new Promise(resolve => setTimeout(resolve, 3000));
 
-            // Then start a fresh instance
-            await uploadAndStartGalatea();
-
-            toast.success("Galatea restart initiated");
-          }
+              // Then start a fresh instance
+              return uploadAndStartGalatea();
+            })(),
+            {
+              loading: 'Restarting Galatea...',
+              success: 'Galatea restart initiated',
+              error: 'Failed to restart Galatea'
+            }
+          );
         }
       } else {
         toast.error(`Failed to check Galatea status: ${result.message}`);
@@ -778,55 +784,61 @@ export default function SessionDetailPage() {
     }
   }, [currentUser?.id, projectDetails?.id, sshStatus.connected, uploadAndStartGalatea]);
 
-  // Add a function to directly check the galatea health endpoint
-  const checkDirectGalateaHealth = useCallback(async () => {
-    if (!projectDetails?.production_address) {
-      toast.error("Production address not configured for project");
-      return;
+  // Add automated status checking with interval
+  useEffect(() => {
+    if (!currentUser?.id || !sshStatus.connected || !galateaStatus.serverRunning) {
+      return; // Don't start interval until SSH and Galatea are both connected
     }
 
-    try {
-      const prodUrl = projectDetails.production_address;
-      const healthUrl = `${prodUrl.replace(/\/$/, '')}/galatea/api/health`;
-
-      toast.info(`Checking Galatea health at ${healthUrl}...`);
-
-      const response = await fetch(healthUrl, {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json'
+    console.log("[SessionPage] Starting automated Galatea health check interval");
+    
+    // Check status every 2 minutes
+    const intervalId = setInterval(() => {
+      console.log("[SessionPage] Running automated Galatea health check");
+      // Use the non-UI-showing version of the check
+      (async () => {
+        try {
+          const response = await fetch('/api/language', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'checkGalateaFunctioning'
+            })
+          });
+  
+          const result = await response.json();
+  
+          if (result.success && !result.healthy) {
+            console.log("[SessionPage] Automated check: Galatea unhealthy, attempting recovery");
+            toast.warning("Galatea service is unhealthy. Attempting recovery...");
+            
+            // Attempt recovery without user interaction
+            await fetch('/api/language', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                action: 'stopGalateaServer'
+              })
+            });
+  
+            // Wait for processes to terminate
+            await new Promise(resolve => setTimeout(resolve, 3000));
+  
+            // Then start a fresh instance
+            await uploadAndStartGalatea();
+          }
+        } catch (error) {
+          console.error("[SessionPage] Error in automated Galatea health check:", error);
+          // No toast here to avoid spamming the user
         }
-      });
-
-      if (response.ok) {
-        const data = await response.text();
-        toast.success(`Galatea health check succeeded! Status: ${response.status}, Response: ${data}`);
-        // Update status
-        setGalateaStatus(prev => ({
-          ...prev,
-          serverRunning: true,
-          error: null
-        }));
-      } else {
-        toast.error(`Galatea health check failed! Status: ${response.status}`);
-        // Update status
-        setGalateaStatus(prev => ({
-          ...prev,
-          serverRunning: false,
-          error: `Health endpoint returned status ${response.status}`
-        }));
-      }
-    } catch (error) {
-      console.error("Error checking direct Galatea health:", error);
-      toast.error(`Error checking direct Galatea health: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      // Update status
-      setGalateaStatus(prev => ({
-        ...prev,
-        serverRunning: false,
-        error: error instanceof Error ? error.message : 'Unknown error'
-      }));
-    }
-  }, [projectDetails?.production_address]);
+      })();
+    }, 2 * 60 * 1000); // Every 2 minutes
+    
+    return () => {
+      console.log("[SessionPage] Clearing Galatea health check interval");
+      clearInterval(intervalId);
+    };
+  }, [currentUser?.id, sshStatus.connected, galateaStatus.serverRunning, uploadAndStartGalatea]);
 
   if (authLoading) {
     return <div className="flex items-center justify-center h-screen"><Loader2 className="h-8 w-8 animate-spin" /> <p className="ml-2">Authenticating...</p></div>;
@@ -1053,7 +1065,6 @@ export default function SessionDetailPage() {
                           onClick={() => {
                             refreshGalateaHealth();
                             // Try both methods
-                            checkDirectGalateaHealth();
                             checkAndFixGalatea();
                           }}
                         >
