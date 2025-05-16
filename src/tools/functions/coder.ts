@@ -6,7 +6,7 @@ export const coderFindFiles = tool({
   description: 'Find files in the project matching specific suffixes and excluding directories.',
   parameters: z.object({
     userId: z.string().describe("The ID of the user whose project is being accessed."),
-    dir: z.string().describe("Directory path to search from (relative to project root)."),
+    dir: z.string().describe("Directory path to search from (relative to project root, e.g., 'project/src/')."),
     suffixes: z.array(z.string()).describe("File extensions to search for (e.g., ['ts', 'tsx', 'js'])."),
     exclude_dirs: z.array(z.string()).optional().describe("Directories to exclude (e.g., ['node_modules', 'dist'])."),
   }),
@@ -37,7 +37,7 @@ export const coderParseFile = tool({
   description: 'Parse a single file and extract code entities (functions, classes, etc.).',
   parameters: z.object({
     userId: z.string().describe("The ID of the user whose project is being accessed."),
-    file_path: z.string().describe("Path to the file to parse (relative to project root)."),
+    file_path: z.string().describe("Path to the file to parse (relative to project root, e.g., 'project/app/file.ts')."),
     max_snippet_size: z.number().optional().describe("Maximum size of code snippets to extract."),
   }),
   execute: async ({ userId, file_path, max_snippet_size }) => {
@@ -66,7 +66,7 @@ export const coderParseDirectory = tool({
   description: 'Parse a directory of files and extract code entities (functions, classes, etc.).',
   parameters: z.object({
     userId: z.string().describe("The ID of the user whose project is being accessed."),
-    dir: z.string().describe("Directory path to parse (relative to project root)."),
+    dir: z.string().describe("Directory path to parse (relative to project root, e.g., 'project/src/')."),
     suffixes: z.array(z.string()).describe("File extensions to parse (e.g., ['ts', 'tsx', 'js'])."),
     exclude_dirs: z.array(z.string()).optional().describe("Directories to exclude (e.g., ['node_modules', 'dist'])."),
     max_snippet_size: z.number().optional().describe("Maximum size of code snippets to extract."),
@@ -132,7 +132,7 @@ export const coderViewFile = tool({
   description: 'View the content of a file or a specific range of lines.',
   parameters: z.object({
     userId: z.string().describe("The ID of the user whose project is being accessed."),
-    path: z.string().describe("Path to the file to view (relative to project root)."),
+    path: z.string().describe("Path to the file to view (relative to project root, e.g., 'project/app/file.ts')."),
     view_range: z.array(z.number()).optional().describe("Optional line range to view [start_line, end_line] (1-indexed, -1 for end of file)."),
   }),
   execute: async ({ userId, path, view_range }) => {
@@ -162,7 +162,7 @@ export const coderCreateFile = tool({
   description: 'Create a new file with specified content.',
   parameters: z.object({
     userId: z.string().describe("The ID of the user whose project is being accessed."),
-    path: z.string().describe("Path where to create the file (relative to project root)."),
+    path: z.string().describe("Path where to create the file (relative to project root, e.g., 'project/app/new-file.ts')."),
     file_text: z.string().describe("Content to write to the file."),
   }),
   execute: async ({ userId, path, file_text }) => {
@@ -195,7 +195,7 @@ export const coderReplaceString = tool({
   description: 'Replace a string in a file with a new string.',
   parameters: z.object({
     userId: z.string().describe("The ID of the user whose project is being accessed."),
-    path: z.string().describe("Path to the file to edit (relative to project root)."),
+    path: z.string().describe("Path to the file to edit (relative to project root, e.g., 'project/app/file.ts')."),
     old_str: z.string().describe("Exact string to replace (must match exactly)."),
     new_str: z.string().describe("New string to replace with."),
   }),
@@ -248,7 +248,7 @@ export const coderInsertAtLine = tool({
   description: 'Insert text at a specific line in a file.',
   parameters: z.object({
     userId: z.string().describe("The ID of the user whose project is being accessed."),
-    path: z.string().describe("Path to the file to edit (relative to project root)."),
+    path: z.string().describe("Path to the file to edit (relative to project root, e.g., 'project/app/file.ts')."),
     insert_line: z.number().describe("Line number where to insert the text (1-indexed)."),
     new_str: z.string().describe("Text to insert at the specified line."),
   }),
@@ -284,7 +284,7 @@ export const coderUndoEdit = tool({
   description: 'Undo the last edit operation to a file.',
   parameters: z.object({
     userId: z.string().describe("The ID of the user whose project is being accessed."),
-    path: z.string().describe("Path to the file for which to undo the last edit."),
+    path: z.string().describe("Path to the file for which to undo the last edit (relative to project root, e.g., 'project/app/file.ts')."),
   }),
   execute: async ({ userId, path }) => {
     try {
@@ -365,7 +365,7 @@ export const coderGotoDefinition = tool({
   description: 'Find the definition location of a symbol in the code.',
   parameters: z.object({
     userId: z.string().describe("The ID of the user whose project is being accessed."),
-    uri: z.string().describe("File URI (e.g., 'file:///project/src/app.ts')."),
+    uri: z.string().describe("File URI or path (relative to project root, e.g., 'project/src/app.ts')."),
     line: z.number().describe("Line number of the symbol (0-indexed)."),
     character: z.number().describe("Character position of the symbol (0-indexed)."),
   }),
@@ -396,7 +396,7 @@ export const coderBuildIndex = tool({
   description: 'Build a semantic search index for the codebase.',
   parameters: z.object({
     userId: z.string().describe("The ID of the user whose project is being accessed."),
-    dir: z.string().describe("Directory to index (relative to project root)."),
+    dir: z.string().describe("Directory to index (relative to project root, e.g., 'project/src/')."),
     suffixes: z.array(z.string()).describe("File extensions to index (e.g., ['ts', 'tsx', 'js'])."),
     collection_name: z.string().describe("Name for the index collection."),
     exclude_dirs: z.array(z.string()).optional().describe("Directories to exclude (e.g., ['node_modules', 'dist'])."),
