@@ -68,6 +68,7 @@ export default function SessionDetailPage() {
     serverPort: number | null;
     serverPid: number | null;
     serverUrl: string | null;
+    initialOutput?: string;
   }>({
     uploading: false,
     uploaded: false,
@@ -106,7 +107,8 @@ export default function SessionDetailPage() {
         serverRunning: serverInfo.status === 'running',
         serverPort: serverInfo.port || null,
         serverPid: serverInfo.pid || null,
-        serverUrl: serverInfo.url || null
+        serverUrl: serverInfo.url || null,
+        initialOutput: serverInfo.initialOutput || prev.initialOutput
       }));
     }
   }, [serverStatusData]);
@@ -276,7 +278,7 @@ export default function SessionDetailPage() {
   const [expandedResults, setExpandedResults] = useState<Record<string, boolean>>({});
   const messagesEndRef = useRef(null);
   const [selectedModel, setSelectedModel] = useState<string>('claude-3-7-sonnet-20250219');
-  const [selectedTools, setSelectedTools] = useState<string[]>(['browser']);
+  const [selectedTools, setSelectedTools] = useState<string[]>(['terminal', 'coder']);
   const [availableModels, setAvailableModels] = useState<{ key: string, label: string }[]>([]);
   const [availableTools, setAvailableTools] = useState<{ key: string, label: string }[]>([]);
   const [activeContextId, setActiveContextId] = useState<string>('opera');
@@ -609,20 +611,6 @@ export default function SessionDetailPage() {
       setIsGalateaMonitoring(true);
       console.log("[SessionPage] Starting Galatea service monitoring for user:", currentUser.id);
 
-      // First, configure the Next.js rewrite rule
-      const configResult = await fetch('/api/language', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'configureNextJsRewriteAndTestGalatea',
-          galateaPort: 3051
-        })
-      }).then(r => r.json());
-
-      if (configResult.configUpdated) {
-        toast.info("Updated Next.js configuration for Galatea. The Next.js dev server on the remote machine needs to be restarted for changes to take effect.");
-      }
-
       // Then start the monitoring service
       const response = await fetch('/api/language', {
         method: 'POST',
@@ -652,7 +640,7 @@ export default function SessionDetailPage() {
   }, [currentUser?.id, projectDetails?.id, sshStatus.connected]);
 
   // Modify uploadAndStartGalatea to ensure proper sequencing with SSH
-  const uploadAndStartGalatea = useCallback(async () => {
+  const uploadAndStartGalatea = useCallback(async (isRetryAttempt = false) => {
     if (!currentUser?.id || !projectDetails?.id) {
       console.log("Cannot upload Galatea: user or project details not available");
       return;
@@ -660,6 +648,7 @@ export default function SessionDetailPage() {
 
     if (!sshStatus.connected) {
       console.log("Cannot upload Galatea: SSH not connected yet");
+      // toast.error("SSH not connected. Please wait or reconnect SSH."); // Optional: more direct feedback
       return;
     }
 
@@ -668,10 +657,12 @@ export default function SessionDetailPage() {
 
       const userId = currentUser.id.toString();
       const projectIdStr = projectDetails.id.toString();
-      console.log(`Uploading and starting Galatea server for user ${userId} to project ${projectIdStr} via API`);
+      console.log(`${isRetryAttempt ? '[Retry] ' : ''}Uploading and starting Galatea server for user ${userId} to project ${projectIdStr} via API`);
 
-      // Wait briefly to ensure SSH connection is fully established
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Wait briefly to ensure SSH connection is fully established, especially for first attempt
+      if (!isRetryAttempt) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
 
       const response = await fetch('/api/language', {
         method: 'POST',
@@ -694,57 +685,84 @@ export default function SessionDetailPage() {
           uploaded: true,
           error: null,
           serverRunning: result.serverStarted || false,
-          serverPort: result.serverInfo?.port || 3051, // Default to 3051 if not specified
+          serverPort: result.serverInfo?.port || 3051,
           serverPid: result.serverInfo?.pid || null,
-          serverUrl: result.serverInfo?.url || null
+          serverUrl: result.serverInfo?.url || null,
+          initialOutput: result.serverInfo?.initialOutput || undefined
         }));
 
-        // Refresh server status
         refreshServerStatus();
 
         if (result.serverStarted) {
           toast.success(`Galatea server started on port ${result.serverInfo?.port || 3051}`);
-
-          // Start monitoring after successful launch
           if (!isGalateaMonitoring) {
             setTimeout(() => startGalateaMonitoring(), 3000);
           }
-        } else if (!result.fileExists) {
-          toast.success("Galatea binary uploaded successfully");
+        } else {
+          // Server didn't start, even if upload might have succeeded.
+          const failureMessage = `Galatea binary ready, but server failed to start: ${result.message || 'Unknown reason'}`;
+          toast.info(failureMessage);
+          if (!isRetryAttempt) {
+            console.log("[SessionPage] Galatea server failed initial start. Attempting forceful restart.");
+            toast.info("Attempting a more forceful restart of Galatea server...");
+            setTimeout(async () => {
+              try {
+                await fetch('/api/language', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ action: 'stopGalateaServer' })
+                });
+                await new Promise(resolve => setTimeout(resolve, 2000)); // Wait for stop command to process
+                await uploadAndStartGalatea(true); // Call itself, marked as retry
+              } catch (retryError) {
+                const ಹೆಚ್ಚುErrorMsg = retryError instanceof Error ? retryError.message : String(retryError);
+                toast.error(`Error during Galatea restart attempt: ${ಹೆಚ್ಚುErrorMsg}`);
+                setGalateaStatus(prev => ({ ...prev, uploading: false, error: `Retry failed: ${ಹೆಚ್ಚುErrorMsg}` }));
+              }
+            }, 3000);
+          } else {
+            console.error("[SessionPage] Galatea server failed to start even after a retry.", result);
+            toast.error(`Galatea server failed to start after retry: ${result.message || 'Unknown reason'}`);
+            setGalateaStatus(prev => ({ ...prev, uploading: false, error: `Server failed after retry: ${result.message || 'Unknown reason'}` }));
+          }
         }
       } else {
+        // Overall API call failed (e.g., upload failed, project not found, auth issue)
+        const errorMessage = `Failed to upload/start Galatea: ${result.message || 'Network or server error'}`;
+        console.error("[SessionPage] Galatea API call failed directly.", result);
         setGalateaStatus(prev => ({
           ...prev,
           uploading: false,
-          uploaded: false,
-          error: result.message,
+          uploaded: result.fileExists || false, // Use fileExists if available, otherwise assume not uploaded
+          error: result.message || 'Network or server error',
           serverRunning: false
         }));
-        toast.error(`Failed to upload/start Galatea: ${result.message}`);
+        toast.error(errorMessage);
       }
     } catch (error) {
-      console.error("Error uploading/starting Galatea:", error);
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.error("[SessionPage] Error in uploadAndStartGalatea function:", error);
       setGalateaStatus(prev => ({
         ...prev,
         uploading: false,
-        uploaded: false,
-        error: error instanceof Error ? error.message : String(error),
+        uploaded: false, // On exception, assume not uploaded
+        error: errorMsg,
         serverRunning: false
       }));
-      toast.error(`Error with Galatea: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      toast.error(`Error with Galatea operation: ${errorMsg}`);
     }
-  }, [currentUser?.id, projectDetails?.id, refreshServerStatus, sshStatus.connected, isGalateaMonitoring, startGalateaMonitoring]);
+  }, [currentUser?.id, projectDetails?.id, refreshServerStatus, isGalateaMonitoring, startGalateaMonitoring, sshStatus.connected]);
 
   // Upload and start Galatea when SSH is connected - only once
   useEffect(() => {
     if (sshStatus.connected && !galateaStatus.uploading && !galateaStatus.uploaded && !galateaStatus.error && !galateaStatus.serverRunning) {
-      // Delay to ensure SSH connection is fully established
+      // Delay to ensure SSH connection is fully established and other initial states settle
       const timer = setTimeout(() => {
-        uploadAndStartGalatea();
-      }, 2000);
+        uploadAndStartGalatea(false); // Pass false for the initial attempt
+      }, 2500); // Slightly increased delay
       return () => clearTimeout(timer);
     }
-  }, [sshStatus.connected, galateaStatus, uploadAndStartGalatea]);
+  }, [sshStatus.connected, galateaStatus.uploading, galateaStatus.uploaded, galateaStatus.error, galateaStatus.serverRunning, uploadAndStartGalatea]);
 
   // Add a function to check Galatea status and restart if needed
   const checkAndFixGalatea = useCallback(async () => {
@@ -854,7 +872,7 @@ export default function SessionDetailPage() {
           // No toast here to avoid spamming the user
         }
       })();
-    }, 2 * 60 * 1000); // Every 2 minutes
+    }, 10000); // Every 10 seconds
     
     return () => {
       console.log("[SessionPage] Clearing Galatea health check interval");
@@ -1098,6 +1116,15 @@ export default function SessionDetailPage() {
                       </TooltipContent>
                     </Tooltip>
                   </div>
+
+                  {galateaStatus.initialOutput && (
+                    <div className="flex items-start h-auto px-2 py-1 text-xs text-muted-foreground rounded border-t mt-1">
+                      <span className="mr-1 shrink-0 font-semibold">Initial Output:</span>
+                      <pre className="whitespace-pre-wrap text-xs flex-1 overflow-auto max-h-20">
+                        {galateaStatus.initialOutput}
+                      </pre>
+                    </div>
+                  )}
 
                   <div className="flex items-center h-auto px-2 text-xs text-muted-foreground mb-2 rounded">
                     <span

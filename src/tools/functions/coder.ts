@@ -308,76 +308,55 @@ export const coderUndoEdit = tool({
 });
 
 export const coderLintFiles = tool({
-  description: 'Lint files using ESLint to find potential problems.',
+  description: 'Lint the entire project using ESLint to find potential problems.',
   parameters: z.object({
     userId: z.string().describe("The ID of the user whose project is being accessed."),
-    paths: z.array(z.string()).describe("Array of file paths to lint."),
   }),
-  execute: async ({ userId, paths }) => {
+  execute: async ({ userId }) => {
     try {
-      const result = await LanguageManager.getInstance().galateaLint(userId, { paths });
+      const result = await LanguageManager.getInstance().galateaLint(userId, {});
       
       if (!result.success) {
-        return { success: false, error: result.message || "Failed to lint files" };
+        return { success: false, error: result.message || "Failed to lint project" };
       }
       
       return { 
         success: true, 
         results: result.data?.results || [],
-        message: `Linted ${paths.length} files` 
+        message: result.data?.results?.length > 0 ? `Linting found issues in the project.` : `Project linted successfully. No issues found.` 
       };
     } catch (error: any) {
-      return { success: false, error: `Failed to lint files: ${error.message}` };
+      return { success: false, error: `Failed to lint project: ${error.message}` };
     }
   }
 });
 
-export const coderFormatCheck = tool({
-  description: 'Check if files are properly formatted with Prettier.',
+export const coderFormat = tool({
+  description: 'Format the entire project using Prettier and write the changes.',
   parameters: z.object({
     userId: z.string().describe("The ID of the user whose project is being accessed."),
-    patterns: z.array(z.string()).describe("Array of file patterns to check (e.g., ['src/**/*.ts', 'src/**/*.tsx'])."),
+    // patterns: z.array(z.string()).describe("Array of file patterns to format (e.g., ['src/**/*.ts', 'src/**/*.tsx'])."), // Parameter removed
   }),
-  execute: async ({ userId, patterns }) => {
+  execute: async ({ userId /*, patterns */ }) => { // patterns commented out
     try {
-      const result = await LanguageManager.getInstance().galateaFormatCheck(userId, { patterns });
+      // Galatea's watcher.rs for format_with_prettier already formats ./src, ignoring input patterns.
+      // So, sending an empty array or any specific pattern here has no effect on what Galatea does.
+      const result = await LanguageManager.getInstance().galateaFormat(userId, { patterns: [] }); 
       
       if (!result.success) {
-        return { success: false, error: result.message || "Failed to check formatting" };
+        return { success: false, error: result.message || "Failed to format project" };
       }
       
+      // The Galatea API for formatWrite currently returns formatted_files which might be empty
+      // because it runs `npm run format` which doesn't list changed files like `prettier --write --list-different` would.
+      // The message should reflect that the command was run.
       return { 
         success: true, 
-        unformatted_files: result.data?.unformatted_files || [],
-        message: `Found ${result.data?.unformatted_files?.length || 0} unformatted files` 
+        formatted_files: result.data?.formatted_files || [], // This might often be empty from current Galatea impl
+        message: `Format command executed for the project. Check files for changes.`
       };
     } catch (error: any) {
-      return { success: false, error: `Failed to check formatting: ${error.message}` };
-    }
-  }
-});
-
-export const coderFormatWrite = tool({
-  description: 'Format files using Prettier and write the changes.',
-  parameters: z.object({
-    userId: z.string().describe("The ID of the user whose project is being accessed."),
-    patterns: z.array(z.string()).describe("Array of file patterns to format (e.g., ['src/**/*.ts', 'src/**/*.tsx'])."),
-  }),
-  execute: async ({ userId, patterns }) => {
-    try {
-      const result = await LanguageManager.getInstance().galateaFormatWrite(userId, { patterns });
-      
-      if (!result.success) {
-        return { success: false, error: result.message || "Failed to format files" };
-      }
-      
-      return { 
-        success: true, 
-        formatted_files: result.data?.formatted_files || [],
-        message: `Formatted ${result.data?.formatted_files?.length || 0} files` 
-      };
-    } catch (error: any) {
-      return { success: false, error: `Failed to format files: ${error.message}` };
+      return { success: false, error: `Failed to format project: ${error.message}` };
     }
   }
 });
@@ -463,8 +442,7 @@ export const coderTools = {
   coderInsertAtLine,
   coderUndoEdit,
   coderLintFiles,
-  coderFormatCheck,
-  coderFormatWrite,
+  coderFormat,
   coderGotoDefinition,
   coderBuildIndex
 };

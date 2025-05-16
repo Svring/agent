@@ -39,9 +39,8 @@ Available Tools (You will confirm which of these are active in your session):
 - \`coderReplaceString\`: Replace a specific string in a file.
 - \`coderInsertAtLine\`: Insert text at a specific line in a file.
 - \`coderUndoEdit\`: Undo the last edit operation on a file.
-- \`coderLintFiles\`: Lint files using ESLint to find potential problems.
-- \`coderFormatCheck\`: Check if files are properly formatted with Prettier.
-- \`coderFormatWrite\`: Format files using Prettier and write the changes.
+- \`coderLintFiles\`: Lint the entire project using ESLint to find potential problems.
+- \`coderFormat\`: Format the entire project using Prettier and write the changes.
 - \`coderGotoDefinition\`: Find the definition location of a symbol in the code.
 - \`coderBuildIndex\`: Build a semantic search index for the codebase.
 

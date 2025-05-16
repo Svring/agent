@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
           }
 
           // Check if the file already exists on the remote server
-          const remoteBinaryPath = '/home/devbox/galatea_for_linux';
+          const remoteBinaryPath = '/home/devbox/galatea';
           
           // First check if SSH is connected for this user
           if (!propsManager.isSSHConnected(authenticatedUserId)) {
@@ -320,23 +320,6 @@ export async function POST(req: NextRequest) {
           success: true,
           result: result
         });
-      }
-
-      case 'configureNextJsRewriteAndTestGalatea': {
-        const { galateaPort } = body; // Optional port from request
-        try {
-          const result = await languageManager.configureNextJsRewriteAndTestGalatea(
-            authenticatedUserId,
-            galateaPort // if undefined, manager method default will be used
-          );
-          return NextResponse.json(result, { status: result.success ? 200 : 500 });
-        } catch (error) {
-          console.error(`[Language API] Error configuring Next.js rewrite:`, error);
-          return NextResponse.json({
-            success: false,
-            message: `Error configuring Next.js rewrite: ${error instanceof Error ? error.message : String(error)}`
-          }, { status: 500 });
-        }
       }
 
       case 'monitorGalateaService': {
@@ -622,67 +605,29 @@ export async function POST(req: NextRequest) {
       }
 
       case 'galateaLint': {
-        const { paths } = body;
-        
-        if (!paths || !Array.isArray(paths)) {
-          return NextResponse.json({
-            success: false,
-            message: 'Required parameter missing: paths (array)'
-          }, { status: 400 });
-        }
-        
+        // No parameters needed from the body for project-wide linting
         try {
-          const result = await languageManager.galateaLint(authenticatedUserId, { paths });
+          // Call LanguageManager's galateaLint with an empty params object
+          const result = await languageManager.galateaLint(authenticatedUserId, {}); 
           return NextResponse.json(result, { status: result.success ? 200 : 500 });
         } catch (error) {
-          console.error(`[Language API] Error linting files:`, error);
+          console.error(`[Language API] Error linting project:`, error);
           return NextResponse.json({
             success: false,
-            message: `Error linting files: ${error instanceof Error ? error.message : String(error)}`
+            message: `Error linting project: ${error instanceof Error ? error.message : String(error)}`
           }, { status: 500 });
         }
       }
 
-      case 'galateaFormatCheck': {
-        const { patterns } = body;
-        
-        if (!patterns || !Array.isArray(patterns)) {
-          return NextResponse.json({
-            success: false,
-            message: 'Required parameter missing: patterns (array)'
-          }, { status: 400 });
-        }
-        
+      case 'galateaFormat': {
         try {
-          const result = await languageManager.galateaFormatCheck(authenticatedUserId, { patterns });
-          return NextResponse.json(result, { status: result.success ? 200 : 500 });
-        } catch (error) {
-          console.error(`[Language API] Error checking formatting:`, error);
-          return NextResponse.json({
-            success: false,
-            message: `Error checking formatting: ${error instanceof Error ? error.message : String(error)}`
-          }, { status: 500 });
-        }
-      }
-
-      case 'galateaFormatWrite': {
-        const { patterns } = body;
-        
-        if (!patterns || !Array.isArray(patterns)) {
-          return NextResponse.json({
-            success: false,
-            message: 'Required parameter missing: patterns (array)'
-          }, { status: 400 });
-        }
-        
-        try {
-          const result = await languageManager.galateaFormatWrite(authenticatedUserId, { patterns });
+          const result = await languageManager.galateaFormat(authenticatedUserId, { patterns: [] });
           return NextResponse.json(result, { status: result.success ? 200 : 500 });
         } catch (error) {
           console.error(`[Language API] Error formatting files:`, error);
           return NextResponse.json({
             success: false,
-            message: `Error formatting files: ${error instanceof Error ? error.message : String(error)}`
+            message: `Error formatting project: ${error instanceof Error ? error.message : String(error)}`
           }, { status: 500 });
         }
       }
@@ -709,6 +654,33 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({
             success: false,
             message: `Error getting definition: ${error instanceof Error ? error.message : String(error)}`
+          }, { status: 500 });
+        }
+      }
+
+      case 'galateaGetLogs': {
+        const { filter_options } = body; // Assuming filter_options is passed directly in the body
+        try {
+          const result = await languageManager.galateaGetLogs(authenticatedUserId, filter_options || {});
+          return NextResponse.json(result, { status: result.success ? 200 : 500 });
+        } catch (error) {
+          console.error(`[Language API] Error getting Galatea logs:`, error);
+          return NextResponse.json({
+            success: false,
+            message: `Error getting Galatea logs: ${error instanceof Error ? error.message : String(error)}`
+          }, { status: 500 });
+        }
+      }
+
+      case 'galateaClearLogs': {
+        try {
+          const result = await languageManager.galateaClearLogs(authenticatedUserId);
+          return NextResponse.json(result, { status: result.success ? 200 : 500 });
+        } catch (error) {
+          console.error(`[Language API] Error clearing Galatea logs:`, error);
+          return NextResponse.json({
+            success: false,
+            message: `Error clearing Galatea logs: ${error instanceof Error ? error.message : String(error)}`
           }, { status: 500 });
         }
       }

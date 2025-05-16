@@ -38,12 +38,12 @@ export function ProjectCard({ project }: ProjectCardProps) {
       <Link href={`/projects/${id}`} className="block hover:no-underline">
         <CardHeader className="pb-2">
           <div className="flex items-center space-x-3">
-             <FolderGit2 className="h-6 w-6 text-primary" />
-             {/* Use text-foreground */}
-             <CardTitle className="text-lg font-semibold text-foreground truncate">{name || 'Untitled Project'}</CardTitle>
+            <FolderGit2 className="h-6 w-6 text-primary" />
+            {/* Use text-foreground */}
+            <CardTitle className="text-lg font-semibold text-foreground truncate">{name || 'Untitled Project'}</CardTitle>
           </div>
         </CardHeader>
-        
+
         <CardContent className="pb-4">
           <div className="grid gap-2">
             {/* Production Environment */}
@@ -101,10 +101,10 @@ export function ProjectCard({ project }: ProjectCardProps) {
             </div>
           </div>
         </CardContent>
-        
+
         <CardFooter className="pt-0 pb-3">
           <p className="text-xs text-muted-foreground flex items-center">
-            <ExternalLink className="h-3 w-3 mr-1" /> 
+            <ExternalLink className="h-3 w-3 mr-1" />
             View details
           </p>
         </CardFooter>
